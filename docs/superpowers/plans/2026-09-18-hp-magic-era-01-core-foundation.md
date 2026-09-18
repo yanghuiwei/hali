@@ -2978,7 +2978,7 @@ func run() -> int:
 	a.eq(g1, 4, "首次训练满额")
 	a.is_true(g2 < g1, "重复训练收益下降")
 	a.is_true(g3 <= g2, "继续下降")
-	var total := g1
+	var total := g1 + g2 + g3
 	for i in 20:
 		total += Progression.gain(w3, "potions", 4)
 	a.eq(total, 8, "同一地点重复 23 次的总收益恰好 8（4+2+1+1，之后归零）")
@@ -2999,7 +2999,7 @@ func run() -> int:
 	var work := gm.act(w4, "我去对角巷打工赚钱")
 	a.is_true(work.deltas.size() > 0, "打工产生增量")
 	a.is_true(work.tags.has("work"), "打上 work 标签")
-	var unknown := gm.act(w4, "我对着墙发呆并思考宇宙的尽头")
+	var unknown := gm.act(w4, "我对着墙思考宇宙的尽头")
 	a.is_true(unknown.narration.length() > 0, "未知行动也要有叙事，而不是崩溃")
 	a.is_true(unknown.tags.has("idle"), "未知行动归为 idle")
 
