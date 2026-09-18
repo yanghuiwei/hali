@@ -1,0 +1,16 @@
+config_version=5
+
+[application]
+
+config/name="哈利·波特·魔法纪元"
+config/description="魔法世界沙盘·超高自由度人生模拟器"
+config/features=PackedStringArray("4.7")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=800
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
