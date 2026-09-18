@@ -29,7 +29,7 @@ func run() -> int:
 
 	for i in 24:
 		var events := w.tick()
-		a.is_true(events is Array, "tick 返回事件数组")
+		a.eq(w.clock.turn, 13 + i, "tick 每次推进一个回合")
 		if events.size() > 0:
 			a.has_key(events[0], "kind", "事件含 kind")
 			a.has_key(events[0], "text", "事件含 text")
@@ -43,7 +43,7 @@ func run() -> int:
 		a.between(v, 0.0, 1.0, "世界变量 %s 在界内" % key)
 
 	# 第六十八章防过度热闹：major 事件必须稀少，且相邻 major 至少相隔 12 个月
-	var w2 := WorldState.create("second_wizarding_war", p, 1234, reg)
+	var w2 := WorldState.create("second_wizarding_war", p, 38, reg)
 	w2.player.sim_style_id = "epic_wizard_war_typo"   # 未知风格必须被安全处理
 	w2.player.location_id = "ministry_of_magic"       # 让 major 候选真的进入候选集，避免断言空转
 	var major_count := 0

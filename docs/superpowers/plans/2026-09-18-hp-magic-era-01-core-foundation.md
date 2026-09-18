@@ -1515,16 +1515,19 @@ func run() -> int:
 	for i in 5:
 		r7.stream_float("world")
 	var snapshot := r7.state_dict()
-	var next_a := r7.stream_int("world", 0, 999999)
+	var expected: Array = []
+	for i in 20:
+		expected.append(r7.stream_int("world", 0, 999999))
+	# 存档必须经 JSON 字符串端到端往返后仍一致（seed/state 是 int64，未字符串化会在 JSON 里丢精度）
 	var r8 := RngService.new(42)
-	r8.load_state(snapshot)
-	a.eq(r8.stream_int("world", 0, 999999), next_a, "恢复后继续抽同一随机数")
+	r8.load_state(JSON.parse_string(JSON.stringify(snapshot)))
+	for i in 20:
+		a.eq(r8.stream_int("world", 0, 999999), expected[i], "经 JSON 往返后第 %d 次抽取一致" % i)
 	# 恢复后新建的命名流必须沿用原 seed，而不是构造时的 seed（否则不同实例读同一存档会分叉）
 	var r9 := RngService.new(0)
-	r9.load_state(snapshot)
+	r9.load_state(JSON.parse_string(JSON.stringify(snapshot)))
 	a.eq(r9.stream_int("new_stream", 0, 999999),
 		RngService.new(42).stream_int("new_stream", 0, 999999), "恢复后新流沿用原 seed")
-	a.eq(JSON.stringify(snapshot).length() > 0, true, "随机状态可 JSON 序列化")
 
 	return a.report("clock")
 ```
@@ -1563,7 +1566,7 @@ func run() -> int:
 
 	for i in 24:
 		var events := w.tick()
-		a.is_true(events is Array, "tick 返回事件数组")
+		a.eq(w.clock.turn, 13 + i, "tick 每次推进一个回合")
 		if events.size() > 0:
 			a.has_key(events[0], "kind", "事件含 kind")
 			a.has_key(events[0], "text", "事件含 text")
@@ -1577,7 +1580,7 @@ func run() -> int:
 		a.between(v, 0.0, 1.0, "世界变量 %s 在界内" % key)
 
 	# 第六十八章防过度热闹：major 事件必须稀少，且相邻 major 至少相隔 12 个月
-	var w2 := WorldState.create("second_wizarding_war", p, 1234, reg)
+	var w2 := WorldState.create("second_wizarding_war", p, 38, reg)
 	w2.player.sim_style_id = "epic_wizard_war_typo"   # 未知风格必须被安全处理
 	w2.player.location_id = "ministry_of_magic"       # 让 major 候选真的进入候选集，避免断言空转
 	var major_count := 0
@@ -1672,18 +1675,20 @@ func state_dict() -> Dictionary:
 	var streams := {}
 	for name in _streams.keys():
 		var rng: RandomNumberGenerator = _streams[name]
-		streams[name] = {"seed": rng.seed, "state": rng.state}
-	# seed_value 也必须入档：恢复后新建的命名流要用原种子派生，否则会退回构造时的 seed
-	return {"seed_value": seed_value, "streams": streams}
+		# seed/state 是 int64，JSON 会把数字解析成 double 而丢精度，因此一律以十进制字符串入档
+		streams[name] = {"seed": str(rng.seed), "state": str(rng.state)}
+	# seed_value 也必须入档（同样字符串化）：恢复后新建的命名流要用原种子派生
+	return {"seed_value": str(seed_value), "streams": streams}
 
 func load_state(d: Dictionary) -> void:
-	seed_value = int(d.get("seed_value", seed_value))
+	_streams.clear()   # 恢复语义是“替换”而不是“合并”
+	seed_value = int(str(d.get("seed_value", seed_value)))
 	var streams: Dictionary = d.get("streams", {})
 	for name in streams.keys():
 		var entry: Dictionary = streams[name]
 		var rng := RandomNumberGenerator.new()
-		rng.seed = int(entry.get("seed", 0))
-		rng.state = int(entry.get("state", 0))
+		rng.seed = int(str(entry.get("seed", 0)))
+		rng.state = int(str(entry.get("state", 0)))
 		_streams[str(name)] = rng
 ```
 

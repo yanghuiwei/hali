@@ -34,16 +34,18 @@ func state_dict() -> Dictionary:
 	var streams := {}
 	for name in _streams.keys():
 		var rng: RandomNumberGenerator = _streams[name]
-		streams[name] = {"seed": rng.seed, "state": rng.state}
-	# seed_value 也必须入档：恢复后新建的命名流要用原种子派生，否则会退回构造时的 seed
-	return {"seed_value": seed_value, "streams": streams}
+		# seed/state 是 int64，JSON 会把数字解析成 double 而丢精度，因此一律以十进制字符串入档
+		streams[name] = {"seed": str(rng.seed), "state": str(rng.state)}
+	# seed_value 也必须入档（同样字符串化）：恢复后新建的命名流要用原种子派生
+	return {"seed_value": str(seed_value), "streams": streams}
 
 func load_state(d: Dictionary) -> void:
-	seed_value = int(d.get("seed_value", seed_value))
+	_streams.clear()   # 恢复语义是“替换”而不是“合并”
+	seed_value = int(str(d.get("seed_value", seed_value)))
 	var streams: Dictionary = d.get("streams", {})
 	for name in streams.keys():
 		var entry: Dictionary = streams[name]
 		var rng := RandomNumberGenerator.new()
-		rng.seed = int(entry.get("seed", 0))
-		rng.state = int(entry.get("state", 0))
+		rng.seed = int(str(entry.get("seed", 0)))
+		rng.state = int(str(entry.get("state", 0)))
 		_streams[str(name)] = rng
