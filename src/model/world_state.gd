@@ -47,6 +47,108 @@ func add_fact(kind: String, text: String) -> Dictionary:
 	log.append({"turn": clock.turn, "kind": kind, "text": text})
 	return fact
 
+const VARS_REGRESSION := 0.05     # 每月向时代基线回归的比例
+const MAJOR_EVENT_GAP := 12       # 第六十八章：重大事件之间至少相隔 12 个月
+const RECENT_LOG_LIMIT := 200
+
+func sim_style() -> Dictionary:
+	var style := registry.entry("sim_styles", player.sim_style_id)
+	if style.is_empty():
+		style = registry.entry("sim_styles", "mixed")
+	return style
+
+func _era_baseline() -> Dictionary:
+	var era_entry := era()
+	var baseline: Dictionary = era_entry.get("world_vars", {})
+	if baseline.is_empty():
+		return {"war_pressure": 0.2, "ministry_stability": 0.6, "corruption": 0.3,
+			"pureblood_influence": 0.3, "muggle_relations": 0.5,
+			"economy_index": 0.6, "secrecy_integrity": 0.8}
+	return baseline
+
+# 第四十七章：每个回合（一个月）系统自动结算本月世界动态。
+# 玩家不参与，世界照样发展。
+func tick() -> Array:
+	var events: Array = []
+	clock.advance_month()
+
+	# 1) 世界变量向时代基线缓慢回归，并带轻微扰动（第六十四章：权力与秩序是流动的）
+	var baseline := _era_baseline()
+	var drift_rng := RngService.new(game_seed + clock.turn * 7919)
+	for key in world_vars.keys():
+		var target := float(baseline.get(key, world_vars[key]))
+		var current := float(world_vars[key])
+		var noise := drift_rng.stream_float("drift_%s" % key) * 0.04 - 0.02
+		world_vars[key] = clampf(current + (target - current) * VARS_REGRESSION + noise, 0.0, 1.0)
+
+	# 2) 本月区级动态：按玩家所在地与身份筛出可得信息（第四十三章：信息由身份、地点、人脉决定）
+	var candidates: Array = []
+	var last_major_turn := int(flags.get("last_major_turn", -MAJOR_EVENT_GAP))
+	var major_ready := (clock.turn - last_major_turn) >= MAJOR_EVENT_GAP
+	for rumor_id in registry.ids("rumors"):
+		var rumor := registry.entry("rumors", rumor_id)
+		if clock.year < int(rumor.get("min_year", 0)):
+			continue
+		var zones: Array = rumor.get("zones", [])
+		if not zones.is_empty() and not zones.has(player.location_id):
+			continue
+		var ok_flags := true
+		for required in rumor.get("requires_flags", []):
+			if not flags.has(required):
+				ok_flags = false
+		if not ok_flags:
+			continue
+		if bool(rumor.get("major", false)) and not major_ready:
+			continue
+		candidates.append(rumor)
+
+	var month_rng := RngService.new(game_seed + clock.turn * 104729)
+	if not candidates.is_empty():
+		var style := sim_style()
+		var intensity := clampf(float(style.get("event_intensity", 0.5)), 0.0, 1.0)
+		var mundane := clampf(float(style.get("mundane_ratio", 0.7)), 0.0, 1.0)
+		var rumor_count := 1
+		if month_rng.chance("extra_rumor", 0.35 * intensity):
+			rumor_count = 2
+		for i in rumor_count:
+			var picked: Dictionary = month_rng.stream_pick("pick_%d" % i, candidates)
+			if picked.is_empty():
+				continue
+			var is_major := bool(picked.get("major", false))
+			# 只有真正掷中重大事件概率时才落地（第六十八章防过度热闹）
+			if is_major:
+				var prob := 0.15 * intensity * (1.0 - mundane * 0.5)
+				if not month_rng.chance("major_gate", prob):
+					continue
+				flags["last_major_turn"] = clock.turn
+			var ev := {
+				"kind": "rumor",
+				"category": str(picked.get("category", "")),
+				"text": str(picked.get("text", "")),
+				"major": is_major,
+				"turn": clock.turn,
+			}
+			events.append(ev)
+			log.append(ev)
+			if is_major:
+				add_fact("major", str(picked.get("text", "")))
+
+	# 3) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
+	var style_now := sim_style()
+	var mundane_ratio := clampf(float(style_now.get("mundane_ratio", 0.7)), 0.0, 1.0)
+	if month_rng.chance("mundane_day", 0.5 + mundane_ratio * 0.4):
+		log.append({"turn": clock.turn, "kind": "mundane",
+			"text": "%s，日子照常过。" % clock.formatted()})
+
+	# 4) 年龄推进（玩家与世界同时变老）
+	player.age_months += 1
+
+	# 5) 日志裁剪，避免存档无限膨胀
+	while log.size() > RECENT_LOG_LIMIT:
+		log.pop_front()
+
+	return events
+
 func to_dict() -> Dictionary:
 	return JsonUtil.normalize({
 		"save_version": save_version,
