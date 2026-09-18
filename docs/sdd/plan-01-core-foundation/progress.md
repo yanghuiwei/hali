@@ -121,3 +121,36 @@ Task 4: 移交人类批次的遗留（新增，与 HANDOFF §8 合并）——
   5. （Minor）`advance_months(负数)` 静默 no-op；`GameClock.from_dict` 缺省 month=1 与类默认 month=9 不一致。
   6. （Minor，需 Task 5 留意）registry 原值仍是整数值 float `1.0`，而状态内 `world_vars` 已归一为 int `1`；未来直接比较二者会类型不等。
 Task 4: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `8264ef9`（含 2e3deb8）。工作区干净。
+
+---
+
+## Task 5（确定性随机 + 月度世界演化）
+
+Task 5: 开工前 gate 裁定（计划自身矛盾）——计划 `data/rumors.json` 每条无 `label`，但 `Registry.validate()` 要求每条目有非空 label，
+  且 `tests/registry_test.gd` 断言「缺 label 必须报错」。按计划原样写会使 `reg.validate().size()==0` 必红。
+  裁定：给 16 条 rumor 各补一个短中文 `label`（传闻标题），计划与数据同步；不放松 validate()（否则破坏 Task 2 契约）。
+Task 5: 简报 `task-5-brief.md` 写盘后派发 worker subagent（deepseek-flash）。worker 提交 `23e67cd feat(world): 确定性随机与月度世界演化`
+  （12 files, +339/−16），并立即写盘 `task-5-report.md`。交付：`src/core/rng_service.gd`、`data/locations.json`(21)、`data/rumors.json`(16)、
+  `src/core/registry.gd` 追加两表、`src/model/world_state.gd` 追加 `tick()`、`tests/clock_test.gd`、`tests/world_tick_test.gd`（各含 .uid）。
+Task 5: Step 7 gate —— worker 自跑 `bash tools/test.sh`：先红（RngService 未定义，EXIT=1）后绿（`[clock] 28/0`、`[world_tick] 101/0`，EXIT=0）；
+  controller 独立复跑确认（原始输出见 task-5-report.md）。
+Task 5: 第一轮审查（reviewer subagent，只读）→ Critical=0 / Important=4 / Minor=9，记录 `task-5-review.md`。reviewer 签核 label 修正为唯一正当且无夹带。
+Task 5: Important —— (1) `major_ready` 循环外只算一次，同月最多抽 2 条，可能同月落地 2 起 major，违背 12 个月间隔；
+  (2) `weight` 声明但 `stream_pick` 均匀抽取，稀有度旋钮失效（计划级）；(3) `rng_state` 死字段、`state_dict/load_state` 在 src 零调用（计划级）；
+  (4) `load_state` 不恢复 `seed_value`，恢复后新建流退回构造 seed。
+Task 5: 修复轮 1（controller）提交 `f9038ca`：`tick()` 加 `break`（同月至多一起 major）；`state_dict/load_state` 加入并恢复 `seed_value`；
+  消除死变量与两处空转测试（w2 定位 ministry_of_magic、加 major 间隔断言、w3 加 events_seen）。
+Task 5: 修复轮 1 复审（reviewer）→ **通过**（#1/#4 ADDRESSED，无夹带）；提出 N1：`rng.state` 是 int64，`state_dict → JSON → load_state` 会丢精度导致序列分叉（既有隐患）。
+Task 5: 修复轮 2（controller）提交 `24d5d43`：`state_dict` 把 `seed_value`/`seed`/`state` 十进制字符串化、`load_state` 用 `int(str(...))` 解析并 `_streams.clear()`；
+  `clock_test` 改为 20 次续抽 + 真 JSON 往返；`world_tick_test` 的 w2 种子 1234→38（使 major 间隔断言可判别）、`events is Array` 换成 turn 断言。
+Task 5: 修复轮 2 反证 —— 删 `break`（种子 38）→ `min_gap=0` 失败；改回裸 int → `[clock] 失败=19`。最终全绿：`[clock] 47/0`、`[world_tick] 104/0`、EXIT=0。
+Task 5: 修复轮 2 复审（reviewer）→ **通过**（N1/N2 ADDRESSED，R12 空转消除，无 Critical，无夹带）。
+Task 5: 移交人类批次（与 HANDOFF §8 合并）——
+  1. （Important，计划级）`weight` 声明但未用于抽取（`stream_pick` 均匀）；二选一：实现加权或删字段。可留到内容平衡任务。
+  2. （Important，计划级）`rng_state` 死字段、`state_dict/load_state` 未在 WorldState 层接线；当前 tick 用 `game_seed + turn*prime` 派生，故字段冗余。
+     接线前须定夺「删字段改述为派生式确定性」还是「接入长驻 RngService」。
+  3. （Minor）`RngService` 无 schema 版本号，旧扁平 schema 静默不恢复；`hash()` 为 32 位有碰撞风险；同月可重复抽到同一条 rumor；
+     `history` 无上限、`log` 三种 schema；`age_months` 与 clock 各自计时；信息保护断言仍恒真（`ministry_access` 无人授予）。
+  4. （Minor，新增 N5）`WorldState.game_seed` 仍是裸 int，>2^53 经 JSON 丢失，与 RngService 的字符串化不对称；须与存档系统任务同批解决。
+  5. （Minor，测试缺口）仍无 `tick → to_dict → JSON → from_dict → tick` 的 WorldState 级存档续跑对比测试。
+Task 5: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `24d5d43`。工作区干净。
