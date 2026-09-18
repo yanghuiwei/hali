@@ -1056,8 +1056,9 @@ func run() -> int:
 	})
 	a.eq(p.age_years(), 11, "11岁")
 	a.eq(p.money().formatted(), "10加隆 0西可 0纳特", "起始财产")
-	p.set_money(p.money().subtract(Money.from_knuts(493)))
-	a.eq(p.money().formatted(), "9加隆 0西可 0纳特", "买魔杖后剩 9 加隆")
+	# 正典第十八章：一根普通魔杖 7‑10 加隆；取价格下限 7 加隆 = 7 × 493 = 3451 纳特
+	p.set_money(p.money().subtract(Money.from_knuts(7 * Money.KNUTS_PER_GALLEON)))
+	a.eq(p.money().formatted(), "3加隆 0西可 0纳特", "买 7 加隆普通魔杖后剩 3 加隆（正典第十八章）")
 	p.add_skill("potions", 3)
 	p.add_skill("potions", 2)
 	a.eq(p.skill("potions"), 5, "技能累加")
