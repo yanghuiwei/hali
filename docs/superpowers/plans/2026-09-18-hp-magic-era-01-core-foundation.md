@@ -138,6 +138,9 @@ git status --short     # 应干净
 # 忽略本机 Godot 可执行文件（约 180MB，不入库）
 *.exe
 
+# subagent-driven-development 工作区（临时台账/简报/报告）
+.superpowers/
+
 # Godot 导入缓存（构建产物，不纳入版本控制）
 .godot/
 # 导出产物
