@@ -2551,6 +2551,9 @@ func run() -> int:
 	a.is_true(rare.blocked_reason.contains("稀有"), "稀有资源原因明确")
 	var common := SpellResolver.cast(mid, "geminio", {"target_rarity": "common"}, RngService.new(2))
 	a.is_false(common.blocked, "复制普通物品不被拦截")
+	# 稀有度词表必须同时识别中文（否则中文「稀有」会静默绕过反复制守卫）
+	var rare_cn := SpellResolver.cast(mid, "geminio", {"target_rarity": "稀有"}, RngService.new(2))
+	a.is_true(rare_cn.blocked, "中文「稀有」也必须被反复制守卫拦截")
 
 	# ---- 第五十五条：治疗咒不得无限复活 ----
 	var dead := SpellResolver.cast(mid, "vulnera_sanentur", {"target_alive": false}, RngService.new(3))
@@ -2591,6 +2594,12 @@ func run() -> int:
 	master.player.flags["animagus_registered"] = true
 	a.is_false(SpellResolver.cast(master, "animagus", {}, RngService.new(8)).blocked, "登记后可变形")
 
+	# ---- 需魔法部批准的门钥匙 ----
+	master.flags.erase("ministry_approval")
+	a.is_true(SpellResolver.cast(master, "portkey", {}, RngService.new(12)).blocked, "无魔法部批准不得使用门钥匙")
+	master.flags["ministry_approval"] = true
+	a.is_false(SpellResolver.cast(master, "portkey", {}, RngService.new(12)).blocked, "有批准后可使用门钥匙")
+
 	# ---- 失败率必须落在规格区间内（用难度 0 的咒语对齐等级区间），环境因素抬高失败率 ----
 	var adult := make_world(reg, MagicLevel.Tier.ADULT)
 	var calm := SpellResolver.cast(adult, "lumos", {}, RngService.new(9))
@@ -2604,6 +2613,7 @@ func run() -> int:
 	}, RngService.new(9))
 	a.between(stressed.failure_rate, 0.92, 0.95, "六项满值环境因素把失败率推到上界")
 	a.is_true(modifiers_from_test(adult) > 0.0, "未知条件被忽略")
+	a.is_false(SpellResolver.modifiers_from({"不存在的因素": 1.0}).has("不存在的因素"), "未知条件键被丢弃")
 
 	# ---- 确定性 ----
 	var seq_a := []
@@ -2714,7 +2724,7 @@ const GUARDS: Dictionary = {
 	"restricted_mind_magic": "受限心智魔法：滥用即违法",
 }
 
-const RARE_RARITIES: Array[String] = ["rare", "legendary", "史诗", "传奇", "神话"]
+const RARE_RARITIES: Array[String] = ["rare", "legendary", "稀有", "史诗", "传奇", "神话", "传说"]
 const ENERGY_LOOP_LIMIT := 3
 const TIME_REWIND_LIMIT := 1
 

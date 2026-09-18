@@ -14,7 +14,7 @@ const GUARDS: Dictionary = {
 	"restricted_mind_magic": "受限心智魔法：滥用即违法",
 }
 
-const RARE_RARITIES: Array[String] = ["rare", "legendary", "史诗", "传奇", "神话"]
+const RARE_RARITIES: Array[String] = ["rare", "legendary", "稀有", "史诗", "传奇", "神话", "传说"]
 const ENERGY_LOOP_LIMIT := 3
 const TIME_REWIND_LIMIT := 1
 
