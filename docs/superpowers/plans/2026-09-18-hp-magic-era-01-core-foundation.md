@@ -637,7 +637,7 @@ func validate() -> PackedStringArray:
 ]
 ```
 
-创建 `data/birth_identities.json`（11 项；`start_knuts` 为 11 岁起始个人财产，`4969` = 10加隆 1西可，用于自洽性测试）：
+创建 `data/birth_identities.json`（11 项；`start_knuts` 为 11 岁起始个人财产，普通巫师家庭 `4930` = 10加隆，恰好够买一根 7–10 加隆的魔杖，用于自洽性测试）：
 
 ```json
 [
@@ -770,8 +770,8 @@ func run() -> int:
 	a.eq(Money.KNUTS_PER_GALLEON, 493, "1加隆=493纳特")
 	a.eq(Money.from_knuts(493).parts(), [1, 0, 0], "493纳特=1加隆")
 	a.eq(Money.from_knuts(17).parts(), [0, 1, 0], "17纳特=1西可")
-	a.eq(Money.from_knuts(510).parts(), [1, 0, 17], "493+17")
-	a.eq(Money.from_knuts(511).parts(), [1, 1, 0], "493+17+1 归一到 1加隆1西可")
+	a.eq(Money.from_knuts(510).parts(), [1, 1, 0], "493+17 = 1加隆1西可（17纳特进位为1西可）")
+	a.eq(Money.from_knuts(511).parts(), [1, 1, 1], "493+17+1 = 1加隆1西可1纳特")
 
 	# 展示格式
 	a.eq(Money.from_knuts(493 + 17 + 1).formatted(), "1加隆 1西可 1纳特", "格式")
