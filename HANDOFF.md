@@ -1,13 +1,13 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-18。交付点 = 分支 `plan-01-core-foundation` 顶端（写这份文档时为 `ccf59d8`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
+> 最后更新：2026-09-18（Task 4 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 4 交付时为 `8264ef9`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
 
 ---
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–3 并通过独立审查；Task 4「玩家与世界数据模型」尚未动工。** 当前等待人类对 8 条待裁定项给结论（见第 8 节），裁定后即可开 Task 4。
+**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–4 并通过独立审查（Task 4 含 1 轮修复 + scoped 复审）。** 下一步是 Task 5「确定性随机 + 月度世界演化」。开工前唯一的强制闸门（魔杖价矛盾，第 8 节第 2 条）已按正典裁定并落地；其余待裁定项见第 8 节，均不阻塞 Task 5。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -21,17 +21,17 @@
 | --- | --- |
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
-| `main` | 停在 `0b4dd62`（只有 README + 计划 + 正典），**不含任何代码** |
-| 当前 HEAD | 分支顶端（写作时 `ccf59d8`，下次从 `git log` 看即可） |
+| `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一提交 |
+| 当前 HEAD | `plan-01-core-foundation` 顶端 `8264ef9`（Task 4），下次从 `git log` 看即可 |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
 git checkout plan-01-core-foundation
-git log --oneline -5     # 顶部应是个 docs(handoff) 提交，其下依次 50fc993 / 61d4ac1 / 281fdd6
+git log --oneline -5     # 顶部应是最新的 docs(handoff) 提交，其下依次 8264ef9 / 2e3deb8 / eccc871
 ```
 
-`main` 落后于执行分支 3 个提交（工程引导、内容注册表、货币与魔法等级）。等计划 01 收尾（Task 11）时再合并 `main`，中途不要合并。
+`main` 已通过 PR #1 合并到 `eccc871`（含 Task 1–3 代码）；本地 `plan-01-core-foundation` 已在 Task 4 开工时 fast-forward 到同一提交，之后的新提交仍落在执行分支上，先不合回 `main`。
 
 ---
 
@@ -75,6 +75,7 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 [registry] 断言=26 失败=0
 [money] 断言=15 失败=0
 [magic_level] 断言=22 失败=0
+[model] 断言=49 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
 == 3/3 主场景冒烟 ==
@@ -95,7 +96,7 @@ project.godot            # Godot 工程定义（features=4.7，gl_compatibility�
 tools/test.sh            # 唯一测试入口
 data/*.json              # 内容即数据：改内容不改代码（时代/血统/身份/资质/学院/风格/倾向…）
 src/core/                # registry(内容表) · game_clock · rng_service · json_util · turn_engine
-src/model/               # money(已完成) · player_state · world_state
+src/model/               # money · player_state · world_state（均已完成）
 src/rules/               # magic_level(已完成) · character_creation · spell_resolver · progression
                          # · state_ops · self_check
 src/gm/                  # game_master(接口) · scripted_game_master(离线确定性替身，计划 02 换 LLM)
@@ -138,8 +139,8 @@ taskkill //PID <PID> //F
 | 2 | 内容注册表 + 正典内容表 | ✅ 完成 | `b2ca0f4..52b68ba` |
 | 3 | 货币 + 魔法等级与失败率 | ✅ 完成（审查 Approved with findings） | `61d4ac1` + `50fc993`（范围 `281fdd6..50fc993`） |
 | — | 交接文档 + 台账耐久副本 | ✅ | `055d9ef` |
-| 4 | 玩家与世界数据模型 | ⬜ 下一步（动工前先裁定第 8 节第 2 条） | — |
-| 5 | 确定性随机 + 月度世界演化 | ⬜ | — |
+| 4 | 玩家与世界数据模型 | ✅ 完成（含 1 轮修复 + scoped 复审） | `2e3deb8` + `8264ef9` |
+| 5 | 确定性随机 + 月度世界演化 | ⬜ 下一步 | — |
 | 6 | 角色创建流水线 | ⬜ | — |
 | 7 | 魔咒解析器与反漏洞守卫 | ⬜ | — |
 | 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ⬜ | — |
@@ -155,16 +156,19 @@ taskkill //PID <PID> //F
 - **Task 1**：修复过「套件解析失败 → 运行器挂住」的缺陷（违反 Task 1 自身"任何情况下都要 `quit()`"的要求），已 scoped re-review 通过。遗留 minor（deferred）：`tools/test.sh` 丢弃 `--import` 的退出码；空 `SUITES` 会打印 ALL TESTS PASSED。
 - **Task 2**：7 张正典内容表 + 注册表完整性校验，review clean。遗留 1 条 Important + minors 在人类批次里。
 - **Task 3**：`Money`（值语义、负值、`to_dict`/`from_dict` 往返）+ `MagicLevel`（十级 Tier、失败率区间、六项环境修正、clamp 到 `[0.005, 0.95]`）。审查 **Spec ✅ / Approved with findings**，0 Critical；采用了两处计划修正（见第 4 节第 9 条）。
-- Task 3 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-3-review.md`
+- **Task 4**：`GameClock`（跨年进位 / `months_between`）+ `JsonUtil`（数值归一，存读档往返一致性的唯一保障）+ `PlayerState`（技能钳制 0..100、魔咒去重、面板骨架、`to_dict`/`from_dict`）+ `WorldState`（时代锚点、世界变量基线、历史/日志、registry 瞬态不入档）。审查第一轮 **Approved with findings**（0 Critical / 2 Important / 6 Minor），当轮修掉其中 1 Important（`create` 与 `from_dict` 的 `world_vars` 类型不对称）+ 1 Minor（键名拼写），并加 3 条回归断言，scoped 复审 **通过**。
+- Task 4 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-4-review.md`（含两份独立 reviewer 输出与反证）
 
 ---
 
-## 6. 下一步怎么执行（Task 4）
+## 6. 下一步怎么执行（Task 5）
 
-1. 先读计划里 `### Task 4: 玩家与世界数据模型`（含 Step 1–7 的完整代码块与预期输出），它以逐字代码给出 `GameClock` / `JsonUtil` / `PlayerState` / `WorldState`。
+1. 先读计划里 `### Task 5: 确定性随机 + 月度世界演化`（含完整代码块与预期输出）。
 2. 按 superpowers 的 **subagent-driven-development** 流程推进：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录。
-3. **提交前必须有绿灯**：`bash tools/test.sh` 输出 + 原始文本留存到报告里。Task 3 的流程教训（实现者没跑 Step 5、没写报告，控制器事后补跑）已在台账登记为 P1 流程发现，Task 4 起不得重演。
-4. 实现者的报告必须在 commit 之后**立刻**写盘：Task 1 的实现者曾在提交后超时，报告永久缺失。
+3. **子代理必须使用与主会话相同的大模型**（本机为 `deepseek/deepseek-flash`）：`pi -p --provider deepseek --model deepseek-flash ...`，不要用 harness 默认模型。
+4. **提交前必须有绿灯**：`bash tools/test.sh` 输出 + 原始文本留存到报告里。Task 3 的流程教训（实现者没跑 Step 5、没写报告，控制器事后补跑）已在台账登记为 P1 流程发现，Task 4 起未重演。
+5. 实现者的报告必须在 commit 之后**立刻**写盘：Task 1 的实现者曾在提交后超时，报告永久缺失。
+6. 审查者必须只读（`pi -p --tools read,bash`）；Critical/Important 要么当轮修掉并做 scoped 复审，要么明确登记进人类批次（Task 4 两种都出现过）。
 
 ---
 
@@ -177,18 +181,25 @@ taskkill //PID <PID> //F
 
 ---
 
-## 8. 待人类裁定项（开 Task 4 之前的闸门）
+## 8. 待人类裁定项（不阻塞 Task 5）
 
-前 3 条是计划预检遗留，后 5 条是 Task 3 审查产出。**第 2 条必须在 Task 4 动工前统一，否则 Task 4 的测试会写错期望值。**
+前 3 条是计划预检遗留，其后是 Task 3 / Task 4 审查产出。**第 2 条（魔杖价矛盾）已在 Task 4 开工前按正典裁定并落地**（7–10 加隆；测试取下限 7 加隆）。其余项均为计划级/文档级，或要到 Task 7–10 才触发，不阻塞 Task 5。
 
 1. **Task 8 故意留 `SelfCheck` 最小桩**（计划明说任务 9 用完整实现替换），reviewer 可能判为 placeholder —— 确认"按计划留桩"可接受。
-2. **魔杖价自相矛盾（进 Task 4 前必须定）**：新注释与正典 `哈利·波特·魔法纪元.md:223` 说普通魔杖 **7–10 加隆**，但计划 Task 4 的测试（计划 1060-1061 行）用 `subtract(1 加隆)` 却标注"买魔杖后剩 9 加隆"。同一份计划两处不一致 —— 按正典应统一为 7–10 加隆区间价，并同步改期望值。
+2. ~~**魔杖价自相矛盾**~~ **已裁定（Task 4）**：按正典 `哈利·波特·魔法纪元.md:223`「一根普通魔杖：7‑10加隆」，测试取价格下限 7 加隆（3451 纳特），期望 `"3加隆 0西可 0纳特"`；计划与测试两处已同步。裁定记录见 `docs/sdd/plan-01-core-foundation/task-4-review.md`。
 3. **Task 8 `ScriptedGameMaster` 直接调 `SpellResolver.cast()`**（直接改世界）而不是返回 `cast_spell` delta，与"GM 返回 delta、引擎负责应用"的契约不符 —— 确认是否接受（计划内已文档化）。
 4. **哑炮失败率**：`BANDS[0] = (1.00, 1.00)` 但 `effective_rate(SQUIB)` 早退返回 `0.95`，等于哑炮有 5% 施法成功率，与正典「哑炮…无法施展咒语」的严格读法冲突（Task 7 判定直接走 `effective_rate`）。二选一：把 `BANDS[0]` 改成 `(0.95, 0.95)`，或让 `effective_rate` 对 SQUIB 返回 1.0 / 直接拒绝施法。另注 `base_rate(SQUIB)=1.0` 超出 `effective_rate` 文档化的 `[0.005, 0.95]` 值域，是潜在陷阱。
 5. **`Money` 负值显示未定义**：`Money.from_knuts(-50)` → `parts() = [0, -2, -16]`，`formatted() = "0加隆 -2西可 -16纳特"`。第六十二章财富面板在债务场景会显示该形态，Task 9 落地前需要定义。
 6. **大师级失败率上界 0.02** 对正典「低于2%」是开/闭区间歧义，测试用 `<=` 掩盖了它。
 7. **Task 9 `power_panel`** 把「法律执行 / 傲罗 / 威正加摩」多个标签映射到同一批 `world_vars`（`war_pressure` / `ministry_stability` / `corruption`）—— 纯显示问题，确认可接受。
 8. **是否先补 Task 3 的测试强度缺口**（审查 Minor）：`magic_level_test` 的 clamp 上下界两条断言实际空转（0.9075 < 0.95、0.01 > 0.005），`BANDS` 只精确断言 5/10 档、`LABELS` 只断言 3/10，`money_test` 的负值只测了 `total_knuts()`。选择：立即补，或作为计划级补测留到后续任务批量处理（注意同型缺口会复制到 Task 5/7/9）。
+9. **（Task 4 审查 Important，范围外）** `PlayerState.from_dict` / `WorldState.from_dict` 收到显式 `null`/非容器字段时，可能因类型化赋值运行期报错（仅畸形/手改存档触发，正常 `to_dict→JSON→from_dict` 不触发）。建议 Task 10 加 `typeof` 回退，或明确「存档只由 `to_dict()` 产出」。
+10. **（Task 4 Minor）** `JsonUtil.normalize` 未覆盖非有限 float、≥2^53 的整数值 float、Dictionary 键类型；当前游戏数值不触发，建议在计划/注释写明这三条限制。
+11. **（Task 4 Minor）** 计划 Interfaces 段（约 1000–1020 行）缺 `era_start_year`、`PlayerState.new_default()`、`normalize -> Variant`，与 Step 代码不一致（纯文档级）。
+12. **（Task 4 Minor）** `custom` 时代 `start_year:null` 静默回退 1991、月份固定 9；`WorldState.create()` 无处接收玩家指定年份，与 `data/eras.json` 中 custom「由玩家指定年份」语义不符。
+13. **（Task 4 Minor）** `GameClock.advance_months(负数)` 静默 no-op；`GameClock.from_dict` 缺省 `month=1` 与类默认 `month=9` 不一致。
+14. **（Task 4 Minor，Task 5 留意）** registry 原值是整数值 float（如 `secrecy_integrity:1.0`），而状态内 `world_vars` 已归一为 int `1`；未来直接比较二者会因 Godot 字典类型严格比较而不等。约定：比较前先 `JsonUtil.normalize`，或 Registry 载入时统一归一。
+15. **（Task 4 已局部落实）** 第 8 条的「测试强度」在 Task 4 已加 3 条（JSON 端到端往返 × 2 + `world_vars` 类型一致性），`magic_level` / `money` 的历史缺口仍待批量处理。
 
 ---
 
@@ -198,7 +209,7 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(handoff)` 提交（写作时为 `ccf59d8`），且其历史里包含 `50fc993`
+  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `8264ef9` / `2e3deb8` / `eccc871`
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致

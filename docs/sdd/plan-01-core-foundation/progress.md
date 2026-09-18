@@ -85,3 +85,39 @@ Task 3: 交接整理（controller）—— commit 055d9ef：新增 HANDOFF.md（
 （此前只在本地，远端仅 main @ 0b4dd62，换机器会拿到空壳）。
 Task 3: 本机状态 —— 工作区干净，无活跃子代理，无残留 Godot 进程；交付点 = 分支顶端（ccf59d8 起），下一步 = Task 4（先裁定第 2 条魔杖价矛盾）。
 Task 3: 同步规则 — 以后每完成一个任务，把该任务工件从本目录复制到 docs/sdd/plan-01-core-foundation/ 一起提交（副本以 docs/ 下为准）。
+
+---
+
+## Task 4（玩家与世界数据模型）
+
+Task 4: 开工前裁定 HANDOFF §8 第 2 条（魔杖价矛盾）——按正典 `哈利·波特·魔法纪元.md:223`「一根普通魔杖：7‑10加隆」统一。
+  计划第 1059–1060 行测试原写「扣 1 加隆 / 剩 9 加隆」，改为价格下限 7 加隆 = 3451 纳特，期望 `"3加隆 0西可 0纳特"`；
+  计划文档与测试代码两处同步。裁定依据与算术见 task-4-brief.md 与 task-4-review.md。
+Task 4: 分支处置 —— 本地 `main` 已被 PR #1 合并到 `eccc871`，且 `aec187c`（远端 plan-01）是其祖先；
+  本地 `plan-01-core-foundation` 由 `aec187c` fast-forward 到 `eccc871` 后继续开发（工作分支仍为 plan-01-core-foundation，符合 HANDOFF §1）。
+Task 4: 简报 `task-4-brief.md` 写盘后派发 worker subagent（模型 deepseek-flash，符合用户「子代理必须用当前大模型」要求）。
+  worker 提交 `2e3deb8 feat(model): 时钟、玩家与世界状态模型`（12 files, +356/−2），并立即写盘 `task-4-report.md`。
+  交付：`src/core/game_clock.gd`、`src/core/json_util.gd`、`src/model/player_state.gd`、`src/model/world_state.gd`、
+  `tests/model_test.gd`（各含 `.gd.uid`），`tests/run_tests.gd` 的 SUITES 追加 model_test。
+Task 4: Step 5 gate —— worker 自跑 `bash tools/test.sh`：先红（GameClock 未定义，EXIT=1）后绿（`[model] 断言=46 失败=0`，EXIT=0）；
+  controller 独立复跑确认同样全绿（原始输出见 task-4-report.md）。Task 3 的「未跑 Step 5、未写报告」P1 流程问题本次未重演。
+Task 4: 第一轮审查（reviewer subagent，只读，deepseek-flash）→ **Approved with findings**：Critical=0 / Important=2 / Minor=6。
+  逐字记录 `task-4-review.md`。reviewer 独立跑绿并复核魔杖价修正「正当、唯一（在裁定范围内）、无夹带」。
+Task 4: 第一轮 Important —— (1) `WorldState.create` 用 `duplicate(true)` 保留 JSON 整数值 float，而 `from_dict` 走 normalize，
+  create 与读档内存类型不对称（如 `witch_hunts.secrecy_integrity=1.0` vs `1`）；
+  (2) from_dict 收到显式 null/非容器字段时可能因类型化赋值运行期报错（畸形存档边界，未实测）。
+Task 4: 修复轮（controller 执行）提交 `8264ef9 fix(model): world_vars 规范化对称 + 端到端 JSON 往返与类型一致性断言`：
+  create 改为 `JsonUtil.normalize((...).duplicate(true))`（关闭 Important #1）；修正 `political_leading_id` 拼写回退（Minor #3）；
+  `model_test.gd` 新增 p3 / w3（经 JSON 字符串的端到端往返）+ we2（witch_hunts create/from_dict 的 world_vars 类型一致）3 条断言，
+  `[model]` 46 → 49；计划文档 Step 1/4/5 同步。
+Task 4: controller 反证 we2 非空转 —— 临时把 create 改回 `duplicate(true)`，`[model] 失败=1`、EXIT=1（期望 `1.0`，实际 `1`），随后还原并复跑绿。原始输出见 task-4-report.md「修复轮」节。
+Task 4: 修复轮 scoped 复审（reviewer subagent，只读，deepseek-flash）→ **通过**：Important #1 ADDRESSED、Minor #3 ADDRESSED、
+  无夹带、无新代码缺陷；reviewer 另在仓库外沙箱 `/tmp/hali_cf` 对 8 个时代逐一实测 create/from_dict 的 world_vars 类型一致（含 registry 隔离验证），并已清理。
+Task 4: 移交人类批次的遗留（新增，与 HANDOFF §8 合并）——
+  1. （范围外 Important）from_dict 对显式 null/非容器字段的健壮性：建议加 typeof 回退，或明确「存档只由 to_dict 产出」，Task 10 处理。
+  2. （Minor）`JsonUtil.normalize` 未覆盖非有限 float、≥2^53 整数值 float、Dictionary 键类型；当前游戏数值不触发。
+  3. （Minor）计划 Interfaces 段（1000–1020 行）缺 `era_start_year`、`new_default()`、`normalize -> Variant`，与 Step 代码不一致（文档级）。
+  4. （Minor）`custom` 时代 `start_year:null` 静默回退 1991、月份固定 9，create 无处接收玩家指定年份（与 eras.json 语义不符）。
+  5. （Minor）`advance_months(负数)` 静默 no-op；`GameClock.from_dict` 缺省 month=1 与类默认 month=9 不一致。
+  6. （Minor，需 Task 5 留意）registry 原值仍是整数值 float `1.0`，而状态内 `world_vars` 已归一为 int `1`；未来直接比较二者会类型不等。
+Task 4: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `8264ef9`（含 2e3deb8）。工作区干净。
