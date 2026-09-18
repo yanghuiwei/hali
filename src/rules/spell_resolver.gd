@@ -79,9 +79,11 @@ static func cast(world: WorldState, spell_id: String, conditions: Dictionary, rn
 				if not target_alive:
 					return _blocked_outcome("治疗咒无法复活死者：死亡真实且不可逆", guard_ids)
 			"no_time_rewind":
+				# 终身一次性：time_rewind_count 永不由 tick() 重置
 				if int(world.flags.get("time_rewind_count", 0)) >= TIME_REWIND_LIMIT:
 					return _blocked_outcome("时间转换器禁止无限回溯", guard_ids)
 			"no_unlimited_energy":
+				# per-turn：计数由 WorldState.tick() 每回合（月）重置
 				if int(world.flags.get("energy_loop_count", 0)) >= ENERGY_LOOP_LIMIT:
 					return _blocked_outcome("低阶咒语叠加已达上限，无法继续累积能量", guard_ids)
 			"forbidden_lifetime":

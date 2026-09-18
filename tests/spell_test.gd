@@ -72,6 +72,12 @@ func run() -> int:
 	a.is_false(SpellResolver.cast(master, "lumos", {}, RngService.new(5)).blocked, "正常照明咒")
 	master.flags["energy_loop_count"] = 3
 	a.is_true(SpellResolver.cast(master, "lumos", {}, RngService.new(5)).blocked, "低阶咒语叠加过量被拦截")
+	# per-turn 语义：推进一个回合后叠加计数重置；时间回溯计数为终身一次性，不重置
+	a.eq(int(master.flags.get("energy_loop_count", 0)), 3, "拦截后叠加计数仍为 3")
+	master.tick()
+	a.eq(int(master.flags.get("energy_loop_count", 0)), 0, "tick 后叠加计数归零（per-turn）")
+	a.is_false(SpellResolver.cast(master, "lumos", {}, RngService.new(5)).blocked, "新回合可重新施放基础咒")
+	a.is_true(SpellResolver.cast(master, "time_turner", {}, RngService.new(4)).blocked, "时间回溯终身一次性：跨回合仍被拦截")
 
 	# ---- 第二十五章：不可饶恕咒不拦截，但必须留下法律风险 ----
 	var unforgivable := SpellResolver.cast(master, "imperio", {}, RngService.new(6))

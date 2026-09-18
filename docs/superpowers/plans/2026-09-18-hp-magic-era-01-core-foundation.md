@@ -1792,6 +1792,9 @@ func _era_baseline() -> Dictionary:
 func tick() -> Array:
 	var events: Array = []
 	clock.advance_month()
+	# per-turn 语义（第七十五条裁定，HANDOFF §8 第 27 条）：低阶咒语叠加计数每回合（月）重置；
+	# time_rewind_count 为终身一次性，故意不在此重置。
+	flags.erase("energy_loop_count")
 
 	# 1) 世界变量向时代基线缓慢回归，并带轻微扰动（第六十四章：权力与秩序是流动的）
 	var baseline := _era_baseline()
@@ -2579,6 +2582,12 @@ func run() -> int:
 	a.is_false(SpellResolver.cast(master, "lumos", {}, RngService.new(5)).blocked, "正常照明咒")
 	master.flags["energy_loop_count"] = 3
 	a.is_true(SpellResolver.cast(master, "lumos", {}, RngService.new(5)).blocked, "低阶咒语叠加过量被拦截")
+	# per-turn 语义：推进一个回合后叠加计数重置；时间回溯计数为终身一次性，不重置
+	a.eq(int(master.flags.get("energy_loop_count", 0)), 3, "拦截后叠加计数仍为 3")
+	master.tick()
+	a.eq(int(master.flags.get("energy_loop_count", 0)), 0, "tick 后叠加计数归零（per-turn）")
+	a.is_false(SpellResolver.cast(master, "lumos", {}, RngService.new(5)).blocked, "新回合可重新施放基础咒")
+	a.is_true(SpellResolver.cast(master, "time_turner", {}, RngService.new(4)).blocked, "时间回溯终身一次性：跨回合仍被拦截")
 
 	# ---- 第二十五章：不可饶恕咒不拦截，但必须留下法律风险 ----
 	var unforgivable := SpellResolver.cast(master, "imperio", {}, RngService.new(6))
@@ -2794,9 +2803,11 @@ static func cast(world: WorldState, spell_id: String, conditions: Dictionary, rn
 				if not target_alive:
 					return _blocked_outcome("治疗咒无法复活死者：死亡真实且不可逆", guard_ids)
 			"no_time_rewind":
+				# 终身一次性：time_rewind_count 永不由 tick() 重置
 				if int(world.flags.get("time_rewind_count", 0)) >= TIME_REWIND_LIMIT:
 					return _blocked_outcome("时间转换器禁止无限回溯", guard_ids)
 			"no_unlimited_energy":
+				# per-turn：计数由 WorldState.tick() 每回合（月）重置
 				if int(world.flags.get("energy_loop_count", 0)) >= ENERGY_LOOP_LIMIT:
 					return _blocked_outcome("低阶咒语叠加已达上限，无法继续累积能量", guard_ids)
 			"forbidden_lifetime":

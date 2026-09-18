@@ -71,6 +71,9 @@ func _era_baseline() -> Dictionary:
 func tick() -> Array:
 	var events: Array = []
 	clock.advance_month()
+	# per-turn 语义（第七十五条裁定，HANDOFF §8 第 27 条）：低阶咒语叠加计数每回合（月）重置；
+	# time_rewind_count 为终身一次性，故意不在此重置。
+	flags.erase("energy_loop_count")
 
 	# 1) 世界变量向时代基线缓慢回归，并带轻微扰动（第六十四章：权力与秩序是流动的）
 	var baseline := _era_baseline()
