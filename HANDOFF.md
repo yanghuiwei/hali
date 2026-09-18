@@ -1,7 +1,7 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-18，对应提交 `055d9ef`（分支 `plan-01-core-foundation`）。
+> 最后更新：2026-09-18。交付点 = 分支 `plan-01-core-foundation` 顶端（写这份文档时为 `ccf59d8`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
 
 ---
 
@@ -22,13 +22,13 @@
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
 | `main` | 停在 `0b4dd62`（只有 README + 计划 + 正典），**不含任何代码** |
-| 当前 HEAD | `055d9ef docs(handoff): 交接文档 + 过程台账耐久副本 + README 进度更新` |
+| 当前 HEAD | 分支顶端（写作时 `ccf59d8`，下次从 `git log` 看即可） |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
 git checkout plan-01-core-foundation
-git log --oneline -5     # 顶部应看到 055d9ef / 50fc993 / 61d4ac1 / 281fdd6
+git log --oneline -5     # 顶部应是个 docs(handoff) 提交，其下依次 50fc993 / 61d4ac1 / 281fdd6
 ```
 
 `main` 落后于执行分支 3 个提交（工程引导、内容注册表、货币与魔法等级）。等计划 01 收尾（Task 11）时再合并 `main`，中途不要合并。
@@ -198,7 +198,7 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` = `055d9ef`（或更新）
+  1. `git log --oneline -1` 是个 `docs(handoff)` 提交（写作时为 `ccf59d8`），且其历史里包含 `50fc993`
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致
