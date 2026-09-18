@@ -7,7 +7,7 @@
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–7 并通过独立审查（Task 4/5/6/7 各含修复轮 + scoped 复审）。** 下一步是 Task 8「叙事接口 + 状态操作 + 反刷成长 + 回合引擎」。**注意：Task 8 开工前有一个必须裁定的闸门（第 8 节第 27 条：`energy_loop_count`/`time_rewind_count` 的生命周期语义）**，其余待裁定项不阻塞。
+**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–7 并通过独立审查（Task 4/5/6/7 各含修复轮 + scoped 复审）。** 下一步是 Task 8「叙事接口 + 状态操作 + 反刷成长 + 回合引擎」。第 8 节第 27 条闸门（`energy_loop_count`/`time_rewind_count` 生命周期）**已由 Human 裁定并落地**（per-turn / 终身一次性，提交 `a0bc1d3`），其余待裁定项不阻塞。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -147,7 +147,7 @@ taskkill //PID <PID> //F
 | 5 | 确定性随机 + 月度世界演化 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `23e67cd` + `f9038ca` + `24d5d43` |
 | 6 | 角色创建流水线 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f3d8a31` + `2341540` + `61ad053` |
 | 7 | 魔咒解析器与反漏洞守卫 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f323b55` + `3499881` + `d52ebda` |
-| 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ⬜ 下一步（先裁定第 8 节第 27 条） | — |
+| 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ⬜ 下一步 | — |
 | 9 | 状态面板格式化 + 强制自检 | ⬜ | — |
 | 10 | 存档与读档 | ⬜ | — |
 | 11 | 主界面与运行说明 | ⬜ | — |
@@ -173,8 +173,7 @@ taskkill //PID <PID> //F
 
 ## 6. 下一步怎么执行（Task 8）
 
-> ⚠️ **开工前提**：先取得第 8 节第 27 条（`energy_loop_count` / `time_rewind_count` 生命周期语义）的裁定，再动 Task 8；
-> 否则 Task 8 会把「第 4 次成功施放基础咒即终身封禁」固化为产品语义。
+> ✅ 第 8 节第 27 条的闸门（`energy_loop_count`/`time_rewind_count` 生命周期）已由 Human 裁定并落地（per-turn / 终身一次性，`a0bc1d3`）。
 
 1. 先读计划里 `### Task 8: 叙事接口 + 状态操作 + 反刷成长 + 回合引擎`（含完整代码块与预期输出）。
 2. 按 superpowers 的 **subagent-driven-development** 流程推进：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录。
@@ -233,7 +232,7 @@ taskkill //PID <PID> //F
 
 ### Task 7 审查新增
 
-27. **（Task 7 Important，**Task 8 开工前必须裁定**）** `energy_loop_count`（低阶咒语叠加）只在成功时自增、全代码**无重置点**，且是全局单计数器：玩家一生中第 4 次成功施放 `lumos`/`wingardium_leviosa` 后基础咒**终身**被封禁；Task 8 计划（2956–2958）已把该语义固化。请裁定 per-turn / per-scene / per-life，并在裁定后同步修改计划与实现（`time_rewind_count` 限 1 的「终身一次性」是否合理也一并确认）。
+27. ~~**（Task 7 Important）**~~ **已裁定并落地（Human，提交 `a0bc1d3`）**：`energy_loop_count` 采用 **per-turn** 语义——`WorldState.tick()` 在 `clock.advance_month()` 后 `flags.erase("energy_loop_count")`，同回合内累计、每回合（月）重置；`time_rewind_count` 维持 **终身一次性**（上限 1，永不重置）。计划 Task 5/7 已同步，`[spell]` 新增 4 条回归断言（223→227）。Task 8 计划测试（同一回合内连续施法 5 次、中间不 `tick()`）不受影响。注意：per-turn 契约绑定在 `WorldState.tick()`，Task 8 回合推进必须统一经 `tick()`（勿直接 `advance_month`）。
 28. **（Task 7 Minor）** `illegal_cast_count` 仅成功时自增，非法施法失败（未遂）不计入法律风险台账（Task 8 会读取此计数）。
 29. **（Task 7 Minor）** 被拦截的 `Outcome` 沿用 `failure_rate=1.0`、`roll=1.0`，与「未进入掷骰」语义混淆；Task 8 展示层需以 `blocked` 为唯一判据或补 `rolled: bool`。
 30. **（Task 7 Minor）** `legilimens`/`confundo` 的 `legal_risk`、计数器「成功时自增」、`last_serious_mishap_turn`、`time_turner` 把「未拦截」当「允许」、确定性用例弱等价等测试缺口；`portkey` 两条只断言 `blocked` 未断言 reason。

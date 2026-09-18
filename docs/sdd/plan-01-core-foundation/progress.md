@@ -210,3 +210,12 @@ Task 7: 移交人类批次 / Task 8 前必须裁定（与 HANDOFF §8 合并）�
      `difficulty` 为绝对失败率偏移（文档表述）；`legilimens`/`confundo` 的 legal_risk、计数器自增等测试缺口；
      白名单 `常见` 与简体 `传说` 零独立断言；全角空白/全角拉丁会被 fail-closed 过度拦截。
 Task 7: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `d52ebda`。工作区干净。
+
+Task 7 后续裁定（Human：「按你建议来」）—— HANDOFF §8 第 27 条关闭：
+  裁定：`energy_loop_count` **per-turn**（每回合/月重置）；`time_rewind_count` **终身一次性**（上限 1，不重置）。
+  实现提交 `a0bc1d3`：`WorldState.tick()` 在 `advance_month()` 后 `flags.erase("energy_loop_count")`；spell_resolver 两个守卫加语义注释；
+  `[spell]` 新增 4 条回归断言（拦截后仍为 3、tick 后归零、新回合可重施、time_turner 跨回合仍拦，223→227）；计划 Task 5/7 同步。
+  反证：删除 `flags.erase(...)` → `[spell] 失败=2`，EXIT=1。
+  裁定实现复审（reviewer subagent，只读）→ **通过**（per-turn 与终身一次性均 ADDRESSED，Task 8 计划兼容，无夹带）；
+  提出 N1（注释误引「第七十五条」，应作「第五十五条」，已改）、N2（台账仍记为未决闸门，已在本文件与 HANDOFF 关闭）、
+  N3（per-turn 契约绑定 `tick()`，Task 8 回合推进必须经 `tick()`）、N4（world_tick 层与 wingardium 同 flag 断言缺口）。

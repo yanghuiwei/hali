@@ -315,3 +315,113 @@ REAL_EXIT=0
 - 全角空白/宽度折叠行为基于 Godot 4.7.2 实测（`"　common　"` BLOCKED、`ＣＯＭＭＯＮ`→`ｃｏｍｍｏｎ`），未穷举所有 Unicode 空白码位（如 U+200B 零宽空格），但方向一致：只会过度拦截，不会绕过。
 - 未复检第一轮已确认的「拦截路径不消耗 RNG / 跨 `cast` 复用同一 `RngService` 会分叉」交互（非本轮范围）。
 - Task 8–11 尚未实现，第一轮 #3/#4 的下游后果与 #5 的补测效果**无法端到端验证**，仅为接口/计划层提示。
+
+---
+
+# 裁定实现 scoped 复审（per-turn / 终身一次性，提交 a0bc1d3）
+
+# 裁定实现 scoped 复审（per-turn / 终身一次性）
+
+复审者：reviewer subagent（独立只读复审）　模型：deepseek-flash　范围：7379152..a0bc1d3
+
+## 结论
+- per-turn（energy）：**ADDRESSED**
+- 终身一次性（time rewind）：**ADDRESSED**（无回归）
+- Task 8 计划兼容：**是**
+- 有无新问题/夹带：**有（列出）** —— 无夹带、无功能回归；仅 2 处文档级问题（注释误引条款、台账文档漂移），另 2 条信息级提示。见残留表。
+- 总评：**通过**
+
+## 证据
+
+### 1. diff 逐行核对（`git diff --numstat 7379152..a0bc1d3`）
+```
+11  0  docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+3   0  src/model/world_state.gd
+2   0  src/rules/spell_resolver.gd
+6   0  tests/spell_test.gd
+```
+- 父提交确认：`a0bc1d3^ = 73791523b8279b324077c75936e80315e2ede404`；`HEAD = a0bc1d3`；分支 `plan-01-core-foundation`；工作区干净（`git status --porcelain` 空、`git diff --stat HEAD` 空）。
+- 内容与 controller 声称 1–4 项**完全对应**，纯新增 0 删除：
+  1. `world_state.gd tick()` 在 `clock.advance_month()` 后新增 2 行注释 + `flags.erase("energy_loop_count")`；**不含** `time_rewind_count`。✓
+  2. `spell_resolver.gd` 两个守卫分支各 +1 行注释，`if`/`return`/常量**逐字未改**（diff 中无逻辑行）。✓
+  3. `spell_test.gd` 新增 4 条断言（`eq`/`eq`/`is_false`/`is_true`）。✓
+  4. 计划同步 Task 5 `tick()`、Task 7 守卫块、Task 7 测试块（+11 行）。✓
+- 无越界文件、无新增文件、无 mode 变更、无 HANDOFF/progress 夹带。
+- **`time_rewind_count` 无任何重置路径**：全 `src/` grep 只有 `spell_resolver.gd:124` 的 `+1` 自增与 `:83` 的读取；`world_state.gd:76` 只擦 `energy_loop_count`；`from_dict`（`world_state.gd:185`）原样载入 flags；`create()` 不写 flags。✓
+
+### 2. 独立语义验证（沙箱 `/tmp/hali-ruling-probe`，`git archive a0bc1d3` 副本 + 探针脚本，已删除；仓库零改动）
+```
+A cast#0 before=0 success=true  blocked=false after=1
+A cast#1 before=1 success=true  blocked=false after=2
+A cast#2 before=2 success=true  blocked=false after=3
+A cast#3 before=3 success=false blocked=true  after=3
+A RESULT max_count=3 (<=3? true) first_block_at=3 (count==3 before? true)
+A narration=（低阶咒语叠加已达上限，无法继续累积能量）
+B pre-tick  count=3 blocked=true
+B post-tick has_key=false count=0          # erase 后键消失，get(...,0) 兜底
+B post-tick lumos blocked=false            # 新回合可重新施放
+C after 3 ticks time_rewind_count=1 time_turner blocked=true
+D 5连施后 count=3 (<=3? true)              # Task 8 同回合场景仿真
+D 置3后 blocked=true narration=（低阶咒语叠加已达上限，无法继续累积能量）
+E from_dict count=3 (保留? true)           # 载档不误重置
+```
+- 同回合累计 1→2→3，第 4 次（`count==3`）被拦，上限恒 ≤3；仅成功时自增，拦截分支不消耗计数（拦截后仍为 3）。
+- `tick()` 后键**被擦除**（`has_key=false`）而非置 0；守卫 `flags.get(...,0)` 兜底 → 0，无隐患、无类型漂移（增量用 `int(...)+1`，读用 `int(...)`）。
+- `from_dict` 原样保留计数，不构成错误重置路径（同回合存档读档延续计数，跨回合需 `tick()` 归零 → 与 per-turn 定义自洽）。
+- `time_turner` 在 `master`(MASTER) 等级下 min_tier=大师级 恰好满足 → 拦截**确实来自 `no_time_rewind`**，非等级 gate 造成的空转；`lumos` min_tier=麻瓜出身未入学，等级充分。
+
+### 3. 4 条新断言非空转（沙箱变异测试，每轮独立 `git archive`，跑完删除）
+| 变异 | 期望 | 实测 | 退出 |
+|---|---|---|---|
+| **M0** 删除 `flags.erase("energy_loop_count")` | 2 条红 | `[spell] tick 后叠加计数归零（per-turn）: 期望 <0>，实际 <3>`　`[spell] 新回合可重新施放基础咒: 期望为假`　`失败=2` | 1 |
+| **M1** 拦截分支错误自增 energy | #1 红 | `[spell] 拦截后叠加计数仍为 3: 期望 <3>，实际 <4>`　`失败=1` | 1 |
+| **M2** `tick()` 过度重置（连 `time_rewind_count` 一起擦） | #4 红 | `[spell] 时间回溯终身一次性：跨回合仍被拦截: 期望为真`　`失败=1` | 1 |
+- **M0 逐字复现了 controller 的反证（claim #5）**：两条消息、`失败=2`、`EXIT=1` 与声称完全一致，属实测属实。
+- M1/M2 证明第 1 条与第 4 条断言各自捕获一类真实回归（拦截路径误自增 / 过度重置），非空转伴跑。
+- 消息格式核对 `tests/assert.gd:10,25`：`"%s: 期望 <%s>，实际 <%s>"`、`"%s: 期望为假"`、`"%s: 期望为真"`，与反证文本一致。
+
+### 4. 计划逐字一致（程序化比对，剥离尾部空行后 `==`）
+| 计划位置 | 对应文件 | 结果 |
+|---|---|---|
+| 计划 1770–1876 代码块（含 Task 5 `tick()`） | `src/model/world_state.gd`（自 `VARS_REGRESSION` 起整段） | **EQUAL**（84 vs 85 行，差异仅文件尾换行） |
+| 计划 2510–2667 代码块 | `tests/spell_test.gd`（全文件 156 行） | **EQUAL** |
+| 计划 2724–2859 代码块 | `src/rules/spell_resolver.gd`（全文件 134 行） | **EQUAL** |
+
+### 5. `bash tools/test.sh`（仓库内，单实例，退出码 0）
+```
+[world_tick] 断言=104 失败=0
+[spell]      断言=227 失败=0
+==== 总计失败=0，失败套件=0 ====
+ALL TESTS PASSED
+（跳过：ui/main.tscn 尚未创建，任务 11 将启用）
+全部通过。
+EXIT=0
+```
+`[spell] 断言=227` 与声称 223→227（+4）一致；`[probe] 失败=1` 为 harness 故意失败探针，不计入总计。运行后 `git status --porcelain` 仍为空（仅生成 gitignore 的 `.godot/` 缓存）。
+
+### 6. Task 8 计划兼容性（计划 2965–2970）
+```
+var w2 := make_world(5)
+for i in 5: StateOps.apply(w2, [{"op":"cast_spell","spell_id":"lumos","conditions":{}}])
+a.is_true(int(w2.flags.get("energy_loop_count",0)) <= 3, "低阶咒语叠加计数不超过上限")
+w2.flags["energy_loop_count"] = 3
+StateOps.apply(w2, [{"op":"cast_spell","spell_id":"lumos","conditions":{}}])
+a.is_true(str(w2.flags.get("last_cast_narration","")).contains("上限"), ...)
+```
+- 5 次施法之间**无 `tick()`**；per-turn 重置不会触发 → 计数按「成功 1/2/3，其后被拦」封顶 3，`<=3` 恒真；探针 D 以 `SpellResolver` 直连仿真复现 `count=3` 与拦截文案含「上限」。**兼容：是。**
+- 数据核对：`data/spells.json` 仅 `lumos`/`wingardium_leviosa` 挂 `no_unlimited_energy`（共享同一全局 flag），`time_turner` 挂 `no_time_rewind` 且 `forbidden=true`；`data/rumors.json` 的 `requires_flags` 仅 `ministry_access`/空，`tick()` 擦除 energy 键不会影响传闻筛选。
+
+## 残留发现
+| # | 严重度 | 位置 | 问题 | 建议 |
+|---|--------|------|------|------|
+| N1 | Minor（文档） | `src/model/world_state.gd:74`（⟷ 计划 1795） | 新增注释写「**第七十五条**裁定」，但设计文档 `哈利·波特·魔法纪元.md` 第七十五章是「正式启动界面」，与本守卫无关；正确出处为**第五十五章·魔法体系漏洞保护**（及第五十四章·现实性保护协议）/ HANDOFF §8#27。全仓库「第七十五条」仅此 2 处，属本次新增的误引 | 改为「第五十五条·魔法体系漏洞保护」或直接引用「HANDOFF §8 第 27 条」；计划同处一并改 |
+| N2 | Minor（台账漂移） | `HANDOFF.md:10,176,236`；`docs/sdd/plan-01-core-foundation/progress.md:200,207` | 裁定已落地实现，但台账仍把 §8#27 记为「Task 8 开工前必须裁定」的**未决闸门**（第 10/176 行明示「先取得裁定再动 Task 8」），实现与台账不一致，后续 agent 可能重复阻塞 | 在 HANDOFF §8#27 与 progress.md 记录裁定结论（energy=per-turn、rewind=终身一次性）与实现 commit `a0bc1d3`，关闭该闸门 |
+| N3 | Minor（信息级） | `src/model/world_state.gd:71-76` | per-turn 契约绑定在 `WorldState.tick()`：若 Task 8 回合引擎直接 `clock.advance_months()`/`advance_month()` 而不走 `tick()`，计数不会重置（`clock.advance_months` 在 `tests/model_test.gd`、`tests/world_tick_test.gd` 已被直接调用） | Task 8 实施时保证回合推进统一经 `WorldState.tick()`；必要时在该处加注释/断言 |
+| N4 | Minor（覆盖） | `tests/world_tick_test.gd`（⟷ `tests/spell_test.gd:74-79`） | 新增的 tick 重置行为仅由 spell_test 通过手动 `master.tick()` 间接覆盖，world_tick_test 无 `energy_loop_count` 断言；另一 `no_unlimited_energy` 魔咒 `wingardium_leviosa` 未参与重置断言（共享同一 flag，风险低） | Task 8 测试加固时补一条 world_tick 层断言与 `wingardium_leviosa` 同 flag 用例 |
+
+## 未验证/存疑
+- **Task 8 `StateOps` 尚未实现**，无法端到端跑其计划测试；兼容性结论基于计划代码块（中间无 `tick()`）与探针 D 的 `SpellResolver` 直连仿真，未验证 `StateOps.apply(cast_spell)` 内部是否引入额外 `tick()`/时钟推进。
+- **存档跨回合边界**未端到端验证：存档只存 flags，不存「本回合已成功施法次数」的时间戳。行为为：回合中途存档→读档→继续施法沿用计数（探针 E），读档后调用 `tick()` 则归零。自洽，但若 Human 期望「读档即视为新回合」需另行裁定；本轮未列为缺陷。
+- `flags.erase` 使键**不存在**（而非 0），本次核对无任何代码使用 `flags.has("energy_loop_count")` 或直接下标读取，故无现状隐患；未来 Task 8+ 若新增「遍历 flags 展示」类消费方需注意缺失键语义（信息级，未验证）。
+- 未穷举仓库外/未来写入 `world.flags` 的第三方路径（当前 `src/` 全量 grep 仅 `spell_resolver.gd:122,124,126,133` 与 `world_state.gd:126` 写入，已逐条核对）。
+- 严格只读：未执行任何 git 写操作与仓库文件修改；三个沙箱（`/tmp/hali-ruling-probe`、`/tmp/hali-ruling-sbx`、`/tmp/hali-ruling-mut`）跑完已删除，仓库 `git status --porcelain` 空、`git diff --stat HEAD` 空。（`/tmp/hali_cmp`、`/tmp/hali_nobreak`、`/tmp/hali_probe` 为前几轮复审遗留，非本轮产物，未触碰。）
