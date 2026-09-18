@@ -1,0 +1,21 @@
+[
+	{"id": "charms", "label": "魔咒学", "category": "学术", "note": "悬浮、开锁、照明等基础魔咒"},
+	{"id": "transfiguration", "label": "变形术", "category": "学术", "note": "物体变形、活物变形、消失术、显形术"},
+	{"id": "potions", "label": "魔药学", "category": "学术", "note": "精确科学与艺术的结合"},
+	{"id": "herbology", "label": "草药学", "category": "学术", "note": "魔药材料与神奇植物"},
+	{"id": "dada", "label": "黑魔法防御术", "category": "学术", "note": "缴械、铁甲、守护神"},
+	{"id": "history_of_magic", "label": "魔法史", "category": "学术", "note": "原著历史事件与家族谱系"},
+	{"id": "astronomy", "label": "天文学", "category": "学术", "note": "天象与季节"},
+	{"id": "divination", "label": "占卜术", "category": "学术", "note": "预言可能成真，也可能被误解"},
+	{"id": "ancient_runes", "label": "古代魔文", "category": "学术", "note": "古代巫师掌握现代无法复现的魔法"},
+	{"id": "care_of_magical_creatures", "label": "神奇生物照料", "category": "学术", "note": "栖息地、领地、行为规律"},
+	{"id": "wand_lore", "label": "魔杖学", "category": "工艺", "note": "木材、杖芯、长度、弹性"},
+	{"id": "healing", "label": "治疗术", "category": "工艺", "note": "黑魔法伤害与咬伤处理"},
+	{"id": "household_magic", "label": "家务魔法", "category": "工艺", "note": "家养小精灵传统魔法"},
+	{"id": "quidditch", "label": "魁地奇", "category": "体能", "note": "学院队、俱乐部、国家队"},
+	{"id": "stealth", "label": "潜行", "category": "体能", "note": "傲罗追踪术的反面"},
+	{"id": "social", "label": "社交口才", "category": "社会", "note": "酒馆、政治密谈、招募"},
+	{"id": "deception", "label": "伪装与谎言", "category": "社会", "note": "假身份、混入、误导"},
+	{"id": "muggle_world", "label": "麻瓜世界见闻", "category": "社会", "note": "街道、电话亭、地铁、科技"},
+	{"id": "black_market", "label": "黑市人脉", "category": "社会", "note": "翻倒巷的博金-博克店与地下拍卖会"}
+]

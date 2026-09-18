@@ -9,6 +9,7 @@ const SUITES: Array[String] = [
 	"res://tests/model_test.gd",
 	"res://tests/clock_test.gd",
 	"res://tests/world_tick_test.gd",
+	"res://tests/creation_test.gd",
 ]
 
 func _initialize() -> void:

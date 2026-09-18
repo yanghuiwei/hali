@@ -11,6 +11,11 @@ const TABLE_FILES: Dictionary = {
 	"political_leanings": "political_leanings.json",
 	"locations": "locations.json",
 	"rumors": "rumors.json",
+	"skills": "skills.json",
+	"wand_woods": "wand_woods.json",
+	"wand_cores": "wand_cores.json",
+	"wand_flexibilities": "wand_flexibilities.json",
+	"wand_lengths": "wand_lengths.json",
 }
 
 var duplicate_ids: PackedStringArray = PackedStringArray()

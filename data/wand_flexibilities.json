@@ -1,0 +1,8 @@
+[
+	{"id": "very_flexible", "label": "非常柔韧"},
+	{"id": "flexible", "label": "柔韧"},
+	{"id": "springy", "label": "有弹性"},
+	{"id": "supple", "label": "易弯曲"},
+	{"id": "rigid", "label": "坚硬"},
+	{"id": "unbending", "label": "不易弯曲"}
+]

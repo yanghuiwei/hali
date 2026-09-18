@@ -1,0 +1,18 @@
+[
+	{"id": "holly", "label": "冬青木"},
+	{"id": "yew", "label": "紫杉木"},
+	{"id": "hawthorn", "label": "山楂木"},
+	{"id": "willow", "label": "柳木"},
+	{"id": "oak", "label": "橡木"},
+	{"id": "beech", "label": "山毛榉"},
+	{"id": "mahogany", "label": "桃花心木"},
+	{"id": "cherry", "label": "樱桃木"},
+	{"id": "blackthorn", "label": "黑刺李木"},
+	{"id": "elm", "label": "榆木"},
+	{"id": "vine", "label": "葡萄藤木"},
+	{"id": "walnut", "label": "胡桃木"},
+	{"id": "ash", "label": "白蜡木"},
+	{"id": "larch", "label": "落叶松木"},
+	{"id": "fir", "label": "冷杉木"},
+	{"id": "alder", "label": "桤木"}
+]

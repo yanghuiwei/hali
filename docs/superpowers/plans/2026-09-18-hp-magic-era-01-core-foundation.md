@@ -2295,7 +2295,7 @@ static func default_skills_for(choices: Dictionary, registry: Registry) -> Dicti
 	return skills
 
 static func generate_wand(rng: RngService, registry: Registry) -> Dictionary:
-	var wood: Dictionary = rng.stream_pick("wand_wood", registry.ids("wand_woods").duplicate())
+	var wood: String = str(rng.stream_pick("wand_wood", registry.ids("wand_woods").duplicate()))
 	var wood_entry: Dictionary = registry.entry("wand_woods", str(wood))
 	var core_ids := registry.ids("wand_cores").duplicate()
 	var core_id := str(rng.stream_pick("wand_core", core_ids))
