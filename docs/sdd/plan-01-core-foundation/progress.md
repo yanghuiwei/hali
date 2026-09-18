@@ -78,3 +78,10 @@ Task 3: 移交人类批次的裁定项（新增，与 Preflight 3 条合并）�
 Task 3: controller 已停在此处，等人类裁定与是否进入 Task 4。
 Task 3: 提醒 —— 上方 Preflight 的 3 条（Task 8 SelfCheck 最小桩、ScriptedGameMaster 直接调用 cast、Task 9 power_panel 标签重叠）
 至今仍未裁定，需与上面的 5 条一起批量回答。
+
+Task 3: 交接整理（controller）—— commit 055d9ef：新增 HANDOFF.md（换机指引 + 分支说明 + 进度表 + 踩坑 + 待裁定项）
+与 docs/sdd/plan-01-core-foundation/ 耐久副本（本目录的台账/简报/报告/审查包，因 .superpowers 被双重忽略而不会随源码走），
+并把 README 进度表更新为 Task 1–3 完成。分支已推送：origin/plan-01-core-foundation @ 055d9ef
+（此前只在本地，远端仅 main @ 0b4dd62，换机器会拿到空壳）。
+Task 3: 本机状态 —— 工作区干净，无活跃子代理，无残留 Godot 进程；交付点 = 055d9ef，下一步 = Task 4（先裁定第 2 条魔杖价矛盾）。
+Task 3: 同步规则 — 以后每完成一个任务，把该任务工件从本目录复制到 docs/sdd/plan-01-core-foundation/ 一起提交（副本以 docs/ 下为准）。
