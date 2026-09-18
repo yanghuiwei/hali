@@ -10,20 +10,15 @@ func _initialize() -> void:
 	var total_failures := 0
 	var failed_suites := 0
 	for path in SUITES:
-		if not FileAccess.file_exists(path):
-			printerr("缺少测试套件: ", path)
+		# 有风险的调用（读文件、load、new、run）全部收在 _run_suite 里：
+		# 套件抛出的运行期错误只中止那个函数，_initialize 仍会走到末尾的打印与 quit()，
+		# 保证任何情况下都以 quit(...) 结束，不会挂住进程。
+		var result: Variant = _run_suite(path)
+		if result == null:
 			total_failures += 1
 			failed_suites += 1
 			continue
-		var script: GDScript = load(path)
-		if script == null:
-			# 语法错误会让 load() 返回 null
-			printerr("套件无法加载（语法错误？）: ", path)
-			total_failures += 1
-			failed_suites += 1
-			continue
-		var suite = script.new()
-		var failures := int(suite.run())
+		var failures := int(result)
 		if failures > 0:
 			failed_suites += 1
 		total_failures += failures
@@ -33,3 +28,20 @@ func _initialize() -> void:
 	else:
 		print("ALL TESTS PASSED")
 		quit(0)
+
+# 返回套件失败数；套件缺失 / 无法加载 / 无法实例化 / 运行中抛错时返回 null。
+func _run_suite(path: String) -> Variant:
+	if not FileAccess.file_exists(path):
+		printerr("缺少测试套件: ", path)
+		return null
+	var script: GDScript = load(path)
+	if script == null:
+		# 有些加载失败会让 load() 返回 null
+		printerr("套件无法加载（语法错误？）: ", path)
+		return null
+	if not script.can_instantiate():
+		# 语法错误的脚本 load() 会返回非 null 的坏 GDScript，new() 会抛错并中止本函数
+		printerr("套件无法实例化（语法错误？）: ", path)
+		return null
+	var suite = script.new()
+	return int(suite.run())
