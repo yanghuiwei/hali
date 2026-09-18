@@ -2496,7 +2496,7 @@ git commit -m "feat(creation): 第七十五章启动界面到玩家档案的创�
     - `static cast(world: WorldState, spell_id: String, conditions: Dictionary, rng: RngService) -> Outcome`
     - `static modifiers_from(conditions: Dictionary) -> Dictionary`
   - `conditions` 字典键（第二十二章环境因素 + 目标属性）：
-    `combat_stress, injury, emotion, wand_mismatch, unfamiliar_spell, dark_magic_interference`（float 0..1）；`target_alive: bool`；`target_rarity: String`（`common`/`rare`/`legendary`）
+    `combat_stress, injury, emotion, wand_mismatch, unfamiliar_spell, dark_magic_interference`（float 0..1）；`target_alive: bool`；`target_rarity: String`（`common`/`rare`/`legendary`；比较前先 strip_edges + 小写归一，未在普通白名单内的值一律按稀有处理）
   - `data/spells.json`：`id,label,category,min_tier(等级标签),difficulty(float),forbidden(bool),guards[],side_effects[],note`
   - 守卫 id：`no_rare_resource_duplication`、`no_resurrection`、`no_time_rewind`、`no_unlimited_energy`、`unforgivable`、`requires_registration`、`requires_ministry_approval`、`forbidden_lifetime`
 
@@ -2554,6 +2554,11 @@ func run() -> int:
 	# 稀有度词表必须同时识别中文（否则中文「稀有」会静默绕过反复制守卫）
 	var rare_cn := SpellResolver.cast(mid, "geminio", {"target_rarity": "稀有"}, RngService.new(2))
 	a.is_true(rare_cn.blocked, "中文「稀有」也必须被反复制守卫拦截")
+	# 归一化 + fail-closed：大小写/空白/繁体/未知稀有度都不得绕过反复制守卫
+	for rarity in ["Rare", "稀有 ", "傳說", "uncommon", "epic"]:
+		a.is_true(SpellResolver.cast(mid, "geminio", {"target_rarity": rarity}, RngService.new(2)).blocked, "稀有度变体 %s 必须被拦截" % rarity)
+	a.is_false(SpellResolver.cast(mid, "geminio", {"target_rarity": "普通"}, RngService.new(2)).blocked, "中文「普通」视为普通物品")
+	a.is_false(SpellResolver.cast(mid, "geminio", {"target_rarity": " Common "}, RngService.new(2)).blocked, "归一化后 Common 视为普通物品")
 
 	# ---- 第五十五条：治疗咒不得无限复活 ----
 	var dead := SpellResolver.cast(mid, "vulnera_sanentur", {"target_alive": false}, RngService.new(3))
@@ -2724,7 +2729,9 @@ const GUARDS: Dictionary = {
 	"restricted_mind_magic": "受限心智魔法：滥用即违法",
 }
 
-const RARE_RARITIES: Array[String] = ["rare", "legendary", "稀有", "史诗", "传奇", "神话", "传说"]
+# 稀有度采用 fail-closed 白名单：只有显式认定的普通稀有度才允许复制，
+# 大小写/空白先归一；未知值（含繁体、拼写变体、任意字符串）一律按稀有处理，避免绕过守卫。
+const COMMON_RARITIES: Array[String] = ["common", "普通", "常见"]
 const ENERGY_LOOP_LIMIT := 3
 const TIME_REWIND_LIMIT := 1
 
@@ -2777,11 +2784,11 @@ static func cast(world: WorldState, spell_id: String, conditions: Dictionary, rn
 
 	var legal_risk := false
 	var target_alive := bool(conditions.get("target_alive", true))
-	var target_rarity := str(conditions.get("target_rarity", "common"))
+	var target_rarity := str(conditions.get("target_rarity", "common")).strip_edges().to_lower()
 	for guard in guard_ids:
 		match guard:
 			"no_rare_resource_duplication":
-				if RARE_RARITIES.has(target_rarity):
+				if not COMMON_RARITIES.has(target_rarity):
 					return _blocked_outcome("复制咒无法复制稀有资源（%s）：世界资源必须有成本、有产出、有消耗" % target_rarity, guard_ids)
 			"no_resurrection":
 				if not target_alive:

@@ -14,7 +14,9 @@ const GUARDS: Dictionary = {
 	"restricted_mind_magic": "受限心智魔法：滥用即违法",
 }
 
-const RARE_RARITIES: Array[String] = ["rare", "legendary", "稀有", "史诗", "传奇", "神话", "传说"]
+# 稀有度采用 fail-closed 白名单：只有显式认定的普通稀有度才允许复制，
+# 大小写/空白先归一；未知值（含繁体、拼写变体、任意字符串）一律按稀有处理，避免绕过守卫。
+const COMMON_RARITIES: Array[String] = ["common", "普通", "常见"]
 const ENERGY_LOOP_LIMIT := 3
 const TIME_REWIND_LIMIT := 1
 
@@ -67,11 +69,11 @@ static func cast(world: WorldState, spell_id: String, conditions: Dictionary, rn
 
 	var legal_risk := false
 	var target_alive := bool(conditions.get("target_alive", true))
-	var target_rarity := str(conditions.get("target_rarity", "common"))
+	var target_rarity := str(conditions.get("target_rarity", "common")).strip_edges().to_lower()
 	for guard in guard_ids:
 		match guard:
 			"no_rare_resource_duplication":
-				if RARE_RARITIES.has(target_rarity):
+				if not COMMON_RARITIES.has(target_rarity):
 					return _blocked_outcome("复制咒无法复制稀有资源（%s）：世界资源必须有成本、有产出、有消耗" % target_rarity, guard_ids)
 			"no_resurrection":
 				if not target_alive:

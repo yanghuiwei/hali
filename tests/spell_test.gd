@@ -47,6 +47,11 @@ func run() -> int:
 	# 稀有度词表必须同时识别中文（否则中文「稀有」会静默绕过反复制守卫）
 	var rare_cn := SpellResolver.cast(mid, "geminio", {"target_rarity": "稀有"}, RngService.new(2))
 	a.is_true(rare_cn.blocked, "中文「稀有」也必须被反复制守卫拦截")
+	# 归一化 + fail-closed：大小写/空白/繁体/未知稀有度都不得绕过反复制守卫
+	for rarity in ["Rare", "稀有 ", "傳說", "uncommon", "epic"]:
+		a.is_true(SpellResolver.cast(mid, "geminio", {"target_rarity": rarity}, RngService.new(2)).blocked, "稀有度变体 %s 必须被拦截" % rarity)
+	a.is_false(SpellResolver.cast(mid, "geminio", {"target_rarity": "普通"}, RngService.new(2)).blocked, "中文「普通」视为普通物品")
+	a.is_false(SpellResolver.cast(mid, "geminio", {"target_rarity": " Common "}, RngService.new(2)).blocked, "归一化后 Common 视为普通物品")
 
 	# ---- 第五十五条：治疗咒不得无限复活 ----
 	var dead := SpellResolver.cast(mid, "vulnera_sanentur", {"target_alive": false}, RngService.new(3))
