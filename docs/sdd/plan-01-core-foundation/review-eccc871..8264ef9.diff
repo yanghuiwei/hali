@@ -1,0 +1,518 @@
+# Review package: eccc871..8264ef9
+
+## Commits
+2e3deb8 feat(model): 时钟、玩家与世界状态模型
+8264ef9 fix(model): world_vars 规范化对称 + 端到端 JSON 往返与类型一致性断言
+
+## Files changed
+ .../2026-09-18-hp-magic-era-01-core-foundation.md  |  21 +++-
+ src/core/game_clock.gd                             |  33 ++++++
+ src/core/game_clock.gd.uid                         |   1 +
+ src/core/json_util.gd                              |  24 +++++
+ src/core/json_util.gd.uid                          |   1 +
+ src/model/player_state.gd                          | 115 +++++++++++++++++++++
+ src/model/player_state.gd.uid                      |   1 +
+ src/model/world_state.gd                           |  81 +++++++++++++++
+ src/model/world_state.gd.uid                       |   1 +
+ tests/model_test.gd                                | 106 +++++++++++++++++++
+ tests/model_test.gd.uid                            |   1 +
+ tests/run_tests.gd                                 |   1 +
+ 12 files changed, 382 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+index d745156..7ade2c2 100644
+--- a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
++++ b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+@@ -1056,8 +1056,9 @@ func run() -> int:
+ 	})
+ 	a.eq(p.age_years(), 11, "11岁")
+ 	a.eq(p.money().formatted(), "10加隆 0西可 0纳特", "起始财产")
+-	p.set_money(p.money().subtract(Money.from_knuts(493)))
+-	a.eq(p.money().formatted(), "9加隆 0西可 0纳特", "买魔杖后剩 9 加隆")
++	# 正典第十八章：一根普通魔杖 7‑10 加隆；取价格下限 7 加隆 = 7 × 493 = 3451 纳特
++	p.set_money(p.money().subtract(Money.from_knuts(7 * Money.KNUTS_PER_GALLEON)))
++	a.eq(p.money().formatted(), "3加隆 0西可 0纳特", "买 7 加隆普通魔杖后剩 3 加隆（正典第十八章）")
+ 	p.add_skill("potions", 3)
+ 	p.add_skill("potions", 2)
+ 	a.eq(p.skill("potions"), 5, "技能累加")
+@@ -1077,6 +1078,9 @@ func run() -> int:
+ 	var p2 := PlayerState.from_dict(p.to_dict())
+ 	a.eq(p2.name_text, "张三", "姓名往返")
+ 	a.eq(p2.to_dict(), p.to_dict(), "玩家状态完全往返")
++	# 端到端：经 JSON 字符串（真实存档路径）往返后仍必须逐字节相等
++	var p3 := PlayerState.from_dict(JSON.parse_string(JSON.stringify(p.to_dict())))
++	a.eq(p3.to_dict(), p.to_dict(), "经 JSON 字符串的玩家状态往返")
+ 
+ 	# ---- JsonUtil：JSON 数值规范化（存读档往返一致性的唯一保障） ----
+ 	a.is_true(typeof(JsonUtil.normalize(2.0)) == TYPE_INT, "2.0 归一为 int")
+@@ -1108,6 +1112,14 @@ func run() -> int:
+ 	a.eq(w2.to_dict(), w.to_dict(), "世界状态完全往返")
+ 	a.eq(w2.registry, reg, "往返后重新挂载注册表")
+ 	a.is_true(w2.era()["id"] == "first_wizarding_war", "往返后仍能查询内容表")
++	# 端到端：经 JSON 字符串（真实存档路径）往返后仍必须相等
++	var w3 := WorldState.from_dict(JSON.parse_string(JSON.stringify(w.to_dict())), reg)
++	a.eq(w3.to_dict(), w.to_dict(), "经 JSON 字符串的世界状态往返")
++
++	# create 与 from_dict 必须产出同型的 world_vars（含整数值 float，如 witch_hunts.secrecy_integrity=1.0）
++	var we := WorldState.create("witch_hunts", PlayerState.from_dict({"name_text": "乙"}), 1, reg)
++	var we2 := WorldState.from_dict(we.to_dict(), reg)
++	a.eq(we2.world_vars, we.world_vars, "world_vars 类型在 create 与 from_dict 间一致")
+ 
+ 	# to_dict 不得包含瞬态注册表；也不得出现非 JSON 原生类型
+ 	var d := w.to_dict()
+@@ -1298,7 +1310,7 @@ static func from_dict(d: Dictionary) -> PlayerState:
+ 	p.aptitude_id = str(d.get("aptitude_id", ""))
+ 	p.aptitude_special = str(d.get("aptitude_special", ""))
+ 	p.house_id = str(d.get("house_id", "none"))
+-	p.political_leaning_id = str(d.get("political_leading_id", d.get("political_leaning_id", "")))
++	p.political_leaning_id = str(d.get("political_leaning_id", ""))
+ 	p.personality = JsonUtil.normalize(d.get("personality", []))
+ 	p.life_goal = str(d.get("life_goal", ""))
+ 	p.sim_style_id = str(d.get("sim_style_id", "mixed"))
+@@ -1359,7 +1371,8 @@ static func create(era_id_: String, player_: PlayerState, seed_: int, registry_:
+ 	var start_year := int(era.get("start_year", 1991)) if era.get("start_year", null) != null else 1991
+ 	w.era_start_year = start_year
+ 	w.clock = GameClock.from_dict({"year": start_year, "month": 9, "turn": 0})
+-	w.world_vars = (era.get("world_vars", {}) as Dictionary).duplicate(true)
++	# JSON 解析出的整数值 float 必须归一，保证 create 与 from_dict 的内存类型一致（HANDOFF 第 4 节第 1 条）
++	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
+ 	w.player.age_months = maxi(w.player.age_months, 0)
+ 	return w
+ 
+diff --git a/src/core/game_clock.gd b/src/core/game_clock.gd
+new file mode 100644
+index 0000000..40c93a3
+--- /dev/null
++++ b/src/core/game_clock.gd
+@@ -0,0 +1,33 @@
++class_name GameClock
++extends RefCounted
++
++var year: int = 1991
++var month: int = 9
++var turn: int = 0
++
++static func from_dict(d: Dictionary) -> GameClock:
++	var c := GameClock.new()
++	c.year = int(d.get("year", 1991))
++	c.month = clampi(int(d.get("month", 1)), 1, 12)
++	c.turn = int(d.get("turn", 0))
++	return c
++
++func to_dict() -> Dictionary:
++	return {"year": year, "month": month, "turn": turn}
++
++func advance_month() -> void:
++	month += 1
++	if month > 12:
++		month = 1
++		year += 1
++	turn += 1
++
++func advance_months(n: int) -> void:
++	for i in maxi(n, 0):
++		advance_month()
++
++func formatted() -> String:
++	return "%d年%d月" % [year, month]
++
++func months_between(other: GameClock) -> int:
++	return (other.year - year) * 12 + (other.month - month)
+diff --git a/src/core/game_clock.gd.uid b/src/core/game_clock.gd.uid
+new file mode 100644
+index 0000000..cbcf9d9
+--- /dev/null
++++ b/src/core/game_clock.gd.uid
+@@ -0,0 +1 @@
++uid://dwnae54llencu
+diff --git a/src/core/json_util.gd b/src/core/json_util.gd
+new file mode 100644
+index 0000000..b7a7655
+--- /dev/null
++++ b/src/core/json_util.gd
+@@ -0,0 +1,24 @@
++class_name JsonUtil
++extends RefCounted
++
++# JSON 没有 int/float 之分，解析回来全是 float；而 Godot 的 Dictionary 深比较是类型严格的。
++# 因此存档往返（to_dict → JSON → from_dict → to_dict）必须先把整数值的 float 归一为 int。
++static func normalize(value):
++	match typeof(value):
++		TYPE_FLOAT:
++			var f := float(value)
++			if is_finite(f) and f == floor(f) and absf(f) < 9007199254740992.0:
++				return int(f)
++			return f
++		TYPE_DICTIONARY:
++			var out := {}
++			for key in (value as Dictionary).keys():
++				out[key] = normalize(value[key])
++			return out
++		TYPE_ARRAY:
++			var arr := []
++			for item in (value as Array):
++				arr.append(normalize(item))
++			return arr
++		_:
++			return value
+diff --git a/src/core/json_util.gd.uid b/src/core/json_util.gd.uid
+new file mode 100644
+index 0000000..6e90411
+--- /dev/null
++++ b/src/core/json_util.gd.uid
+@@ -0,0 +1 @@
++uid://did7ixsr6rc1k
+diff --git a/src/model/player_state.gd b/src/model/player_state.gd
+new file mode 100644
+index 0000000..3f3805d
+--- /dev/null
++++ b/src/model/player_state.gd
+@@ -0,0 +1,115 @@
++class_name PlayerState
++extends RefCounted
++
++const SKILL_MAX := 100
++
++var name_text: String = ""
++var gender: String = ""
++var age_months: int = 0
++var bloodline_id: String = ""
++var birth_identity_id: String = ""
++var birthplace: String = ""
++var family_status: String = ""
++var aptitude_id: String = ""
++var aptitude_special: String = ""
++var house_id: String = "none"
++var political_leaning_id: String = ""
++var personality: Array = []
++var life_goal: String = ""
++var sim_style_id: String = "mixed"
++var wand: Dictionary = {}
++var magic_tier: int = MagicLevel.Tier.PRE_SCHOOL
++var money_knuts: int = 0
++var reputation: int = 0
++var skills: Dictionary = {}
++var magic: Dictionary = {}
++var relations: Dictionary = {}
++var faction_id: String = ""
++var current_goal: String = ""
++var location_id: String = ""
++var job: String = ""
++var alive: bool = true
++var flags: Dictionary = {}
++var known_facts: Dictionary = {}
++var next_id: int = 1
++
++static func new_default() -> PlayerState:
++	var p := PlayerState.new()
++	p.magic = {
++		"capacity": 10, "control": 10, "affinity": 10,
++		"subjects": [], "known_spells": [], "experimenting": [],
++		"potions": 0, "occlumency": 0, "apparition": 0, "patronus": "",
++	}
++	return p
++
++func age_years() -> int:
++	return age_months / 12
++
++func money() -> Money:
++	return Money.from_knuts(money_knuts)
++
++func set_money(m: Money) -> void:
++	money_knuts = m.total_knuts()
++
++func skill(skill_id: String) -> int:
++	return int(skills.get(skill_id, 0))
++
++func add_skill(skill_id: String, amount: int) -> void:
++	skills[skill_id] = clampi(skill(skill_id) + amount, 0, SKILL_MAX)
++
++func knows_spell(spell_id: String) -> bool:
++	return (magic.get("known_spells", []) as Array).has(spell_id)
++
++func learn_spell(spell_id: String) -> void:
++	var known: Array = magic.get("known_spells", [])
++	if not known.has(spell_id):
++		known.append(spell_id)
++	magic["known_spells"] = known
++
++func to_dict() -> Dictionary:
++	return JsonUtil.normalize({
++		"name_text": name_text, "gender": gender, "age_months": age_months,
++		"bloodline_id": bloodline_id, "birth_identity_id": birth_identity_id,
++		"birthplace": birthplace, "family_status": family_status,
++		"aptitude_id": aptitude_id, "aptitude_special": aptitude_special,
++		"house_id": house_id, "political_leaning_id": political_leaning_id,
++		"personality": personality, "life_goal": life_goal, "sim_style_id": sim_style_id,
++		"wand": wand, "magic_tier": magic_tier, "money_knuts": money_knuts,
++		"reputation": reputation, "skills": skills, "magic": magic,
++		"relations": relations, "faction_id": faction_id, "current_goal": current_goal,
++		"location_id": location_id, "job": job, "alive": alive,
++		"flags": flags, "known_facts": known_facts, "next_id": next_id,
++	})
++
++static func from_dict(d: Dictionary) -> PlayerState:
++	var p := PlayerState.new_default()
++	p.name_text = str(d.get("name_text", ""))
++	p.gender = str(d.get("gender", ""))
++	p.age_months = int(d.get("age_months", 0))
++	p.bloodline_id = str(d.get("bloodline_id", ""))
++	p.birth_identity_id = str(d.get("birth_identity_id", ""))
++	p.birthplace = str(d.get("birthplace", ""))
++	p.family_status = str(d.get("family_status", ""))
++	p.aptitude_id = str(d.get("aptitude_id", ""))
++	p.aptitude_special = str(d.get("aptitude_special", ""))
++	p.house_id = str(d.get("house_id", "none"))
++	p.political_leaning_id = str(d.get("political_leaning_id", ""))
++	p.personality = JsonUtil.normalize(d.get("personality", []))
++	p.life_goal = str(d.get("life_goal", ""))
++	p.sim_style_id = str(d.get("sim_style_id", "mixed"))
++	p.wand = JsonUtil.normalize(d.get("wand", {}))
++	p.magic_tier = int(d.get("magic_tier", MagicLevel.Tier.PRE_SCHOOL))
++	p.money_knuts = int(d.get("money_knuts", 0))
++	p.reputation = int(d.get("reputation", 0))
++	p.skills = JsonUtil.normalize(d.get("skills", {}))
++	p.magic = JsonUtil.normalize(d.get("magic", p.magic))
++	p.relations = JsonUtil.normalize(d.get("relations", {}))
++	p.faction_id = str(d.get("faction_id", ""))
++	p.current_goal = str(d.get("current_goal", ""))
++	p.location_id = str(d.get("location_id", ""))
++	p.job = str(d.get("job", ""))
++	p.alive = bool(d.get("alive", true))
++	p.flags = JsonUtil.normalize(d.get("flags", {}))
++	p.known_facts = JsonUtil.normalize(d.get("known_facts", {}))
++	p.next_id = int(d.get("next_id", 1))
++	return p
+diff --git a/src/model/player_state.gd.uid b/src/model/player_state.gd.uid
+new file mode 100644
+index 0000000..d159bae
+--- /dev/null
++++ b/src/model/player_state.gd.uid
+@@ -0,0 +1 @@
++uid://cpdeorjqwanfr
+diff --git a/src/model/world_state.gd b/src/model/world_state.gd
+new file mode 100644
+index 0000000..797f2d6
+--- /dev/null
++++ b/src/model/world_state.gd
+@@ -0,0 +1,81 @@
++class_name WorldState
++extends RefCounted
++
++const SAVE_VERSION := 1
++
++var registry: Registry = null      # 瞬态：不入存档
++var save_version: int = SAVE_VERSION
++var game_seed: int = 0
++var era_id: String = ""
++var clock: GameClock = null
++var player: PlayerState = null
++var npcs: Dictionary = {}
++var factions: Dictionary = {}
++var locations: Dictionary = {}
++var history: Array = []
++var pending: Array = []
++var world_vars: Dictionary = {}
++var log: Array = []
++var flags: Dictionary = {}
++var rng_state: Dictionary = {}
++var era_start_year: int = 0        # 时代锚点年份，供时间线自检使用
++
++static func create(era_id_: String, player_: PlayerState, seed_: int, registry_: Registry) -> WorldState:
++	var w := WorldState.new()
++	w.registry = registry_
++	w.game_seed = seed_
++	w.era_id = era_id_
++	w.player = player_
++	var era: Dictionary = registry_.entry("eras", era_id_)
++	var start_year := int(era.get("start_year", 1991)) if era.get("start_year", null) != null else 1991
++	w.era_start_year = start_year
++	w.clock = GameClock.from_dict({"year": start_year, "month": 9, "turn": 0})
++	# JSON 解析出的整数值 float 必须归一，保证 create 与 from_dict 的内存类型一致（HANDOFF 第 4 节第 1 条）
++	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
++	w.player.age_months = maxi(w.player.age_months, 0)
++	return w
++
++func era() -> Dictionary:
++	return registry.entry("eras", era_id)
++
++func current_location() -> Dictionary:
++	return registry.entry("locations", player.location_id)
++
++func add_fact(kind: String, text: String) -> Dictionary:
++	var fact := {"kind": kind, "text": text, "turn": clock.turn, "year": clock.year}
++	history.append(fact)
++	log.append({"turn": clock.turn, "kind": kind, "text": text})
++	return fact
++
++func to_dict() -> Dictionary:
++	return JsonUtil.normalize({
++		"save_version": save_version,
++		"game_seed": game_seed,
++		"era_id": era_id,
++		"era_start_year": era_start_year,
++		"clock": clock.to_dict(),
++		"player": player.to_dict(),
++		"npcs": npcs, "factions": factions, "locations": locations,
++		"history": history, "pending": pending, "world_vars": world_vars,
++		"log": log, "flags": flags, "rng_state": rng_state,
++	})
++
++static func from_dict(d: Dictionary, registry_: Registry) -> WorldState:
++	var w := WorldState.new()
++	w.registry = registry_
++	w.save_version = int(d.get("save_version", SAVE_VERSION))
++	w.game_seed = int(d.get("game_seed", 0))
++	w.era_id = str(d.get("era_id", ""))
++	w.era_start_year = int(d.get("era_start_year", 0))
++	w.clock = GameClock.from_dict(d.get("clock", {}))
++	w.player = PlayerState.from_dict(d.get("player", {}))
++	w.npcs = JsonUtil.normalize(d.get("npcs", {}))
++	w.factions = JsonUtil.normalize(d.get("factions", {}))
++	w.locations = JsonUtil.normalize(d.get("locations", {}))
++	w.history = JsonUtil.normalize(d.get("history", []))
++	w.pending = JsonUtil.normalize(d.get("pending", []))
++	w.world_vars = JsonUtil.normalize(d.get("world_vars", {}))
++	w.log = JsonUtil.normalize(d.get("log", []))
++	w.flags = JsonUtil.normalize(d.get("flags", {}))
++	w.rng_state = JsonUtil.normalize(d.get("rng_state", {}))
++	return w
+diff --git a/src/model/world_state.gd.uid b/src/model/world_state.gd.uid
+new file mode 100644
+index 0000000..2d2cf0c
+--- /dev/null
++++ b/src/model/world_state.gd.uid
+@@ -0,0 +1 @@
++uid://d2oou13pkdbth
+diff --git a/tests/model_test.gd b/tests/model_test.gd
+new file mode 100644
+index 0000000..e1ec09d
+--- /dev/null
++++ b/tests/model_test.gd
+@@ -0,0 +1,106 @@
++class_name ModelTest
++extends RefCounted
++
++func run() -> int:
++	var a := TestAssert.new()
++	var reg := Registry.load_default()
++
++	# ---- GameClock ----
++	var clock := GameClock.from_dict({"year": 1991, "month": 9, "turn": 0})
++	a.eq(clock.formatted(), "1991年9月", "时钟格式")
++	clock.advance_month()
++	a.eq(clock.formatted(), "1991年10月", "推进一个月")
++	a.eq(clock.turn, 1, "回合数+1")
++	for i in 4:
++		clock.advance_month()
++	a.eq(clock.formatted(), "1992年2月", "跨年进位")
++	a.eq(clock.turn, 5, "回合数累计")
++	clock.advance_months(12)
++	a.eq(clock.formatted(), "1993年2月", "advance_months 跨年")
++	a.eq(clock.turn, 17, "advance_months 累加回合")
++	var later := GameClock.from_dict({"year": 1993, "month": 5, "turn": 0})
++	a.eq(clock.months_between(later), 3, "月份差")
++	a.eq(later.months_between(clock), -3, "月份差为负")
++	a.eq(GameClock.from_dict(clock.to_dict()).formatted(), "1993年2月", "时钟往返")
++
++	# ---- PlayerState ----
++	var p := PlayerState.from_dict({
++		"name_text": "张三",
++		"gender": "男",
++		"age_months": 132,
++		"bloodline_id": "muggle_born",
++		"money_knuts": 4930,
++	})
++	a.eq(p.age_years(), 11, "11岁")
++	a.eq(p.money().formatted(), "10加隆 0西可 0纳特", "起始财产")
++	# 正典第十八章：一根普通魔杖 7‑10 加隆；取价格下限 7 加隆 = 7 × 493 = 3451 纳特
++	p.set_money(p.money().subtract(Money.from_knuts(7 * Money.KNUTS_PER_GALLEON)))
++	a.eq(p.money().formatted(), "3加隆 0西可 0纳特", "买 7 加隆普通魔杖后剩 3 加隆（正典第十八章）")
++	p.add_skill("potions", 3)
++	p.add_skill("potions", 2)
++	a.eq(p.skill("potions"), 5, "技能累加")
++	p.add_skill("potions", 1000)
++	a.eq(p.skill("potions"), 100, "技能上界 100")
++	p.add_skill("potions", -1000)
++	a.eq(p.skill("potions"), 0, "技能下界 0")
++	a.eq(p.skill("未学过的技能"), 0, "未知技能为 0")
++	a.is_false(p.knows_spell("wingardium_leviosa"), "尚未掌握魔咒")
++	p.learn_spell("wingardium_leviosa")
++	p.learn_spell("wingardium_leviosa")
++	a.is_true(p.knows_spell("wingardium_leviosa"), "掌握魔咒")
++	a.eq(p.magic["known_spells"].size(), 1, "不重复记录同一魔咒")
++	a.has_key(p.magic, "capacity", "第六十三章面板字段存在")
++
++	# 往返：中文与嵌套结构必须无损
++	var p2 := PlayerState.from_dict(p.to_dict())
++	a.eq(p2.name_text, "张三", "姓名往返")
++	a.eq(p2.to_dict(), p.to_dict(), "玩家状态完全往返")
++	# 端到端：经 JSON 字符串（真实存档路径）往返后仍必须逐字节相等
++	var p3 := PlayerState.from_dict(JSON.parse_string(JSON.stringify(p.to_dict())))
++	a.eq(p3.to_dict(), p.to_dict(), "经 JSON 字符串的玩家状态往返")
++
++	# ---- JsonUtil：JSON 数值规范化（存读档往返一致性的唯一保障） ----
++	a.is_true(typeof(JsonUtil.normalize(2.0)) == TYPE_INT, "2.0 归一为 int")
++	a.is_true(typeof(JsonUtil.normalize(0.42)) == TYPE_FLOAT, "0.42 保持 float")
++	a.eq(JsonUtil.normalize(0.42), 0.42, "浮点值不变")
++	a.eq(JsonUtil.normalize([1.0, 2.5, {"a": 3.0}]), [1, 2.5, {"a": 3}], "递归处理数组与字典")
++	a.eq(JsonUtil.normalize(true), true, "bool 原样")
++	a.eq(JsonUtil.normalize(null), null, "null 原样")
++	a.eq(JsonUtil.normalize("张三"), "张三", "字符串原样")
++	# 未经规范化的 JSON 往返必然不等（这就是必须归一的原因）
++	var raw_round_trip = JSON.parse_string(JSON.stringify({"n": 493}))
++	a.ne(raw_round_trip, {"n": 493}, "JSON 解析出的 float 与 int 深比较不相等")
++	a.eq(JsonUtil.normalize(raw_round_trip), {"n": 493}, "规范化后相等")
++
++	# ---- WorldState ----
++	var w := WorldState.create("first_wizarding_war", p, 20260918, reg)
++	a.eq(w.clock.year, 1970, "时代锚定起始年份")
++	a.eq(w.era()["label"], "第一次巫师战争", "时代查询")
++	a.eq(w.world_vars["war_pressure"], 0.8, "世界变量取自时代基线")
++	a.eq(w.world_vars.size(), 7, "七项世界变量")
++	a.eq(w.save_version, 1, "存档版本")
++	a.eq(w.player.name_text, "张三", "持有玩家")
++	var fact := w.add_fact("major", "伏地魔第一次倒台")
++	a.eq(w.history.size(), 1, "写入历史")
++	a.eq(fact["turn"], 0, "事实带回合号")
++	a.eq(w.log.size(), 1, "写入日志")
++
++	var w2 := WorldState.from_dict(w.to_dict(), reg)
++	a.eq(w2.to_dict(), w.to_dict(), "世界状态完全往返")
++	a.eq(w2.registry, reg, "往返后重新挂载注册表")
++	a.is_true(w2.era()["id"] == "first_wizarding_war", "往返后仍能查询内容表")
++	# 端到端：经 JSON 字符串（真实存档路径）往返后仍必须相等
++	var w3 := WorldState.from_dict(JSON.parse_string(JSON.stringify(w.to_dict())), reg)
++	a.eq(w3.to_dict(), w.to_dict(), "经 JSON 字符串的世界状态往返")
++
++	# create 与 from_dict 必须产出同型的 world_vars（含整数值 float，如 witch_hunts.secrecy_integrity=1.0）
++	var we := WorldState.create("witch_hunts", PlayerState.from_dict({"name_text": "乙"}), 1, reg)
++	var we2 := WorldState.from_dict(we.to_dict(), reg)
++	a.eq(we2.world_vars, we.world_vars, "world_vars 类型在 create 与 from_dict 间一致")
++
++	# to_dict 不得包含瞬态注册表；也不得出现非 JSON 原生类型
++	var d := w.to_dict()
++	a.is_false(d.has("registry"), "注册表不序列化")
++	a.is_true(JSON.stringify(d).length() > 0, "世界状态可被 JSON 序列化")
++
++	return a.report("model")
+diff --git a/tests/model_test.gd.uid b/tests/model_test.gd.uid
+new file mode 100644
+index 0000000..b5b8303
+--- /dev/null
++++ b/tests/model_test.gd.uid
+@@ -0,0 +1 @@
++uid://chytwdgj6mi8r
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index 988f979..ef1674d 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -6,6 +6,7 @@ const SUITES: Array[String] = [
+ 	"res://tests/registry_test.gd",
+ 	"res://tests/money_test.gd",
+ 	"res://tests/magic_level_test.gd",
++	"res://tests/model_test.gd",
+ ]
+ 
+ func _initialize() -> void:

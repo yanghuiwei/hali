@@ -1056,8 +1056,9 @@ func run() -> int:
 	})
 	a.eq(p.age_years(), 11, "11岁")
 	a.eq(p.money().formatted(), "10加隆 0西可 0纳特", "起始财产")
-	p.set_money(p.money().subtract(Money.from_knuts(493)))
-	a.eq(p.money().formatted(), "9加隆 0西可 0纳特", "买魔杖后剩 9 加隆")
+	# 正典第十八章：一根普通魔杖 7‑10 加隆；取价格下限 7 加隆 = 7 × 493 = 3451 纳特
+	p.set_money(p.money().subtract(Money.from_knuts(7 * Money.KNUTS_PER_GALLEON)))
+	a.eq(p.money().formatted(), "3加隆 0西可 0纳特", "买 7 加隆普通魔杖后剩 3 加隆（正典第十八章）")
 	p.add_skill("potions", 3)
 	p.add_skill("potions", 2)
 	a.eq(p.skill("potions"), 5, "技能累加")
@@ -1077,6 +1078,9 @@ func run() -> int:
 	var p2 := PlayerState.from_dict(p.to_dict())
 	a.eq(p2.name_text, "张三", "姓名往返")
 	a.eq(p2.to_dict(), p.to_dict(), "玩家状态完全往返")
+	# 端到端：经 JSON 字符串（真实存档路径）往返后仍必须逐字节相等
+	var p3 := PlayerState.from_dict(JSON.parse_string(JSON.stringify(p.to_dict())))
+	a.eq(p3.to_dict(), p.to_dict(), "经 JSON 字符串的玩家状态往返")
 
 	# ---- JsonUtil：JSON 数值规范化（存读档往返一致性的唯一保障） ----
 	a.is_true(typeof(JsonUtil.normalize(2.0)) == TYPE_INT, "2.0 归一为 int")
@@ -1108,6 +1112,14 @@ func run() -> int:
 	a.eq(w2.to_dict(), w.to_dict(), "世界状态完全往返")
 	a.eq(w2.registry, reg, "往返后重新挂载注册表")
 	a.is_true(w2.era()["id"] == "first_wizarding_war", "往返后仍能查询内容表")
+	# 端到端：经 JSON 字符串（真实存档路径）往返后仍必须相等
+	var w3 := WorldState.from_dict(JSON.parse_string(JSON.stringify(w.to_dict())), reg)
+	a.eq(w3.to_dict(), w.to_dict(), "经 JSON 字符串的世界状态往返")
+
+	# create 与 from_dict 必须产出同型的 world_vars（含整数值 float，如 witch_hunts.secrecy_integrity=1.0）
+	var we := WorldState.create("witch_hunts", PlayerState.from_dict({"name_text": "乙"}), 1, reg)
+	var we2 := WorldState.from_dict(we.to_dict(), reg)
+	a.eq(we2.world_vars, we.world_vars, "world_vars 类型在 create 与 from_dict 间一致")
 
 	# to_dict 不得包含瞬态注册表；也不得出现非 JSON 原生类型
 	var d := w.to_dict()
@@ -1298,7 +1310,7 @@ static func from_dict(d: Dictionary) -> PlayerState:
 	p.aptitude_id = str(d.get("aptitude_id", ""))
 	p.aptitude_special = str(d.get("aptitude_special", ""))
 	p.house_id = str(d.get("house_id", "none"))
-	p.political_leaning_id = str(d.get("political_leading_id", d.get("political_leaning_id", "")))
+	p.political_leaning_id = str(d.get("political_leaning_id", ""))
 	p.personality = JsonUtil.normalize(d.get("personality", []))
 	p.life_goal = str(d.get("life_goal", ""))
 	p.sim_style_id = str(d.get("sim_style_id", "mixed"))
@@ -1359,7 +1371,8 @@ static func create(era_id_: String, player_: PlayerState, seed_: int, registry_:
 	var start_year := int(era.get("start_year", 1991)) if era.get("start_year", null) != null else 1991
 	w.era_start_year = start_year
 	w.clock = GameClock.from_dict({"year": start_year, "month": 9, "turn": 0})
-	w.world_vars = (era.get("world_vars", {}) as Dictionary).duplicate(true)
+	# JSON 解析出的整数值 float 必须归一，保证 create 与 from_dict 的内存类型一致（HANDOFF 第 4 节第 1 条）
+	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
 	w.player.age_months = maxi(w.player.age_months, 0)
 	return w
 
@@ -1502,11 +1515,19 @@ func run() -> int:
 	for i in 5:
 		r7.stream_float("world")
 	var snapshot := r7.state_dict()
-	var next_a := r7.stream_int("world", 0, 999999)
+	var expected: Array = []
+	for i in 20:
+		expected.append(r7.stream_int("world", 0, 999999))
+	# 存档必须经 JSON 字符串端到端往返后仍一致（seed/state 是 int64，未字符串化会在 JSON 里丢精度）
 	var r8 := RngService.new(42)
-	r8.load_state(snapshot)
-	a.eq(r8.stream_int("world", 0, 999999), next_a, "恢复后继续抽同一随机数")
-	a.eq(JSON.stringify(snapshot).length() > 0, true, "随机状态可 JSON 序列化")
+	r8.load_state(JSON.parse_string(JSON.stringify(snapshot)))
+	for i in 20:
+		a.eq(r8.stream_int("world", 0, 999999), expected[i], "经 JSON 往返后第 %d 次抽取一致" % i)
+	# 恢复后新建的命名流必须沿用原 seed，而不是构造时的 seed（否则不同实例读同一存档会分叉）
+	var r9 := RngService.new(0)
+	r9.load_state(JSON.parse_string(JSON.stringify(snapshot)))
+	a.eq(r9.stream_int("new_stream", 0, 999999),
+		RngService.new(42).stream_int("new_stream", 0, 999999), "恢复后新流沿用原 seed")
 
 	return a.report("clock")
 ```
@@ -1538,7 +1559,6 @@ func run() -> int:
 	p.sim_style_id = "mixed"
 	p.location_id = "london_muggle"
 	var w := WorldState.create("modern", p, 20260918, reg)
-	var rng := RngService.new(w.game_seed)
 
 	var start_year := w.clock.year
 	w.clock.advance_months(12)
@@ -1546,7 +1566,7 @@ func run() -> int:
 
 	for i in 24:
 		var events := w.tick()
-		a.is_true(events is Array, "tick 返回事件数组")
+		a.eq(w.clock.turn, 13 + i, "tick 每次推进一个回合")
 		if events.size() > 0:
 			a.has_key(events[0], "kind", "事件含 kind")
 			a.has_key(events[0], "text", "事件含 text")
@@ -1559,15 +1579,22 @@ func run() -> int:
 		var v := float(w.world_vars[key])
 		a.between(v, 0.0, 1.0, "世界变量 %s 在界内" % key)
 
-	# 第六十八章防过度热闹：major 事件必须稀少
-	var w2 := WorldState.create("second_wizarding_war", p, 1234, reg)
+	# 第六十八章防过度热闹：major 事件必须稀少，且相邻 major 至少相隔 12 个月
+	var w2 := WorldState.create("second_wizarding_war", p, 38, reg)
 	w2.player.sim_style_id = "epic_wizard_war_typo"   # 未知风格必须被安全处理
+	w2.player.location_id = "ministry_of_magic"       # 让 major 候选真的进入候选集，避免断言空转
 	var major_count := 0
+	var last_major_turn := -1000
+	var min_gap := 9999
 	for i in 240:
 		for e in w2.tick():
 			if bool(e.get("major", false)):
 				major_count += 1
+				min_gap = mini(min_gap, int(e["turn"]) - last_major_turn)
+				last_major_turn = int(e["turn"])
+	a.is_true(major_count >= 1, "该配置下至少出现一次 major，避免断言空转（实际=%d）" % major_count)
 	a.is_true(major_count <= 20, "240 个月内 major 事件不超过 20 次（约 1/12 月上限），实际=%d" % major_count)
+	a.is_true(min_gap >= 12, "相邻 major 事件至少相隔 12 个月（实际最小间隔=%d）" % min_gap)
 
 	# 确定性：同种子同世界 → 同演化
 	var wa := WorldState.create("modern", PlayerState.new_default(), 777, reg)
@@ -1583,11 +1610,15 @@ func run() -> int:
 	var w3 := WorldState.create("modern", PlayerState.new_default(), 5, reg)
 	w3.player.bloodline_id = "muggle_born"
 	w3.player.house_id = "none"
+	w3.player.location_id = "ministry_of_magic"   # 让 ministry 类传闻真的进入候选集，避免断言空转
 	var leaked := false
+	var events_seen := 0
 	for i in 40:
 		for e in w3.tick():
+			events_seen += 1
 			if str(e.get("category", "")) == "魔法部内幕":
 				leaked = true
+	a.is_true(events_seen > 0, "该配置下确实产生了事件（否则信息保护断言空转）")
 	a.is_false(leaked, "未入学麻瓜出身者不应收到“魔法部内幕”级信息")
 
 	return a.report("world_tick")
@@ -1641,18 +1672,23 @@ func chance(name: String, probability: float) -> bool:
 func state_dict() -> Dictionary:
 	# 先物化基础流：保证存档里始终有随机状态可恢复（即使本次回合没有抽过任何随机数）
 	stream("world")
-	var out := {}
+	var streams := {}
 	for name in _streams.keys():
 		var rng: RandomNumberGenerator = _streams[name]
-		out[name] = {"seed": rng.seed, "state": rng.state}
-	return out
+		# seed/state 是 int64，JSON 会把数字解析成 double 而丢精度，因此一律以十进制字符串入档
+		streams[name] = {"seed": str(rng.seed), "state": str(rng.state)}
+	# seed_value 也必须入档（同样字符串化）：恢复后新建的命名流要用原种子派生
+	return {"seed_value": str(seed_value), "streams": streams}
 
 func load_state(d: Dictionary) -> void:
-	for name in d.keys():
-		var entry: Dictionary = d[name]
+	_streams.clear()   # 恢复语义是“替换”而不是“合并”
+	seed_value = int(str(d.get("seed_value", seed_value)))
+	var streams: Dictionary = d.get("streams", {})
+	for name in streams.keys():
+		var entry: Dictionary = streams[name]
 		var rng := RandomNumberGenerator.new()
-		rng.seed = int(entry.get("seed", 0))
-		rng.state = int(entry.get("state", 0))
+		rng.seed = int(str(entry.get("seed", 0)))
+		rng.state = int(str(entry.get("state", 0)))
 		_streams[str(name)] = rng
 ```
 
@@ -1690,22 +1726,22 @@ func load_state(d: Dictionary) -> void:
 
 ```json
 [
-	{"id": "ministry_election", "category": "魔法部动态", "text": "魔法部又要改选了，部长位置据说有三位竞争者。", "weight": 10, "major": false, "min_year": 1692, "zones": ["diagon_alley", "ministry_of_magic", "hogsmeade"], "requires_flags": []},
-	{"id": "ministry_internal", "category": "魔法部内幕", "text": "有司长在威森加摩的走廊里被拦下问话，具体原因没人肯说。", "weight": 4, "major": false, "min_year": 1692, "zones": ["ministry_of_magic"], "requires_flags": ["ministry_access"]},
-	{"id": "war_rumor", "category": "战争", "text": "北方又有人失踪了，预言家日报只用了三行字。", "weight": 8, "major": false, "min_year": 1970, "zones": ["diagon_alley", "hogsmeade", "knockturn_alley"], "requires_flags": []},
-	{"id": "wizard_life", "category": "巫师", "text": "破釜酒吧的老板换了新蜂蜜酒，老主顾们争论了整整一晚。", "weight": 14, "major": false, "min_year": 990, "zones": ["diagon_alley", "hogsmeade", "the_burrow", "godrics_hollow"], "requires_flags": []},
-	{"id": "creature_activity", "category": "神奇生物", "text": "禁林边缘的马人最近驱赶了几个闯进林子的学生。", "weight": 10, "major": false, "min_year": 990, "zones": ["hogwarts", "forbidden_forest", "hogsmeade"], "requires_flags": []},
-	{"id": "creature_dragon", "category": "神奇生物", "text": "龙类保护区报告有一条龙越过了界线，罗马尼亚那边正在追踪。", "weight": 3, "major": false, "min_year": 990, "zones": ["diagon_alley", "ministry_of_magic", "knockturn_alley"], "requires_flags": []},
-	{"id": "economy_price", "category": "经济", "text": "魔药材料涨价了，曼德拉草尤其贵，几家魔药店已经开始限购。", "weight": 12, "major": false, "min_year": 990, "zones": ["diagon_alley", "knockturn_alley", "hogsmeade"], "requires_flags": []},
-	{"id": "economy_wand", "category": "经济", "text": "魔杖木材运输受阻，奥利凡德店里的交货期又长了半个月。", "weight": 8, "major": false, "min_year": 990, "zones": ["diagon_alley"], "requires_flags": []},
-	{"id": "international", "category": "国际", "text": "国际巫师联合会就某国的保密法执行问题又开了一次没有结论的会。", "weight": 6, "major": false, "min_year": 1692, "zones": ["ministry_of_magic", "diagon_alley"], "requires_flags": []},
-	{"id": "quidditch", "category": "巫师", "text": "魁地奇联赛换季，几家俱乐部的转会消息占据了报纸的半个版面。", "weight": 12, "major": false, "min_year": 990, "zones": ["diagon_alley", "hogsmeade", "hogwarts", "the_burrow"], "requires_flags": []},
-	{"id": "school_term", "category": "巫师", "text": "霍格沃茨开学了，对角巷挤满了买书和买坩埚的学生。", "weight": 14, "major": false, "min_year": 990, "zones": ["hogwarts", "diagon_alley", "hogsmeade"], "requires_flags": []},
-	{"id": "daily_life", "category": "巫师", "text": "没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。", "weight": 20, "major": false, "min_year": 990, "zones": ["london_muggle", "spinners_end", "the_burrow", "godrics_hollow", "grimmauld_place", "st_mungos", "gringotts", "room_of_requirement", "beauxbatons", "durmstrang", "ilvermorny", "malfoy_manor"], "requires_flags": []},
-	{"id": "major_azkaban_break", "category": "战争", "text": "阿兹卡班发生了大规模越狱，魔法部承认这是一次严重的失败。", "weight": 1, "major": true, "min_year": 1692, "zones": ["diagon_alley", "ministry_of_magic", "knockturn_alley", "azkaban"], "requires_flags": []},
-	{"id": "major_ministry_coup", "category": "战争", "text": "有消息说魔法部内部正在发生政变，几个司的入口被封锁了。", "weight": 1, "major": true, "min_year": 1692, "zones": ["ministry_of_magic", "diagon_alley"], "requires_flags": []},
-	{"id": "major_gringotts_crisis", "category": "经济", "text": "古灵阁宣布暂停部分金库业务，恐慌在纯血家族之间蔓延。", "weight": 1, "major": true, "min_year": 990, "zones": ["gringotts", "diagon_alley", "knockturn_alley"], "requires_flags": []},
-	{"id": "major_hogwarts_occupied", "category": "战争", "text": "霍格沃茨上空笼罩着不寻常的沉默，猫头鹰邮件停了两天。", "weight": 1, "major": true, "min_year": 1970, "zones": ["hogwarts", "hogsmeade"], "requires_flags": []}
+	{"id": "ministry_election", "label": "魔法部改选", "category": "魔法部动态", "text": "魔法部又要改选了，部长位置据说有三位竞争者。", "weight": 10, "major": false, "min_year": 1692, "zones": ["diagon_alley", "ministry_of_magic", "hogsmeade"], "requires_flags": []},
+	{"id": "ministry_internal", "label": "魔法部内幕", "category": "魔法部内幕", "text": "有司长在威森加摩的走廊里被拦下问话，具体原因没人肯说。", "weight": 4, "major": false, "min_year": 1692, "zones": ["ministry_of_magic"], "requires_flags": ["ministry_access"]},
+	{"id": "war_rumor", "label": "北方失踪", "category": "战争", "text": "北方又有人失踪了，预言家日报只用了三行字。", "weight": 8, "major": false, "min_year": 1970, "zones": ["diagon_alley", "hogsmeade", "knockturn_alley"], "requires_flags": []},
+	{"id": "wizard_life", "label": "破釜酒吧新酒", "category": "巫师", "text": "破釜酒吧的老板换了新蜂蜜酒，老主顾们争论了整整一晚。", "weight": 14, "major": false, "min_year": 990, "zones": ["diagon_alley", "hogsmeade", "the_burrow", "godrics_hollow"], "requires_flags": []},
+	{"id": "creature_activity", "label": "马人驱赶学生", "category": "神奇生物", "text": "禁林边缘的马人最近驱赶了几个闯进林子的学生。", "weight": 10, "major": false, "min_year": 990, "zones": ["hogwarts", "forbidden_forest", "hogsmeade"], "requires_flags": []},
+	{"id": "creature_dragon", "label": "龙越界", "category": "神奇生物", "text": "龙类保护区报告有一条龙越过了界线，罗马尼亚那边正在追踪。", "weight": 3, "major": false, "min_year": 990, "zones": ["diagon_alley", "ministry_of_magic", "knockturn_alley"], "requires_flags": []},
+	{"id": "economy_price", "label": "魔药材料涨价", "category": "经济", "text": "魔药材料涨价了，曼德拉草尤其贵，几家魔药店已经开始限购。", "weight": 12, "major": false, "min_year": 990, "zones": ["diagon_alley", "knockturn_alley", "hogsmeade"], "requires_flags": []},
+	{"id": "economy_wand", "label": "魔杖木材短缺", "category": "经济", "text": "魔杖木材运输受阻，奥利凡德店里的交货期又长了半个月。", "weight": 8, "major": false, "min_year": 990, "zones": ["diagon_alley"], "requires_flags": []},
+	{"id": "international", "label": "国际巫师联合会会议", "category": "国际", "text": "国际巫师联合会就某国的保密法执行问题又开了一次没有结论的会。", "weight": 6, "major": false, "min_year": 1692, "zones": ["ministry_of_magic", "diagon_alley"], "requires_flags": []},
+	{"id": "quidditch", "label": "魁地奇转会", "category": "巫师", "text": "魁地奇联赛换季，几家俱乐部的转会消息占据了报纸的半个版面。", "weight": 12, "major": false, "min_year": 990, "zones": ["diagon_alley", "hogsmeade", "hogwarts", "the_burrow"], "requires_flags": []},
+	{"id": "school_term", "label": "霍格沃茨开学", "category": "巫师", "text": "霍格沃茨开学了，对角巷挤满了买书和买坩埚的学生。", "weight": 14, "major": false, "min_year": 990, "zones": ["hogwarts", "diagon_alley", "hogsmeade"], "requires_flags": []},
+	{"id": "daily_life", "label": "平静日常", "category": "巫师", "text": "没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。", "weight": 20, "major": false, "min_year": 990, "zones": ["london_muggle", "spinners_end", "the_burrow", "godrics_hollow", "grimmauld_place", "st_mungos", "gringotts", "room_of_requirement", "beauxbatons", "durmstrang", "ilvermorny", "malfoy_manor"], "requires_flags": []},
+	{"id": "major_azkaban_break", "label": "阿兹卡班越狱", "category": "战争", "text": "阿兹卡班发生了大规模越狱，魔法部承认这是一次严重的失败。", "weight": 1, "major": true, "min_year": 1692, "zones": ["diagon_alley", "ministry_of_magic", "knockturn_alley", "azkaban"], "requires_flags": []},
+	{"id": "major_ministry_coup", "label": "魔法部政变传闻", "category": "战争", "text": "有消息说魔法部内部正在发生政变，几个司的入口被封锁了。", "weight": 1, "major": true, "min_year": 1692, "zones": ["ministry_of_magic", "diagon_alley"], "requires_flags": []},
+	{"id": "major_gringotts_crisis", "label": "古灵阁停摆", "category": "经济", "text": "古灵阁宣布暂停部分金库业务，恐慌在纯血家族之间蔓延。", "weight": 1, "major": true, "min_year": 990, "zones": ["gringotts", "diagon_alley", "knockturn_alley"], "requires_flags": []},
+	{"id": "major_hogwarts_occupied", "label": "霍格沃茨异变", "category": "战争", "text": "霍格沃茨上空笼罩着不寻常的沉默，猫头鹰邮件停了两天。", "weight": 1, "major": true, "min_year": 1970, "zones": ["hogwarts", "hogsmeade"], "requires_flags": []}
 ]
 ```
 
@@ -1817,6 +1853,7 @@ func tick() -> Array:
 			log.append(ev)
 			if is_major:
 				add_fact("major", str(picked.get("text", "")))
+				break   # 同月最多一起重大事件，保证 MAJOR_EVENT_GAP 成立
 
 	# 3) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
 	var style_now := sim_style()

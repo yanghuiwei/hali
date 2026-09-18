@@ -9,6 +9,8 @@ const TABLE_FILES: Dictionary = {
 	"houses": "houses.json",
 	"sim_styles": "sim_styles.json",
 	"political_leanings": "political_leanings.json",
+	"locations": "locations.json",
+	"rumors": "rumors.json",
 }
 
 var duplicate_ids: PackedStringArray = PackedStringArray()

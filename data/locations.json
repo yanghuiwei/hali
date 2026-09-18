@@ -1,0 +1,23 @@
+[
+	{"id": "london_muggle", "label": "伦敦（麻瓜世界）", "zone": "muggle", "danger": 1, "danger_label": "低危险区"},
+	{"id": "diagon_alley", "label": "对角巷", "zone": "wizarding", "danger": 0, "danger_label": "安全区"},
+	{"id": "knockturn_alley", "label": "翻倒巷", "zone": "wizarding", "danger": 3, "danger_label": "高危险区"},
+	{"id": "hogsmeade", "label": "霍格莫德", "zone": "wizarding", "danger": 1, "danger_label": "低危险区"},
+	{"id": "hogwarts", "label": "霍格沃茨", "zone": "school", "danger": 1, "danger_label": "低危险区"},
+	{"id": "forbidden_forest", "label": "禁林", "zone": "wild", "danger": 3, "danger_label": "高危险区"},
+	{"id": "chamber_of_secrets", "label": "密室", "zone": "forbidden", "danger": 4, "danger_label": "极度危险区"},
+	{"id": "room_of_requirement", "label": "有求必应屋", "zone": "school", "danger": 2, "danger_label": "中等危险区"},
+	{"id": "ministry_of_magic", "label": "魔法部", "zone": "wizarding", "danger": 1, "danger_label": "低危险区"},
+	{"id": "st_mungos", "label": "圣芒戈魔法伤病医院", "zone": "wizarding", "danger": 0, "danger_label": "安全区"},
+	{"id": "gringotts", "label": "古灵阁", "zone": "wizarding", "danger": 2, "danger_label": "中等危险区"},
+	{"id": "gringotts_deep_vaults", "label": "古灵阁地下金库", "zone": "forbidden", "danger": 4, "danger_label": "极度危险区"},
+	{"id": "azkaban", "label": "阿兹卡班", "zone": "forbidden", "danger": 3, "danger_label": "高危险区"},
+	{"id": "godrics_hollow", "label": "戈德里克山谷", "zone": "wizarding", "danger": 1, "danger_label": "低危险区"},
+	{"id": "spinners_end", "label": "蜘蛛尾巷", "zone": "muggle", "danger": 2, "danger_label": "中等危险区"},
+	{"id": "the_burrow", "label": "陋居", "zone": "wizarding", "danger": 0, "danger_label": "安全区"},
+	{"id": "malfoy_manor", "label": "马尔福庄园", "zone": "wizarding", "danger": 2, "danger_label": "中等危险区"},
+	{"id": "grimmauld_place", "label": "格里莫广场12号", "zone": "wizarding", "danger": 1, "danger_label": "低危险区"},
+	{"id": "beauxbatons", "label": "布斯巴顿（法国）", "zone": "school", "danger": 1, "danger_label": "低危险区"},
+	{"id": "durmstrang", "label": "德姆斯特朗（北欧）", "zone": "school", "danger": 2, "danger_label": "中等危险区"},
+	{"id": "ilvermorny", "label": "伊法魔尼（美国）", "zone": "school", "danger": 1, "danger_label": "低危险区"}
+]
