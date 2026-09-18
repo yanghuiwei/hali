@@ -4,6 +4,8 @@ extends SceneTree
 const SUITES: Array[String] = [
 	"res://tests/harness_test.gd",
 	"res://tests/registry_test.gd",
+	"res://tests/money_test.gd",
+	"res://tests/magic_level_test.gd",
 ]
 
 func _initialize() -> void:
