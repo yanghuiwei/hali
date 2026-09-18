@@ -222,3 +222,24 @@ Task 7 后续裁定（Human：「按你建议来」）—— HANDOFF §8 第 27 
 Task 7 裁定实现修复复审 → **通过**（N1/N2 CLOSED，无逻辑改动）。残留 N3（per-turn 契约绑定 `WorldState.tick()`，Task 8 回合推进必须统一经 `tick()`，并补端到端断言）、
   N4（world_tick 层与 `wingardium_leviosa` 同 flag 的覆盖缺口）、N5（台账历史条目表述）均为非阻塞，顺延到 Task 8 测试加固批次。
 Task 7: 修复轮收尾提交 `153487c`（注释引用改为「第五十五条·魔法体系漏洞保护」+ 关闭 HANDOFF §8#27 闸门）。交付点 = 分支顶端 `153487c`。
+
+---
+
+## Task 8（叙事接口 + 状态操作 + 反刷成长 + 回合引擎）
+
+Task 8: 开工前发现并裁定两处计划测试缺陷 —— (1) Progression 测试 `total := g1` 漏加 g2/g3（按公式 23 次总和应为 8，原写法只得 5）；
+  (2) 未知行动文本「我对着墙发呆…」命中 `REST_KEYWORDS` 的「发呆」，拿不到 idle 标签。两处修正并同步计划。
+Task 8: 简报 `task-8-brief.md` 写盘后派发 worker subagent（deepseek-flash）。worker 提交
+  `432adc8 feat(gm): 叙事接口、状态操作、反刷成长与回合引擎`（16 files, +424/−2），并立即写盘 `task-8-report.md`。
+  交付：`src/gm/game_master.gd`、`src/gm/scripted_game_master.gd`、`src/rules/state_ops.gd`、`src/rules/progression.gd`、
+  `src/rules/self_check.gd`（任务 8 最小桩，任务 9 替换；计划明说）、`src/core/turn_engine.gd`、`tests/gm_test.gd`（各含 .uid）。
+  已用探针确认子类可用父类内嵌类 `GmResult.new()`。
+Task 8: Step 7 gate —— worker 自跑 `bash tools/test.sh`：先红（StateOps 未定义）后绿（`[gm] 38/0`，EXIT=0）；controller 独立复跑确认。
+Task 8: 第一轮审查（reviewer subagent，只读）→ Critical=0 / Important=3 / Minor=5，记录 `task-8-review.md`。两处强制修正经独立核对为唯一正确、无夹带；其余 7 个计划代码块逐字一致。
+Task 8: Important（均为计划级/架构级，**本轮不修**，登记 HANDOFF §8）——
+  1. `StateOps.world_gm_rng` 每次新建 RNG → 同一回合内所有 `cast_spell` 掷同一 `spell_roll`、失败副作用同型；
+  2. `TurnEngine.rng` 从不掷数、真正影响叙事的 `ScriptedGameMaster.rng` 未入 `world.rng_state` → 读档后叙事随机流重放（与 §8#17 同源，Task 10 必须补端到端存档续跑对比）；
+  3. `ScriptedGameMaster.act` 直接改世界（SpellResolver/Progression），绕过 StateOps——审查补三条新后果：副作用不进 `deltas_applied`、被拦截施法无 `op_errors`、`last_cast_*` 在生产路径恒不可达。
+Task 8: 流程正确性复核通过：死亡/自检挂起不推进时间；回合推进统一经 `WorldState.tick()`（满足 Task 7 裁定的 per-turn）；自检第 15 回合触发并持久化 `awaiting_audit_ack`。
+Task 8: 按 HANDOFF 流程（Task 5 先例），3 Important + 5 Minor 均登记人类/后续批次，本任务不做修复轮。
+Task 8: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `432adc8`。工作区干净。

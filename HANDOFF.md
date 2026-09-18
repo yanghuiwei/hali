@@ -1,13 +1,13 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-18（Task 7 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 7 交付时为 `d52ebda`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
+> 最后更新：2026-09-18（Task 8 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 8 交付时为 `432adc8`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
 
 ---
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–7 并通过独立审查（Task 4/5/6/7 各含修复轮 + scoped 复审）。** 下一步是 Task 8「叙事接口 + 状态操作 + 反刷成长 + 回合引擎」。第 8 节第 27 条闸门（`energy_loop_count`/`time_rewind_count` 生命周期）**已由 Human 裁定并落地**（per-turn / 终身一次性，提交 `a0bc1d3`），其余待裁定项不阻塞。
+**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–8 并通过独立审查（Task 4/5/6/7 含修复轮；Task 8 的 3 条 Important 均为计划级/架构级，已登记 §8 待后续裁定）。** 下一步是 Task 9「状态面板格式化 + 第七十二章强制自检」（用完整实现替换 Task 8 的最小 `SelfCheck` 桩）。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -22,13 +22,13 @@
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
 | `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一提交 |
-| 当前 HEAD | `plan-01-core-foundation` 顶端 `d52ebda`（Task 7），下次从 `git log` 看即可 |
+| 当前 HEAD | `plan-01-core-foundation` 顶端 `432adc8`（Task 8），下次从 `git log` 看即可 |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
 git checkout plan-01-core-foundation
-git log --oneline -5     # 顶部应是最新的 docs(handoff) 提交，其下依次 d52ebda / 3499881 / f323b55 / 9899229
+git log --oneline -5     # 顶部应是最新的 docs(handoff) 提交，其下依次 432adc8 / 79d15aa / 153487c / a0bc1d3
 ```
 
 `main` 已通过 PR #1 合并到 `eccc871`（含 Task 1–3 代码）；本地 `plan-01-core-foundation` 已在 Task 4 开工时 fast-forward 到同一提交，之后的新提交仍落在执行分支上，先不合回 `main`。
@@ -80,6 +80,7 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 [world_tick] 断言=104 失败=0
 [creation] 断言=176 失败=0
 [spell] 断言=223 失败=0
+[gm] 断言=38 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
 == 3/3 主场景冒烟 ==
@@ -147,8 +148,8 @@ taskkill //PID <PID> //F
 | 5 | 确定性随机 + 月度世界演化 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `23e67cd` + `f9038ca` + `24d5d43` |
 | 6 | 角色创建流水线 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f3d8a31` + `2341540` + `61ad053` |
 | 7 | 魔咒解析器与反漏洞守卫 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f323b55` + `3499881` + `d52ebda` |
-| 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ⬜ 下一步 | — |
-| 9 | 状态面板格式化 + 强制自检 | ⬜ | — |
+| 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ✅ 完成（审查 Approved with findings；3 Important 计划级，已登记 §8） | `432adc8` |
+| 9 | 状态面板格式化 + 强制自检 | ⬜ 下一步（用完整实现替换 Task 8 的 `SelfCheck` 最小桩） | — |
 | 10 | 存档与读档 | ⬜ | — |
 | 11 | 主界面与运行说明 | ⬜ | — |
 
@@ -168,14 +169,17 @@ taskkill //PID <PID> //F
 - Task 6 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-6-review.md`（含三轮独立 reviewer 输出与反证）
 - **Task 7**：`SpellResolver`（等级拦截、失败率 = 等级区间 + 环境 + 资质 + 难度、成功/失败旁白与副作用）+ `data/spells.json`（32 条）+ 五十五条反漏洞守卫（复制/复活/时间回溯/能量叠加/fail-closed 稀有度白名单、终身禁忌、登记与审批）。第一轮 Critical=0 / Important=2 / Minor=4；两轮修复后 scoped 复审 **通过**。
 - Task 7 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-7-review.md`（含三轮独立 reviewer 输出与反证）
+- **Task 8**：`GameMaster`/`GmResult` 接口 + `ScriptedGameMaster`（确定性关键词裁决）+ `StateOps`（唯一审计状态入口）+ `Progression`（第七十章反刷，同（技能,地点）重复收益递减）+ `TurnEngine`（一回合 = 一月；死亡不可逆、自检挂起、世界照常 `tick()`）+ `SelfCheck` 最小桩。审查 **Approved with findings**（Critical=0 / Important=3 / Minor=5）；3 条 Important 均为计划级/架构级（同回合同掷骰、叙事 RNG 未入档、GM 直改世界），已登记 §8。
+- Task 8 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-8-review.md`
 
 ---
 
-## 6. 下一步怎么执行（Task 8）
+## 6. 下一步怎么执行（Task 9）
 
-> ✅ 第 8 节第 27 条的闸门（`energy_loop_count`/`time_rewind_count` 生命周期）已由 Human 裁定并落地（per-turn / 终身一次性，`a0bc1d3`）。
+> ✅ 第 8 节第 27 条闸门（`energy_loop_count`/`time_rewind_count` 生命周期）已由 Human 裁定并落地（per-turn / 终身一次性，`a0bc1d3`）；Task 8 的 3 条 Important 已登记 §8。
 
-1. 先读计划里 `### Task 8: 叙事接口 + 状态操作 + 反刷成长 + 回合引擎`（含完整代码块与预期输出）。
+1. 先读计划里 `### Task 9: 状态面板格式化 + 第七十二章强制自检`（含完整代码块与预期输出）；
+   用完整实现替换 Task 8 写入的 `src/rules/self_check.gd` 最小桩（HANDOFF §8#1 已确认按计划留桩可接受）。
 2. 按 superpowers 的 **subagent-driven-development** 流程推进：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录。
 3. **子代理必须使用与主会话相同的大模型**（本机为 `deepseek/deepseek-flash`）：`pi -p --provider deepseek --model deepseek-flash ...`，不要用 harness 默认模型。
 4. **提交前必须有绿灯**：`bash tools/test.sh` 输出 + 原始文本留存到报告里。Task 3 的流程教训（实现者没跑 Step 5、没写报告，控制器事后补跑）已在台账登记为 P1 流程发现，Task 4 起未重演。
@@ -239,6 +243,17 @@ taskkill //PID <PID> //F
 31. **（Task 7 Minor，文档级）** `difficulty` 实为**绝对失败率偏移**（0.02–0.30）而非「相对难度」，与计划表述不符；有意则注明，否则改插值/缩放。
 32. **（Task 7 Minor）** fail-closed 稀有度白名单的 `常见` 与简体 `传说` 无独立断言；全角空白（U+3000）/全角拉丁会被过度拦截（安全方向，无绕过）；若 Task 8 的 LLM 层可能产出全角字符，需在归一化前加宽度折叠。
 
+### Task 8 审查新增（均不阻塞 Task 9，但需登记）
+
+33. **（Task 8 Important，计划级）** `StateOps.world_gm_rng` 每次调用都新建 RNG（`game_seed + turn*15485863`）→ 同一回合内所有 `cast_spell` 掷出同一个 `spell_roll`、失败副作用也相同（重复施法与不同咒语结果完全相关）。建议改为引擎持有单一 RNG 并注入，或在派生种子里混入 op 序号/盐；属计划级，交计划 02 / Task 10。
+34. **（Task 8 Important，计划级，与 §8#17 同源）** `TurnEngine.rng` 全文从不掷数，真正影响叙事的 `ScriptedGameMaster.rng`（work/social/spell_roll）**未入档**；`world.rng_state` 存的是一个空转 RNG。读档后叙事随机流从头开始（同一「打工」收益恒定、社交掷骰重放），破坏「存档往返一致」不变量。测试 `w8.rng_state.size() > 0` 对此零覆盖。**Task 10 必须补 `submit → to_dict → JSON → from_dict → 重建引擎 → submit` 的端到端对比**，并决定「引擎持有唯一 RNG 并注入 GM」还是「改述为派生式确定性并删除 `rng_state`」。
+35. **（Task 8 Important，架构，扩展 §8#3）** `ScriptedGameMaster.act` 直接改世界（`SpellResolver.cast` 写能量/时间/非法施法计数，`Progression.gain` 写 `recent_training`），绕过 `StateOps`（计划内已文档化）。审查新增三条后果：(a) 副作用不进 `deltas_applied`，与第七章「所有变更经 StateOps 便于审计」相悖；(b) 被守卫拦截的施法既无 `op_errors` 也无状态痕迹，调用方无法区分「拒绝」与「正常」；(c) `last_cast_success`/`last_cast_narration` 只有 StateOps 路径会写，生产路径恒为陈旧/未设。留待人类裁定。
+36. **（Task 8 Minor）** `TurnEngine.submit` 的 `deltas_applied` 实际是「请求的 delta」（被 StateOps 拒绝的 op 也在其中），字段名误导；建议改名或按 `op_errors` 过滤。
+37. **（Task 8 Minor）** `StateOps` 输入硬化缺口：`set_flag`/`set_player_flag` 空 key 静默写 `flags[""]`；`know_fact` 空 `fact_id` 静默写入；`add_money` 非数值静默变 0；`relation_delta` 不校验 `npc_id`、增量无上下限。建议补错误与负例测试。
+38. **（Task 8 Minor）** `Progression` 窗口 `turn - entry <= WINDOW_TURNS` 是闭区间（实际保留 13 个回合偏移，与「12 回合内」差一）；`gain==0` 也追加记录，同一回合反复调用可无界累积；键从不 GC（换地点即新建）；「换环境重新计算」导致两地点轮换可把惩罚减半。
+39. **（Task 8 Minor，文档级）** 计划 Interfaces 少列 `set_player_flag`、`set_magic_tier` 与 `relation_delta.interest`；`GmResult.audit_required` 无消费者；`tags` 未出现在 `submit` 返回字典（UI 拿不到 cast/train 分类）。
+40. **（Task 8 Minor，测试强度）** 空转/弱断言：`cast_result.narration.contains("照明咒") or narration.length()>0`（右操作数恒真）、`w5.clock.year >= before_year` 恒真、`money_before` 未使用、cast 循环未验证计数真的到上限、自检只查标题未查内容且未断言第 14 回合 `audit` 为空、`op_errors` 消息内容未断言；另缺 `set_flag`/`set_player_flag`/`set_magic_tier`/`relation_delta`、`know_fact` 空/`system` 来源、非字典条、blocked 提交不推进回合等负例。建议与 Task 9/10 测试加固批次合并。
+
 ---
 
 ## 9. 环境与卫生
@@ -247,7 +262,7 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `d52ebda` / `f323b55` / `9899229` / `eccc871`
+  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `432adc8` / `79d15aa` / `153487c` / `eccc871`
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致

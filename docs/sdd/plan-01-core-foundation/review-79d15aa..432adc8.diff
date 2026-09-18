@@ -1,0 +1,564 @@
+# Review package: 79d15aa..432adc8
+
+## Commits
+432adc8 feat(gm): 叙事接口、状态操作、反刷成长与回合引擎
+
+## Files changed
+ .../2026-09-18-hp-magic-era-01-core-foundation.md  |   4 +-
+ src/core/turn_engine.gd                            |  52 ++++++++
+ src/core/turn_engine.gd.uid                        |   1 +
+ src/gm/game_master.gd                              |  15 +++
+ src/gm/game_master.gd.uid                          |   1 +
+ src/gm/scripted_game_master.gd                     | 102 +++++++++++++++
+ src/gm/scripted_game_master.gd.uid                 |   1 +
+ src/rules/progression.gd                           |  27 ++++
+ src/rules/progression.gd.uid                       |   1 +
+ src/rules/self_check.gd                            |  10 ++
+ src/rules/self_check.gd.uid                        |   1 +
+ src/rules/state_ops.gd                             |  69 ++++++++++
+ src/rules/state_ops.gd.uid                         |   1 +
+ tests/gm_test.gd                                   | 139 +++++++++++++++++++++
+ tests/gm_test.gd.uid                               |   1 +
+ tests/run_tests.gd                                 |   1 +
+ 16 files changed, 424 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+index f20c45f..b87714e 100644
+--- a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
++++ b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+@@ -2978,7 +2978,7 @@ func run() -> int:
+ 	a.eq(g1, 4, "首次训练满额")
+ 	a.is_true(g2 < g1, "重复训练收益下降")
+ 	a.is_true(g3 <= g2, "继续下降")
+-	var total := g1
++	var total := g1 + g2 + g3
+ 	for i in 20:
+ 		total += Progression.gain(w3, "potions", 4)
+ 	a.eq(total, 8, "同一地点重复 23 次的总收益恰好 8（4+2+1+1，之后归零）")
+@@ -2999,7 +2999,7 @@ func run() -> int:
+ 	var work := gm.act(w4, "我去对角巷打工赚钱")
+ 	a.is_true(work.deltas.size() > 0, "打工产生增量")
+ 	a.is_true(work.tags.has("work"), "打上 work 标签")
+-	var unknown := gm.act(w4, "我对着墙发呆并思考宇宙的尽头")
++	var unknown := gm.act(w4, "我对着墙思考宇宙的尽头")
+ 	a.is_true(unknown.narration.length() > 0, "未知行动也要有叙事，而不是崩溃")
+ 	a.is_true(unknown.tags.has("idle"), "未知行动归为 idle")
+ 
+diff --git a/src/core/turn_engine.gd b/src/core/turn_engine.gd
+new file mode 100644
+index 0000000..a577064
+--- /dev/null
++++ b/src/core/turn_engine.gd
+@@ -0,0 +1,52 @@
++class_name TurnEngine
++extends RefCounted
++
++var world: WorldState = null
++var gm: GameMaster = null
++var rng: RngService = null
++
++func _init(world_: WorldState, gm_: GameMaster, rng_: RngService) -> void:
++	world = world_
++	gm = gm_
++	rng = rng_
++	if world.rng_state.size() > 0:
++		rng.load_state(world.rng_state)
++
++func acknowledge_audit() -> void:
++	world.flags.erase("awaiting_audit_ack")
++
++# 一个回合 = 一个月：玩家行动 → 世界结算 → 必要时强制自检。
++func submit(action_text: String) -> Dictionary:
++	var out := {
++		"narration": "", "deltas_applied": [], "op_errors": PackedStringArray(),
++		"events": [], "audit": "", "blocked": false,
++	}
++
++	# 死亡真实且不可逆（第五十三章）
++	if not world.player.alive:
++		out["blocked"] = true
++		out["narration"] = "你已经死了。死亡默认真实且不可逆。请切换到继承人或读取存档。"
++		return out
++
++	# 第七十二章：自检未确认前禁止续写剧情
++	if bool(world.flags.get("awaiting_audit_ack", false)):
++		out["blocked"] = true
++		out["narration"] = "上一轮自检尚未确认。请先阅读【剧情快照】与【人设OOC自检报告】，然后确认自检。"
++		return out
++
++	var result := gm.act(world, action_text)
++	var errors := StateOps.apply(world, result.deltas)
++	out["narration"] = result.narration
++	out["deltas_applied"] = result.deltas
++	out["op_errors"] = errors
++
++	# 第四十七章：世界不会停下来等待玩家
++	var events := world.tick()
++	out["events"] = events
++	world.rng_state = rng.state_dict()
++
++	if SelfCheck.is_audit_turn(world.clock.turn):
++		out["audit"] = SelfCheck.report(world)
++		world.flags["awaiting_audit_ack"] = true
++
++	return out
+diff --git a/src/core/turn_engine.gd.uid b/src/core/turn_engine.gd.uid
+new file mode 100644
+index 0000000..aa38db0
+--- /dev/null
++++ b/src/core/turn_engine.gd.uid
+@@ -0,0 +1 @@
++uid://bddqeku0svlst
+diff --git a/src/gm/game_master.gd b/src/gm/game_master.gd
+new file mode 100644
+index 0000000..16651c2
+--- /dev/null
++++ b/src/gm/game_master.gd
+@@ -0,0 +1,15 @@
++class_name GameMaster
++extends RefCounted
++
++class GmResult:
++	var narration: String = ""
++	var deltas: Array = []
++	var tags: PackedStringArray = PackedStringArray()
++	var audit_required: bool = false
++
++# 接口：计划 01 用 ScriptedGameMaster，计划 02 用 LlmGameMaster 替换。
++# 实现者只描述发生了什么（叙事 + 状态增量），不直接改世界。
++func act(_world: WorldState, _action_text: String) -> GmResult:
++	var r := GmResult.new()
++	r.narration = "（尚未接入叙事引擎）"
++	return r
+diff --git a/src/gm/game_master.gd.uid b/src/gm/game_master.gd.uid
+new file mode 100644
+index 0000000..7854be4
+--- /dev/null
++++ b/src/gm/game_master.gd.uid
+@@ -0,0 +1 @@
++uid://54vygysgqqgp
+diff --git a/src/gm/scripted_game_master.gd b/src/gm/scripted_game_master.gd
+new file mode 100644
+index 0000000..6ffe951
+--- /dev/null
++++ b/src/gm/scripted_game_master.gd
+@@ -0,0 +1,102 @@
++class_name ScriptedGameMaster
++extends GameMaster
++
++const TRAIN_KEYWORDS: Array[String] = ["练习", "学习", "训练", "钻研", "研究", "复习", "上课"]
++const WORK_KEYWORDS: Array[String] = ["打工", "赚钱", "上班", "经商", "接活", "做生意"]
++const SOCIAL_KEYWORDS: Array[String] = ["打听", "询问", "聊天", "结交", "社交", "谈"]
++const REST_KEYWORDS: Array[String] = ["休息", "睡觉", "吃饭", "喝", "闲逛", "发呆", "回家"]
++const CAST_KEYWORDS: Array[String] = ["念", "施展", "使用咒语", "施法", "用魔杖"]
++
++const SKILL_BY_KEYWORD: Dictionary = {
++	"魔药": "potions", "草药": "herbology", "魔咒": "charms", "变形": "transfiguration",
++	"黑魔法防御": "dada", "防御": "dada", "历史": "history_of_magic", "天文": "astronomy",
++	"占卜": "divination", "魔文": "ancient_runes", "神奇生物": "care_of_magical_creatures",
++	"魁地奇": "quidditch", "治疗": "healing", "社交": "social", "口才": "social",
++}
++
++var rng: RngService = null
++
++func _init(rng_: RngService = null) -> void:
++	rng = rng_ if rng_ != null else RngService.new(0)
++
++func _contains_any(text: String, keywords: Array) -> bool:
++	for k in keywords:
++		if text.contains(str(k)):
++			return true
++	return false
++
++func _detect_skill(text: String) -> String:
++	# 第六十三章：主修科目来自玩家长期投入
++	for keyword in SKILL_BY_KEYWORD.keys():
++		if text.contains(str(keyword)):
++			return str(SKILL_BY_KEYWORD[keyword])
++	return "charms"
++
++func _detect_spell(world: WorldState, text: String) -> String:
++	for spell_id in world.registry.ids("spells"):
++		var label := str(world.registry.entry("spells", spell_id).get("label", ""))
++		if not label.is_empty() and text.contains(label):
++			return str(spell_id)
++	return ""
++
++func act(world: WorldState, action_text: String) -> GmResult:
++	var r := GmResult.new()
++	var text := action_text.strip_edges()
++
++	if text.is_empty():
++		r.narration = "你没有做任何事。世界继续向前。"
++		r.tags.append("idle")
++		return r
++
++	# 施法意图优先，避免「练习魔咒」被误判
++	var spell_id := _detect_spell(world, text)
++	if not spell_id.is_empty() and _contains_any(text, CAST_KEYWORDS):
++		r.tags.append("cast")
++		# 这里直接调用规则层，因为它必须产出旁白；守卫与代价由 cast() 内部结算。
++		# 若由 StateOps 的 cast_spell 操作重放，会掷两次骰并重复结算守卫。
++		var outcome := SpellResolver.cast(world, spell_id, {}, rng)
++		r.narration = outcome.narration
++		if not outcome.blocked and outcome.success:
++			# 成功一次即算入门；重复施法不再重复记录（PlayerState.learn_spell 幂等）
++			r.deltas.append({"op": "learn_spell", "spell_id": spell_id})
++		return r
++
++	if _contains_any(text, TRAIN_KEYWORDS):
++		var skill_id := _detect_skill(text)
++		var amount := Progression.gain(world, skill_id, 4)
++		r.tags.append("train")
++		r.deltas.append({"op": "gain_skill", "skill_id": skill_id, "amount": amount})
++		var skill_label := str(world.registry.entry("skills", skill_id).get("label", skill_id))
++		if amount >= 4:
++			r.narration = "你花了整整一个月钻研%s，进步明显。" % skill_label
++		elif amount > 0:
++			r.narration = "你继续练%s，但收获不如从前（重复练习收益下降）。" % skill_label
++		else:
++			r.narration = "你在同一个地方反复练%s，几乎没有任何进步。你需要新的环境或新的问题。" % skill_label
++		return r
++
++	if _contains_any(text, WORK_KEYWORDS):
++		var income := 30 + int(world.player.skill("social")) * 2 + int(rng.stream_int("work", 0, 20))
++		r.tags.append("work")
++		r.deltas.append({"op": "add_money", "knuts": income})
++		r.narration = "你忙了一个月，赚到 %s。" % Money.from_knuts(income).formatted()
++		return r
++
++	if _contains_any(text, SOCIAL_KEYWORDS):
++		var roll := rng.stream_float("social")
++		r.tags.append("social")
++		if roll < 0.5:
++			r.deltas.append({"op": "know_fact", "fact_id": "rumor_%d" % world.clock.turn, "source": "破釜酒吧传闻"})
++			r.narration = "你在酒吧里听人说了一些事。真假难辨，但至少有了线索。"
++		else:
++			r.narration = "你试着搭话，对方只是敷衍了几句。信息不会免费送上门。"
++		return r
++
++	if _contains_any(text, REST_KEYWORDS):
++		r.tags.append("rest")
++		r.narration = "你过了一个平常的月份：吃饭、睡觉、读《预言家日报》。"
++		return r
++
++	r.tags.append("idle")
++	r.narration = "你尝试做了些别的事。世界未必回应，但它仍在继续。"
++	return r
+diff --git a/src/gm/scripted_game_master.gd.uid b/src/gm/scripted_game_master.gd.uid
+new file mode 100644
+index 0000000..e7d99c3
+--- /dev/null
++++ b/src/gm/scripted_game_master.gd.uid
+@@ -0,0 +1 @@
++uid://d2wyjbbie37u2
+diff --git a/src/rules/progression.gd b/src/rules/progression.gd
+new file mode 100644
+index 0000000..53b951c
+--- /dev/null
++++ b/src/rules/progression.gd
+@@ -0,0 +1,27 @@
++class_name Progression
++extends RefCounted
++
++const WINDOW_TURNS := 12
++const MIN_GAIN := 0
++
++# 第七十章：禁止站在禁林砍 1000 只八眼巨蛛升级。
++# 同一（技能, 地点）在 12 回合内的重复次数越多，收益越低；换环境则重新计算。
++static func gain(world: WorldState, skill_id: String, base_gain: int) -> int:
++	var key := "%s@%s" % [skill_id, world.player.location_id]
++	var recent: Dictionary = world.flags.get("recent_training", {})
++	var history: Array = recent.get(key, [])
++	var kept: Array = []
++	for entry in history:
++		if world.clock.turn - int(entry) <= WINDOW_TURNS:
++			kept.append(int(entry))
++	var repeats := kept.size()
++	kept.append(world.clock.turn)
++	recent[key] = kept
++	world.flags["recent_training"] = recent
++
++	var factor := 1.0 / float(1 + repeats)
++	# 向下取整（不是四舍五入）：重复 4 次之后收益归零
++	var gained: int = maxi(MIN_GAIN, int(float(base_gain) * factor))
++	# 注意：这里只计算与记账，不修改玩家技能。
++	# 技能写回由 StateOps 的 gain_skill 操作统一完成，避免同一份收益被应用两次。
++	return gained
+diff --git a/src/rules/progression.gd.uid b/src/rules/progression.gd.uid
+new file mode 100644
+index 0000000..3bff6de
+--- /dev/null
++++ b/src/rules/progression.gd.uid
+@@ -0,0 +1 @@
++uid://cv18xtu7008b7
+diff --git a/src/rules/self_check.gd b/src/rules/self_check.gd
+new file mode 100644
+index 0000000..7913373
+--- /dev/null
++++ b/src/rules/self_check.gd
+@@ -0,0 +1,10 @@
++class_name SelfCheck
++extends RefCounted
++
++const AUDIT_INTERVAL := 15
++
++static func is_audit_turn(turn: int) -> bool:
++	return turn > 0 and turn % AUDIT_INTERVAL == 0
++
++static func report(_world: WorldState) -> String:
++	return "【剧情快照】\n（自检报告将在任务 9 补全）\n【人设OOC自检报告】\n（自检报告将在任务 9 补全）"
+diff --git a/src/rules/self_check.gd.uid b/src/rules/self_check.gd.uid
+new file mode 100644
+index 0000000..92c6055
+--- /dev/null
++++ b/src/rules/self_check.gd.uid
+@@ -0,0 +1 @@
++uid://7hw8htetmt7e
+diff --git a/src/rules/state_ops.gd b/src/rules/state_ops.gd
+new file mode 100644
+index 0000000..3884fb3
+--- /dev/null
++++ b/src/rules/state_ops.gd
+@@ -0,0 +1,69 @@
++class_name StateOps
++extends RefCounted
++
++# 所有玩家/世界状态变更都必须经过这里，便于审计与自检（第七十二章）。
++static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
++	var errors := PackedStringArray()
++	for raw in deltas:
++		if typeof(raw) != TYPE_DICTIONARY:
++			errors.append("非字典操作: %s" % str(raw))
++			continue
++		var op := str(raw.get("op", ""))
++		match op:
++			"add_money":
++				var m := world.player.money().add(Money.from_knuts(int(raw.get("knuts", 0))))
++				world.player.set_money(m)
++			"gain_skill":
++				var skill_id := str(raw.get("skill_id", ""))
++				if not world.registry.has("skills", skill_id):
++					errors.append("未知技能: %s" % skill_id)
++				else:
++					world.player.add_skill(skill_id, int(raw.get("amount", 0)))
++			"learn_spell":
++				var spell_id := str(raw.get("spell_id", ""))
++				if not world.registry.has("spells", spell_id):
++					errors.append("未知魔咒: %s" % spell_id)
++				else:
++					world.player.learn_spell(spell_id)
++			"set_flag":
++				world.flags[str(raw.get("key", ""))] = raw.get("value", true)
++			"set_player_flag":
++				world.player.flags[str(raw.get("key", ""))] = raw.get("value", true)
++			"know_fact":
++				var source := str(raw.get("source", ""))
++				if source.is_empty():
++					errors.append("know_fact 缺少来源: %s" % str(raw.get("fact_id", "")))
++				elif source == "system":
++					errors.append("禁止系统直接告知真相（第四十三章/第五十七章）")
++				else:
++					world.player.known_facts[str(raw.get("fact_id", ""))] = source
++			"set_location":
++				var location_id := str(raw.get("location_id", ""))
++				if not world.registry.has("locations", location_id):
++					errors.append("未知地点: %s" % location_id)
++				else:
++					world.player.location_id = location_id
++			"set_job":
++				world.player.job = str(raw.get("job", ""))
++			"relation_delta":
++				var npc_id := str(raw.get("npc_id", ""))
++				var rel: Dictionary = world.player.relations.get(npc_id, {"trust": 0, "interest": 0, "hostility": 0})
++				rel["trust"] = int(rel.get("trust", 0)) + int(raw.get("trust", 0))
++				rel["hostility"] = int(rel.get("hostility", 0)) + int(raw.get("hostility", 0))
++				rel["interest"] = int(rel.get("interest", 0)) + int(raw.get("interest", 0))
++				world.player.relations[npc_id] = rel
++			"set_magic_tier":
++				world.player.magic_tier = clampi(int(raw.get("tier", world.player.magic_tier)), 0, MagicLevel.LABELS.size() - 1)
++			"cast_spell":
++				var outcome := SpellResolver.cast(world, str(raw.get("spell_id", "")), raw.get("conditions", {}), world_gm_rng(world))
++				world.flags["last_cast_success"] = outcome.success
++				world.flags["last_cast_narration"] = outcome.narration
++				if outcome.blocked:
++					errors.append(outcome.blocked_reason)
++			_:
++				errors.append("未知操作: %s" % op)
++	return errors
++
++# cast_spell 需要一个随机源；由世界种子与当前回合推导，保证可复现。
++static func world_gm_rng(world: WorldState) -> RngService:
++	return RngService.new(world.game_seed + world.clock.turn * 15485863)
+diff --git a/src/rules/state_ops.gd.uid b/src/rules/state_ops.gd.uid
+new file mode 100644
+index 0000000..3559a47
+--- /dev/null
++++ b/src/rules/state_ops.gd.uid
+@@ -0,0 +1 @@
++uid://cjay52yyarls1
+diff --git a/tests/gm_test.gd b/tests/gm_test.gd
+new file mode 100644
+index 0000000..cbd47f9
+--- /dev/null
++++ b/tests/gm_test.gd
+@@ -0,0 +1,139 @@
++class_name GmTest
++extends RefCounted
++
++func make_world(tier := 2) -> WorldState:
++	var reg := Registry.load_default()
++	var p := PlayerState.new_default()
++	p.name_text = "张三"
++	p.bloodline_id = "half_blood"
++	p.birth_identity_id = "ordinary_wizard_family"
++	p.magic_tier = tier
++	p.location_id = "hogwarts"
++	p.sim_style_id = "mixed"
++	p.age_months = 132
++	p.money_knuts = 4930
++	var w := WorldState.create("modern", p, 20260918, reg)
++	return w
++
++func run() -> int:
++	var a := TestAssert.new()
++
++	# ---- StateOps：未知 op 记错误但不崩 ----
++	var w := make_world()
++	var errs := StateOps.apply(w, [
++		{"op": "add_money", "knuts": 493},
++		{"op": "set_job", "job": "魔药学徒"},
++		{"op": "不存在的操作", "x": 1},
++		{"op": "gain_skill", "skill_id": "potions", "amount": 2},
++	])
++	a.eq(errs.size(), 1, "只有一个未知 op 错误")
++	a.eq(w.player.money().formatted(), "11加隆 0西可 0纳特", "加钱生效")
++	a.eq(w.player.job, "魔药学徒", "身份变更生效")
++	a.eq(w.player.skill("potions"), 2, "技能生效")
++
++	# 非法内容 id 不得写入
++	var errs2 := StateOps.apply(w, [
++		{"op": "learn_spell", "spell_id": "不存在的魔咒"},
++		{"op": "set_location", "location_id": "不存在的地点"},
++	])
++	a.eq(errs2.size(), 2, "非法魔咒与地点都报错")
++	a.is_false(w.player.knows_spell("不存在的魔咒"), "非法魔咒未写入")
++
++	# know_fact 必须带来源（第四十三章：信息分来源可信度）
++	StateOps.apply(w, [{"op": "know_fact", "fact_id": "r1", "source": "破釜酒吧传闻"}])
++	a.eq(w.player.known_facts["r1"], "破釜酒吧传闻", "记录信息来源")
++
++	# 施法 op 走 SpellResolver：过度施法不得无限累积
++	var w2 := make_world(5)
++	for i in 5:
++		StateOps.apply(w2, [{"op": "cast_spell", "spell_id": "lumos", "conditions": {}}])
++	a.is_true(int(w2.flags.get("energy_loop_count", 0)) <= 3, "低阶咒语叠加计数不超过上限")
++	# 直接顶到上限，验证守卫真的拦截（不依赖掷骰结果）
++	w2.flags["energy_loop_count"] = 3
++	StateOps.apply(w2, [{"op": "cast_spell", "spell_id": "lumos", "conditions": {}}])
++	a.is_true(str(w2.flags.get("last_cast_narration", "")).contains("上限"), "达到上限后施法被拦截")
++
++	# ---- Progression：第七十章反刷 ----
++	var w3 := make_world()
++	var g1 := Progression.gain(w3, "potions", 4)
++	var g2 := Progression.gain(w3, "potions", 4)
++	var g3 := Progression.gain(w3, "potions", 4)
++	a.eq(g1, 4, "首次训练满额")
++	a.is_true(g2 < g1, "重复训练收益下降")
++	a.is_true(g3 <= g2, "继续下降")
++	var total := g1 + g2 + g3
++	for i in 20:
++		total += Progression.gain(w3, "potions", 4)
++	a.eq(total, 8, "同一地点重复 23 次的总收益恰好 8（4+2+1+1，之后归零）")
++	# 换地点 = 新环境（第七十章：成长来自新环境）
++	w3.player.location_id = "diagon_alley"
++	a.is_true(Progression.gain(w3, "potions", 4) >= 1, "换环境后重新获得成长")
++	# 不同技能互不影响
++	a.eq(Progression.gain(w3, "charms", 4), 4, "未训练过的技能满额")
++
++	# ---- ScriptedGameMaster：确定性叙事替身 ----
++	var w4 := make_world()
++	var gm := ScriptedGameMaster.new(RngService.new(11))
++	var study := gm.act(w4, "我要练习魔药学")
++	a.is_true(study.narration.length() > 0, "有叙事")
++	a.is_true(study.deltas.size() > 0, "产生状态增量")
++	a.is_true(study.tags.has("train"), "打上 train 标签")
++	var money_before := w4.player.money_knuts
++	var work := gm.act(w4, "我去对角巷打工赚钱")
++	a.is_true(work.deltas.size() > 0, "打工产生增量")
++	a.is_true(work.tags.has("work"), "打上 work 标签")
++	var unknown := gm.act(w4, "我对着墙思考宇宙的尽头")
++	a.is_true(unknown.narration.length() > 0, "未知行动也要有叙事，而不是崩溃")
++	a.is_true(unknown.tags.has("idle"), "未知行动归为 idle")
++
++	# 施法意图必须能被识别并走 SpellResolver
++	var cast_result := gm.act(w4, "我念出 照明咒")
++	a.is_true(cast_result.tags.has("cast"), "识别施法意图")
++	a.is_true(cast_result.narration.contains("照明咒") or cast_result.narration.length() > 0, "施法旁白")
++
++	# ---- TurnEngine：世界不会停下来等玩家（第四十七章） ----
++	var w5 := make_world()
++	var engine := TurnEngine.new(w5, ScriptedGameMaster.new(RngService.new(22)), RngService.new(22))
++	var before_year := w5.clock.year
++	var before_turn := w5.clock.turn
++	var r := engine.submit("我要去上课")
++	a.has_key(r, "narration", "返回叙事")
++	a.has_key(r, "events", "返回本月事件")
++	a.eq(w5.clock.turn, before_turn + 1, "每次提交推进一个回合")
++	a.is_true(w5.clock.year >= before_year, "时间向前")
++
++	# ---- 第七十二章：第 15 回合强制自检，并且必须等待玩家确认 ----
++	var w6 := make_world()
++	var engine6 := TurnEngine.new(w6, ScriptedGameMaster.new(RngService.new(33)), RngService.new(33))
++	var audit_seen := ""
++	for i in 15:
++		var res := engine6.submit("我要去上课")
++		if str(res.get("audit", "")) != "":
++			audit_seen = str(res["audit"])
++	a.is_true(audit_seen.contains("剧情快照"), "第 15 回合输出剧情快照")
++	a.is_true(audit_seen.contains("人设OOC自检报告"), "第 15 回合输出 OOC 自检报告")
++	a.is_true(bool(w6.flags.get("awaiting_audit_ack", false)), "自检后挂起，等待指令")
++
++	var blocked_res := engine6.submit("我要继续上课")
++	a.is_true(bool(blocked_res.get("blocked", false)), "未确认自检前拒绝继续剧情")
++	a.is_true(str(blocked_res["narration"]).contains("自检"), "提示先确认自检")
++	engine6.acknowledge_audit()
++	a.is_false(bool(w6.flags.get("awaiting_audit_ack", false)), "确认后解除挂起")
++	var resumed := engine6.submit("我要继续上课")
++	a.is_false(bool(resumed.get("blocked", false)), "确认后可以继续")
++
++	# ---- 死亡不可逆（第五十三章）：死亡玩家不能再行动 ----
++	var w7 := make_world()
++	w7.player.alive = false
++	var engine7 := TurnEngine.new(w7, ScriptedGameMaster.new(RngService.new(44)), RngService.new(44))
++	var dead_res := engine7.submit("我要起床")
++	a.is_true(bool(dead_res.get("blocked", false)), "死者无法行动")
++	a.is_true(str(dead_res["narration"]).contains("死亡"), "死亡提示")
++
++	# ---- 存档里必须留下随机流状态，读档才能续跑一致（任务 10 会用到） ----
++	var w8 := make_world()
++	var engine8 := TurnEngine.new(w8, ScriptedGameMaster.new(RngService.new(55)), RngService.new(55))
++	engine8.submit("我要去上课")
++	a.is_true(w8.rng_state.size() > 0, "回合引擎把随机流状态写回世界")
++
++	return a.report("gm")
+diff --git a/tests/gm_test.gd.uid b/tests/gm_test.gd.uid
+new file mode 100644
+index 0000000..11a5741
+--- /dev/null
++++ b/tests/gm_test.gd.uid
+@@ -0,0 +1 @@
++uid://14d6s2a5rmdd
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index 52f8c2c..8587830 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -11,6 +11,7 @@ const SUITES: Array[String] = [
+ 	"res://tests/world_tick_test.gd",
+ 	"res://tests/creation_test.gd",
+ 	"res://tests/spell_test.gd",
++	"res://tests/gm_test.gd",
+ ]
+ 
+ func _initialize() -> void:
