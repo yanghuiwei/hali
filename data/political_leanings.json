@@ -1,0 +1,8 @@
+[
+	{"id": "blood_equality", "label": "血统平等", "pureblood_opinion": -1.0, "ministry_opinion": 0.2, "risk": "在纯血势力当权时可能被针对", "note": "推动麻瓜出身平权、狼人权益、家养小精灵解放"},
+	{"id": "pureblood_conservative", "label": "纯血保守", "pureblood_opinion": 1.0, "ministry_opinion": 0.5, "risk": "战后公开表态可能招致调查", "note": "维护传统与血统秩序"},
+	{"id": "neutral_opportunist", "label": "中立投机", "pureblood_opinion": 0.0, "ministry_opinion": 0.5, "risk": "两边都可做生意，两边都不信任你", "note": "商人式政治"},
+	{"id": "order_of_phoenix", "label": "凤凰社支持", "pureblood_opinion": -0.5, "ministry_opinion": -0.3, "risk": "没有官方身份，以信任与牺牲维持运作", "note": "独立于魔法部的抵抗网络"},
+	{"id": "death_eater_sympathy", "label": "食死徒同情", "pureblood_opinion": 0.8, "ministry_opinion": -0.8, "risk": "被傲罗追捕、被威森加摩审判", "note": "黑巫师有政治目标，不是无脑反派"},
+	{"id": "free_independent", "label": "自由独立", "pureblood_opinion": 0.0, "ministry_opinion": 0.0, "risk": "没有靠山", "note": "不站队，靠本事吃饭"}
+]

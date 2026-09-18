@@ -1,0 +1,8 @@
+[
+	{"id": "brutal_realism", "label": "极度现实", "event_intensity": 0.5, "mundane_ratio": 0.8, "note": "代价真实，失败常见"},
+	{"id": "campus_adventure", "label": "经典校园冒险", "event_intensity": 0.6, "mundane_ratio": 0.7, "note": "霍格沃茨生活为主轴"},
+	{"id": "epic_wizarding_war", "label": "史诗巫师战争", "event_intensity": 1.0, "mundane_ratio": 0.4, "note": "战争推进，但世界仍不会每月都是决战"},
+	{"id": "dark_fantasy", "label": "黑暗奇幻", "event_intensity": 0.8, "mundane_ratio": 0.5, "note": "黑魔法与禁忌更常见"},
+	{"id": "daily_life", "label": "日常人生", "event_intensity": 0.2, "mundane_ratio": 1.0, "note": "上课、做魔药、打魁地奇、喝黄油啤酒"},
+	{"id": "mixed", "label": "混合模式", "event_intensity": 0.5, "mundane_ratio": 0.7, "note": "默认模式"}
+]

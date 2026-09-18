@@ -3,6 +3,7 @@ extends SceneTree
 # 每个任务把自己的套件追加到这里。路径必须真实存在，缺失即失败。
 const SUITES: Array[String] = [
 	"res://tests/harness_test.gd",
+	"res://tests/registry_test.gd",
 ]
 
 func _initialize() -> void:

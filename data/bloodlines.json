@@ -1,0 +1,14 @@
+[
+	{"id": "muggle_born", "label": "麻瓜出身", "magic_aptitude": true, "prejudice": 0.4, "wealth_tier": 0, "skill_bias": {"muggle_world": 2, "social": 1}, "default_flags": [], "risk": "", "note": "在麻瓜世界长到十一岁，缺少魔法社会人脉与背景"},
+	{"id": "half_blood", "label": "混血巫师", "magic_aptitude": true, "prejudice": 0.2, "wealth_tier": 0, "skill_bias": {"social": 1}, "default_flags": [], "risk": "", "note": "许多最强大的巫师是混血"},
+	{"id": "pureblood_cadet", "label": "纯血旁支", "magic_aptitude": true, "prejudice": 0.1, "wealth_tier": 1, "skill_bias": {"history_of_magic": 1}, "default_flags": [], "risk": "", "note": "拥有姓氏带来的便利，也背负家族期望与偏见"},
+	{"id": "sacred_twenty_eight", "label": "神圣二十八族", "magic_aptitude": true, "prejudice": 0.05, "wealth_tier": 2, "skill_bias": {"history_of_magic": 2, "social": 1}, "default_flags": [], "risk": "", "note": "神圣二十八族只是英国的一部分"},
+	{"id": "squib", "label": "哑炮", "magic_aptitude": false, "prejudice": 0.7, "wealth_tier": 0, "skill_bias": {"muggle_world": 2}, "default_flags": ["no_magic"], "risk": "", "note": "出生于巫师家庭但无法使用魔法；仍可看见魔法世界，从事非魔法工作"},
+	{"id": "obscurial", "label": "默然者", "magic_aptitude": true, "prejudice": 0.6, "wealth_tier": -1, "skill_bias": {}, "default_flags": ["obscurial"], "risk": "极高：几乎总是无法活到成年，力量极不稳定", "note": "幼年压抑魔法能力而诞生的危险黑暗力量，不是职业而是被诅咒的状态"},
+	{"id": "part_veela", "label": "混血媚娃", "magic_aptitude": true, "prejudice": 0.4, "wealth_tier": 0, "skill_bias": {"social": 2}, "default_flags": ["veela_heritage"], "risk": "", "note": "拥有特殊魅力，也面临严重偏见"},
+	{"id": "werewolf", "label": "狼人", "magic_aptitude": true, "prejudice": 0.8, "wealth_tier": -1, "skill_bias": {"dada": 1}, "default_flags": ["werewolf", "registered_werewolf"], "risk": "月圆之夜无法自控，就业与登记法歧视", "note": "狼人不等于怪物"},
+	{"id": "half_giant", "label": "半巨人", "magic_aptitude": true, "prejudice": 0.7, "wealth_tier": -1, "skill_bias": {"care_of_magical_creatures": 2}, "default_flags": ["giant_blood"], "risk": "体格显眼，难以隐藏身份", "note": "巨人被驱逐，半巨人同样受歧视"},
+	{"id": "half_centaur", "label": "半马人", "magic_aptitude": true, "prejudice": 0.7, "wealth_tier": -1, "skill_bias": {"astronomy": 2, "divination": 1}, "default_flags": ["centaur_blood"], "risk": "马人被划为“野兽”，法律地位低下", "note": "马人语言部分人类无法理解"},
+	{"id": "elf_bound", "label": "家养小精灵契约相关", "magic_aptitude": true, "prejudice": 0.9, "wealth_tier": -2, "skill_bias": {"household_magic": 3}, "default_flags": ["bound_contract"], "risk": "契约奴役，逃跑即被追捕", "note": "家养小精灵可能真心认同奴役，也可能渴望自由"},
+	{"id": "custom", "label": "自定义", "magic_aptitude": true, "prejudice": 0.0, "wealth_tier": 0, "skill_bias": {}, "default_flags": [], "risk": "", "note": "玩家自定血统；不得与原著明确事实冲突"}
+]

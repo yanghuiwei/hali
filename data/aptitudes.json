@@ -1,0 +1,8 @@
+[
+	{"id": "squib", "label": "哑炮无魔法天赋", "failure_delta": 1.0, "grants": [], "special_options": [], "note": "无法施展咒语，人生可转向麻瓜世界或非魔法工作"},
+	{"id": "normal", "label": "普通", "failure_delta": 0.0, "grants": [], "special_options": [], "note": "标准巫师天赋"},
+	{"id": "good", "label": "良好", "failure_delta": -0.05, "grants": [], "special_options": [], "note": "学习魔咒较顺手"},
+	{"id": "excellent", "label": "优秀", "failure_delta": -0.10, "grants": [], "special_options": [], "note": "天赋突出，仍不是传奇"},
+	{"id": "special", "label": "特殊", "failure_delta": -0.10, "grants": [], "special_options": ["metamorphmagus", "parselmouth", "seer", "transfiguration_talent", "occlumency_talent"], "note": "需指定具体天赋：易容马格斯/蛇佬腔/预言天分/变形天赋/大脑封闭术天赋"},
+	{"id": "random", "label": "随机", "failure_delta": 0.0, "grants": [], "special_options": [], "note": "创建时由系统掷定资质"}
+]
