@@ -1,13 +1,13 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-18（Task 5 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 5 交付时为 `24d5d43`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
+> 最后更新：2026-09-18（Task 6 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 6 交付时为 `61ad053`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
 
 ---
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–5 并通过独立审查（Task 4/5 各含修复轮 + scoped 复审）。** 下一步是 Task 6「角色创建流水线」。第 8 节的待裁定项均为计划级/文档级或要到 Task 7–10 才触发，不阻塞 Task 6。
+**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–6 并通过独立审查（Task 4/5/6 各含修复轮 + scoped 复审）。** 下一步是 Task 7「魔咒解析器与反漏洞守卫」。第 8 节的待裁定项均为计划级/文档级或要到 Task 8–10 才触发，不阻塞 Task 7。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -22,13 +22,13 @@
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
 | `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一提交 |
-| 当前 HEAD | `plan-01-core-foundation` 顶端 `24d5d43`（Task 5），下次从 `git log` 看即可 |
+| 当前 HEAD | `plan-01-core-foundation` 顶端 `61ad053`（Task 6），下次从 `git log` 看即可 |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
 git checkout plan-01-core-foundation
-git log --oneline -5     # 顶部应是最新的 docs(handoff) 提交，其下依次 24d5d43 / f9038ca / 23e67cd / dcf25e1
+git log --oneline -5     # 顶部应是最新的 docs(handoff) 提交，其下依次 61ad053 / 2341540 / f3d8a31 / d4186c5
 ```
 
 `main` 已通过 PR #1 合并到 `eccc871`（含 Task 1–3 代码）；本地 `plan-01-core-foundation` 已在 Task 4 开工时 fast-forward 到同一提交，之后的新提交仍落在执行分支上，先不合回 `main`。
@@ -78,6 +78,7 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 [model] 断言=49 失败=0
 [clock] 断言=47 失败=0
 [world_tick] 断言=104 失败=0
+[creation] 断言=176 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
 == 3/3 主场景冒烟 ==
@@ -143,8 +144,8 @@ taskkill //PID <PID> //F
 | — | 交接文档 + 台账耐久副本 | ✅ | `055d9ef` |
 | 4 | 玩家与世界数据模型 | ✅ 完成（含 1 轮修复 + scoped 复审） | `2e3deb8` + `8264ef9` |
 | 5 | 确定性随机 + 月度世界演化 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `23e67cd` + `f9038ca` + `24d5d43` |
-| 6 | 角色创建流水线 | ⬜ 下一步 | — |
-| 7 | 魔咒解析器与反漏洞守卫 | ⬜ | — |
+| 6 | 角色创建流水线 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f3d8a31` + `2341540` + `61ad053` |
+| 7 | 魔咒解析器与反漏洞守卫 | ⬜ 下一步 | — |
 | 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ⬜ | — |
 | 9 | 状态面板格式化 + 强制自检 | ⬜ | — |
 | 10 | 存档与读档 | ⬜ | — |
@@ -162,12 +163,14 @@ taskkill //PID <PID> //F
 - Task 4 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-4-review.md`（含两份独立 reviewer 输出与反证）
 - **Task 5**：`RngService`（命名流、同 seed 可复现、`state_dict`/`load_state` 存档恢复且 int64 字符串化防 JSON 精度丢失）+ `WorldState.tick()`（世界变量向时代基线回归并 clamp 到 [0,1]、按地点/身份/年份筛传言、major 双闸门 + 同月去重、日志裁剪）+ `locations`/`rumors` 两张表。第一轮审查 Critical=0 / Important=4 / Minor=9；两轮修复后 scoped 复审 **通过**。
 - Task 5 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-5-review.md`（含三轮独立 reviewer 输出与反证）
+- **Task 6**：`CharacterCreation`（`choices → PlayerState` 的校验与创建、血统/资质自洽、哑炮无魔法无魔杖、随机资质不掷哑炮、学院判定、技能初始偏置）+ `skills` / 四张魔杖表。第一轮 Critical=0 / Important=3 / Minor=5；两轮修复（封堵 `aptitude_special` 注入、校验 `birthplace`、随机池排除 `special`）后 scoped 复审 **通过**。
+- Task 6 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-6-review.md`（含三轮独立 reviewer 输出与反证）
 
 ---
 
-## 6. 下一步怎么执行（Task 6）
+## 6. 下一步怎么执行（Task 7）
 
-1. 先读计划里 `### Task 6: 角色创建流水线`（含完整代码块与预期输出）。
+1. 先读计划里 `### Task 7: 魔咒解析器与反漏洞守卫`（含完整代码块与预期输出）。
 2. 按 superpowers 的 **subagent-driven-development** 流程推进：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录。
 3. **子代理必须使用与主会话相同的大模型**（本机为 `deepseek/deepseek-flash`）：`pi -p --provider deepseek --model deepseek-flash ...`，不要用 harness 默认模型。
 4. **提交前必须有绿灯**：`bash tools/test.sh` 输出 + 原始文本留存到报告里。Task 3 的流程教训（实现者没跑 Step 5、没写报告，控制器事后补跑）已在台账登记为 P1 流程发现，Task 4 起未重演。
@@ -213,6 +216,15 @@ taskkill //PID <PID> //F
 19. **（Task 5 Minor，新增 N5）** `WorldState.game_seed` 仍是裸 int，>2^53 经 JSON 往返丢失（与 `RngService` 已字符串化不对称），会让读档后世界演化静默分叉；须与存档系统任务同批解决。
 20. **（Task 5 Minor，测试缺口）** 仍无 `tick → to_dict → JSON → from_dict → tick` 的 `WorldState` 级存档续跑对比测试；建议与存档系统任务同批补齐（可同时兜住 17/19）。
 
+### Task 6 审查新增（均不阻塞 Task 7）
+
+21. **（Task 6 Minor，计划级）** `data/wand_cores.json` 的 `rarity` 声明但 `generate_wand` 均匀抽取（与 Task 5 `weight` 同类）；二选一：实现按 rarity 加权，或删/改述该字段。
+22. **（Task 6 Minor）** 玩家自带魔杖只校验 `wood/core/flexibility`，**不校验 `length_inches`**（可传任意值）；且「自带魔杖」分支无任何测试。
+23. **（Task 6 Minor）** `p.flags["prejudice_level"]` 把 float 写进 bool 语义的 `flags`；建议提为 `PlayerState` 数值字段，`flags` 只留 bool。
+24. **（Task 6 Minor）** `create()` 的 `no_magic`/`p.job=""` 与 `new_default()`/squib `default_flags` 重复（`no_magic` 断言部分空转）；`aptitude.grants` 循环因全表 `grants=[]` 恒空转。
+25. **（Task 6 Minor）** `assign_house` 双向 `contains` 子串过宽（单字关键词可放大得分），且性格关键词无数量上限。
+26. **（Task 6 Minor，须登记）** 存档载入路径（`PlayerState.from_dict` / `WorldState.from_dict`）**不重跑 `validate_choices`**，「无天赋的特殊资质」等非法组合可经手改存档进入状态；建议随存档任务补一次载入校验。
+
 ---
 
 ## 9. 环境与卫生
@@ -221,7 +233,7 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `24d5d43` / `23e67cd` / `dcf25e1` / `eccc871`
+  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `61ad053` / `f3d8a31` / `d4186c5` / `eccc871`
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致

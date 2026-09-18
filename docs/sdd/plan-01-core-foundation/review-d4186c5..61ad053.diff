@@ -1,0 +1,707 @@
+# Review package: d4186c5..61ad053
+
+## Commits
+f3d8a31 feat(creation): 第七十五章启动界面到玩家档案的创建流水线
+2341540 fix(creation): 封堵 aptitude_special 注入 + 校验 birthplace + 收窄性格/学院判定
+61ad053 fix(creation): 随机资质池排除 special，避免无天赋的特殊资质
+
+## Files changed
+ data/skills.json                                   |  21 ++
+ data/wand_cores.json                               |   8 +
+ data/wand_flexibilities.json                       |   8 +
+ data/wand_lengths.json                             |  15 ++
+ data/wand_woods.json                               |  18 ++
+ .../2026-09-18-hp-magic-era-01-core-foundation.md  |  45 +++-
+ src/core/registry.gd                               |   5 +
+ src/rules/character_creation.gd                    | 235 +++++++++++++++++++++
+ src/rules/character_creation.gd.uid                |   1 +
+ tests/creation_test.gd                             | 165 +++++++++++++++
+ tests/creation_test.gd.uid                         |   1 +
+ tests/run_tests.gd                                 |   1 +
+ 12 files changed, 516 insertions(+), 7 deletions(-)
+
+## Diff
+diff --git a/data/skills.json b/data/skills.json
+new file mode 100644
+index 0000000..70ea26f
+--- /dev/null
++++ b/data/skills.json
+@@ -0,0 +1,21 @@
++[
++	{"id": "charms", "label": "魔咒学", "category": "学术", "note": "悬浮、开锁、照明等基础魔咒"},
++	{"id": "transfiguration", "label": "变形术", "category": "学术", "note": "物体变形、活物变形、消失术、显形术"},
++	{"id": "potions", "label": "魔药学", "category": "学术", "note": "精确科学与艺术的结合"},
++	{"id": "herbology", "label": "草药学", "category": "学术", "note": "魔药材料与神奇植物"},
++	{"id": "dada", "label": "黑魔法防御术", "category": "学术", "note": "缴械、铁甲、守护神"},
++	{"id": "history_of_magic", "label": "魔法史", "category": "学术", "note": "原著历史事件与家族谱系"},
++	{"id": "astronomy", "label": "天文学", "category": "学术", "note": "天象与季节"},
++	{"id": "divination", "label": "占卜术", "category": "学术", "note": "预言可能成真，也可能被误解"},
++	{"id": "ancient_runes", "label": "古代魔文", "category": "学术", "note": "古代巫师掌握现代无法复现的魔法"},
++	{"id": "care_of_magical_creatures", "label": "神奇生物照料", "category": "学术", "note": "栖息地、领地、行为规律"},
++	{"id": "wand_lore", "label": "魔杖学", "category": "工艺", "note": "木材、杖芯、长度、弹性"},
++	{"id": "healing", "label": "治疗术", "category": "工艺", "note": "黑魔法伤害与咬伤处理"},
++	{"id": "household_magic", "label": "家务魔法", "category": "工艺", "note": "家养小精灵传统魔法"},
++	{"id": "quidditch", "label": "魁地奇", "category": "体能", "note": "学院队、俱乐部、国家队"},
++	{"id": "stealth", "label": "潜行", "category": "体能", "note": "傲罗追踪术的反面"},
++	{"id": "social", "label": "社交口才", "category": "社会", "note": "酒馆、政治密谈、招募"},
++	{"id": "deception", "label": "伪装与谎言", "category": "社会", "note": "假身份、混入、误导"},
++	{"id": "muggle_world", "label": "麻瓜世界见闻", "category": "社会", "note": "街道、电话亭、地铁、科技"},
++	{"id": "black_market", "label": "黑市人脉", "category": "社会", "note": "翻倒巷的博金-博克店与地下拍卖会"}
++]
+diff --git a/data/wand_cores.json b/data/wand_cores.json
+new file mode 100644
+index 0000000..61306de
+--- /dev/null
++++ b/data/wand_cores.json
+@@ -0,0 +1,8 @@
++[
++	{"id": "unicorn_hair", "label": "独角兽尾毛", "rarity": "common"},
++	{"id": "dragon_heartstring", "label": "龙心弦", "rarity": "common"},
++	{"id": "phoenix_feather", "label": "凤凰羽毛", "rarity": "rare"},
++	{"id": "thestral_tail_hair", "label": "夜骐尾羽", "rarity": "rare"},
++	{"id": "veela_hair", "label": "媚娃头发", "rarity": "rare"},
++	{"id": "troll_whisker", "label": "巨怪胡须", "rarity": "common"}
++]
+diff --git a/data/wand_flexibilities.json b/data/wand_flexibilities.json
+new file mode 100644
+index 0000000..aef9dd1
+--- /dev/null
++++ b/data/wand_flexibilities.json
+@@ -0,0 +1,8 @@
++[
++	{"id": "very_flexible", "label": "非常柔韧"},
++	{"id": "flexible", "label": "柔韧"},
++	{"id": "springy", "label": "有弹性"},
++	{"id": "supple", "label": "易弯曲"},
++	{"id": "rigid", "label": "坚硬"},
++	{"id": "unbending", "label": "不易弯曲"}
++]
+diff --git a/data/wand_lengths.json b/data/wand_lengths.json
+new file mode 100644
+index 0000000..4af4ada
+--- /dev/null
++++ b/data/wand_lengths.json
+@@ -0,0 +1,15 @@
++[
++	{"id": "9", "label": "9英寸", "inches": 9.0},
++	{"id": "9.5", "label": "9.5英寸", "inches": 9.5},
++	{"id": "10", "label": "10英寸", "inches": 10.0},
++	{"id": "10.25", "label": "10.25英寸", "inches": 10.25},
++	{"id": "10.75", "label": "10.75英寸", "inches": 10.75},
++	{"id": "11", "label": "11英寸", "inches": 11.0},
++	{"id": "11.5", "label": "11.5英寸", "inches": 11.5},
++	{"id": "12", "label": "12英寸", "inches": 12.0},
++	{"id": "12.75", "label": "12.75英寸", "inches": 12.75},
++	{"id": "13", "label": "13英寸", "inches": 13.0},
++	{"id": "13.5", "label": "13.5英寸", "inches": 13.5},
++	{"id": "14", "label": "14英寸", "inches": 14.0},
++	{"id": "15", "label": "15英寸", "inches": 15.0}
++]
+diff --git a/data/wand_woods.json b/data/wand_woods.json
+new file mode 100644
+index 0000000..52eff4a
+--- /dev/null
++++ b/data/wand_woods.json
+@@ -0,0 +1,18 @@
++[
++	{"id": "holly", "label": "冬青木"},
++	{"id": "yew", "label": "紫杉木"},
++	{"id": "hawthorn", "label": "山楂木"},
++	{"id": "willow", "label": "柳木"},
++	{"id": "oak", "label": "橡木"},
++	{"id": "beech", "label": "山毛榉"},
++	{"id": "mahogany", "label": "桃花心木"},
++	{"id": "cherry", "label": "樱桃木"},
++	{"id": "blackthorn", "label": "黑刺李木"},
++	{"id": "elm", "label": "榆木"},
++	{"id": "vine", "label": "葡萄藤木"},
++	{"id": "walnut", "label": "胡桃木"},
++	{"id": "ash", "label": "白蜡木"},
++	{"id": "larch", "label": "落叶松木"},
++	{"id": "fir", "label": "冷杉木"},
++	{"id": "alder", "label": "桤木"}
++]
+diff --git a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+index 397e24b..093ee43 100644
+--- a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
++++ b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+@@ -2012,6 +2012,18 @@ func run() -> int:
+ 	var conflict_errors := CharacterCreation.validate_choices(conflict, reg)
+ 	a.is_true(" | ".join(conflict_errors).contains("哑炮"), "哑炮血统与非哑炮资质冲突必须报错")
+ 
++	# ---- 反漏洞：未选特殊资质时不得注入特殊天赋标记 ----
++	var exploit := base_choices()
++	exploit["aptitude_special"] = "parselmouth"
++	var exploit_result := CharacterCreation.create(exploit, reg, RngService.new(11))
++	a.is_true(exploit_result.errors.size() > 0, "非特殊资质携带 aptitude_special 必须被拒绝")
++	a.is_true(exploit_result.player == null, "校验失败时不产出玩家")
++
++	# ---- 出生地必须是合法地点 id（否则世界演化会静默过滤传闻） ----
++	var bad_place := base_choices()
++	bad_place["birthplace"] = "不存在的出生地"
++	a.is_true(" | ".join(CharacterCreation.validate_choices(bad_place, reg)).contains("birthplace"), "非法出生地必须报错")
++
+ 	# ---- 非法输入逐个报错 ----
+ 	var bad := base_choices()
+ 	bad["era_id"] = "不存在的时代"
+@@ -2026,6 +2038,9 @@ func run() -> int:
+ 	a.is_true(joined.contains("age_years"), "年龄低于 11 必须报错")
+ 	a.is_true(joined.contains("personality"), "性格不足 3 项")
+ 	a.is_true(joined.contains("life_goal"), "目标为空")
++	var empty_kw := base_choices()
++	empty_kw["personality"] = ["", "好奇", "固执"]
++	a.is_true(" | ".join(CharacterCreation.validate_choices(empty_kw, reg)).contains("personality"), "空性格关键词必须报错")
+ 
+ 	# ---- 特殊资质必须指明具体天赋 ----
+ 	var special := base_choices()
+@@ -2045,6 +2060,7 @@ func run() -> int:
+ 		var r := CharacterCreation.create(rand_apt, reg, RngService.new(1000 + i))
+ 		a.ne(r.player.aptitude_id, "squib", "随机资质不得变成哑炮")
+ 		a.ne(r.player.aptitude_id, "random", "随机资质必须被解析")
++		a.ne(r.player.aptitude_id, "special", "随机资质不得掷出未指定天赋的特殊资质")
+ 
+ 	# ---- 学院判定 ----
+ 	var sly := base_choices()
+@@ -2052,13 +2068,17 @@ func run() -> int:
+ 	sly["house_id"] = "system"
+ 	sly["personality"] = ["野心", "精明", "算计"]
+ 	var sly_house := CharacterCreation.assign_house(sly, RngService.new(7), reg)
+-	a.is_true(["slytherin", "gryffindor", "ravenclaw", "hufflepuff"].has(sly_house), "判定出真实学院")
++	a.eq(sly_house, "slytherin", "血统偏置 + 性格匹配判定出斯莱特林")
+ 	var forced := base_choices()
+ 	forced["house_id"] = "ravenclaw"
+ 	a.eq(CharacterCreation.assign_house(forced, RngService.new(7), reg), "ravenclaw", "玩家指定学院优先")
+ 	var unschooled := base_choices()
+ 	unschooled["house_id"] = "none"
+ 	a.eq(CharacterCreation.assign_house(unschooled, RngService.new(7), reg), "none", "未入学不判学院")
++	var squib_house := base_choices()
++	squib_house["bloodline_id"] = "squib"
++	squib_house["aptitude_id"] = "squib"
++	a.eq(CharacterCreation.assign_house(squib_house, RngService.new(7), reg), "none", "哑炮不判学院")
+ 
+ 	# ---- 全部 12 血统都能创建成功（内容全覆盖） ----
+ 	for bloodline_id in reg.ids("bloodlines"):
+@@ -2249,9 +2269,16 @@ static func validate_choices(choices: Dictionary, registry: Registry) -> PackedS
+ 	if age_years < MIN_AGE_YEARS or age_years > MAX_AGE_YEARS:
+ 		errors.append("age_years 必须在 %d–%d 之间，实际 %d" % [MIN_AGE_YEARS, MAX_AGE_YEARS, age_years])
+ 
++	var birthplace := str(choices.get("birthplace", ""))
++	if not registry.has("locations", birthplace):
++		errors.append("birthplace 非法: %s" % birthplace)
++
+ 	var personality: Array = choices.get("personality", [])
+ 	if personality.size() < 3:
+ 		errors.append("personality 需要 3 个性格关键词，实际 %d 个" % personality.size())
++	for keyword in personality:
++		if str(keyword).strip_edges().is_empty():
++			errors.append("personality 关键词不得为空")
+ 	if str(choices.get("life_goal", "")).strip_edges().is_empty():
+ 		errors.append("life_goal 不得为空")
+ 
+@@ -2273,6 +2300,8 @@ static func validate_choices(choices: Dictionary, registry: Registry) -> PackedS
+ 		var chosen := str(choices.get("aptitude_special", ""))
+ 		if not allowed.has(chosen):
+ 			errors.append("aptitude_special 非法: %s，允许值 %s" % [chosen, ", ".join(allowed)])
++	elif not str(choices.get("aptitude_special", "")).is_empty():
++		errors.append("aptitude_special 只有 aptitude_id=special 时才能设置: %s" % str(choices.get("aptitude_special", "")))
+ 
+ 	var wand_choice: Dictionary = choices.get("wand", {})
+ 	if not wand_choice.is_empty():
+@@ -2295,7 +2324,7 @@ static func default_skills_for(choices: Dictionary, registry: Registry) -> Dicti
+ 	return skills
+ 
+ static func generate_wand(rng: RngService, registry: Registry) -> Dictionary:
+-	var wood: Dictionary = rng.stream_pick("wand_wood", registry.ids("wand_woods").duplicate())
++	var wood: String = str(rng.stream_pick("wand_wood", registry.ids("wand_woods").duplicate()))
+ 	var wood_entry: Dictionary = registry.entry("wand_woods", str(wood))
+ 	var core_ids := registry.ids("wand_cores").duplicate()
+ 	var core_id := str(rng.stream_pick("wand_core", core_ids))
+@@ -2369,7 +2398,7 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) ->
+ 	p.family_status = str(choices.get("family_status", ""))
+ 	p.house_id = assign_house(choices, rng, registry)
+ 	p.political_leaning_id = str(choices["political_leaning_id"])
+-	p.personality = choices.get("personality", [])
++	p.personality = (choices.get("personality", []) as Array).duplicate()
+ 	p.life_goal = str(choices["life_goal"])
+ 	p.current_goal = p.life_goal
+ 	p.sim_style_id = str(choices["sim_style_id"])
+@@ -2385,7 +2414,7 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) ->
+ 		var pool: Array = []
+ 		for candidate in registry.ids("aptitudes"):
+ 			var cid := str(candidate)
+-			if cid == "random" or cid == "squib":
++			if cid == "random" or cid == "squib" or cid == "special":
+ 				continue
+ 			pool.append(cid)
+ 		aptitude_id = str(rng.stream_pick("aptitude", pool))
+@@ -2410,11 +2439,13 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) ->
+ 	# 血统自带标记与特殊资质标记（第十章：偏见真实存在）
+ 	for flag in (bloodline.get("default_flags", []) as Array):
+ 		p.flags[str(flag)] = true
+-	p.aptitude_special = str(choices.get("aptitude_special", ""))
+ 	for granted in (aptitude.get("grants", []) as Array):
+ 		p.flags[str(granted)] = true
+-	if not p.aptitude_special.is_empty():
+-		p.flags[p.aptitude_special] = true
++	# 反漏洞：只有 aptitude_id=special 才能写入 aptitude_special 与对应天赋标记
++	if aptitude_id == "special":
++		p.aptitude_special = str(choices.get("aptitude_special", ""))
++		if not p.aptitude_special.is_empty():
++			p.flags[p.aptitude_special] = true
+ 	p.flags["prejudice_level"] = float(bloodline.get("prejudice", 0.0))
+ 
+ 	# 初始技能
+diff --git a/src/core/registry.gd b/src/core/registry.gd
+index 0fd521d..26f0a64 100644
+--- a/src/core/registry.gd
++++ b/src/core/registry.gd
+@@ -11,6 +11,11 @@ const TABLE_FILES: Dictionary = {
+ 	"political_leanings": "political_leanings.json",
+ 	"locations": "locations.json",
+ 	"rumors": "rumors.json",
++	"skills": "skills.json",
++	"wand_woods": "wand_woods.json",
++	"wand_cores": "wand_cores.json",
++	"wand_flexibilities": "wand_flexibilities.json",
++	"wand_lengths": "wand_lengths.json",
+ }
+ 
+ var duplicate_ids: PackedStringArray = PackedStringArray()
+diff --git a/src/rules/character_creation.gd b/src/rules/character_creation.gd
+new file mode 100644
+index 0000000..76151a6
+--- /dev/null
++++ b/src/rules/character_creation.gd
+@@ -0,0 +1,235 @@
++class_name CharacterCreation
++extends RefCounted
++
++const MIN_AGE_YEARS := 11
++const MAX_AGE_YEARS := 80
++const HOUSE_TENDENCY := {
++	"slytherin": ["野心", "精明", "血统", "意志", "算计", "权力"],
++	"gryffindor": ["勇气", "胆识", "冲动", "正义", "鲁莽"],
++	"ravenclaw": ["好奇", "智慧", "知识", "钻研", "冷静"],
++	"hufflepuff": ["忠诚", "勤勉", "公平", "坚韧", "善良"],
++}
++const BLOODLINE_HOUSE_BIAS := {
++	"sacred_twenty_eight": "slytherin",
++	"pureblood_cadet": "slytherin",
++	"muggle_born": "gryffindor",
++	"werewolf": "gryffindor",
++	"part_veela": "ravenclaw",
++}
++
++class Result:
++	var player: PlayerState = null
++	var errors: PackedStringArray = PackedStringArray()
++
++static func validate_choices(choices: Dictionary, registry: Registry) -> PackedStringArray:
++	var errors := PackedStringArray()
++	var era_id := str(choices.get("era_id", ""))
++	if not registry.has("eras", era_id):
++		errors.append("era_id 非法: %s" % era_id)
++	var bloodline_id := str(choices.get("bloodline_id", ""))
++	if not registry.has("bloodlines", bloodline_id):
++		errors.append("bloodline_id 非法: %s" % bloodline_id)
++	if not registry.has("birth_identities", str(choices.get("birth_identity_id", ""))):
++		errors.append("birth_identity_id 非法: %s" % str(choices.get("birth_identity_id", "")))
++	if not registry.has("houses", str(choices.get("house_id", "system"))):
++		errors.append("house_id 非法: %s" % str(choices.get("house_id", "")))
++	if not registry.has("sim_styles", str(choices.get("sim_style_id", "mixed"))):
++		errors.append("sim_style_id 非法: %s" % str(choices.get("sim_style_id", "")))
++	if not registry.has("political_leanings", str(choices.get("political_leaning_id", "free_independent"))):
++		errors.append("political_leaning_id 非法: %s" % str(choices.get("political_leaning_id", "")))
++
++	if str(choices.get("name_text", "")).strip_edges().is_empty():
++		errors.append("name_text 不得为空")
++
++	var age_years := int(choices.get("age_years", 0))
++	if age_years < MIN_AGE_YEARS or age_years > MAX_AGE_YEARS:
++		errors.append("age_years 必须在 %d–%d 之间，实际 %d" % [MIN_AGE_YEARS, MAX_AGE_YEARS, age_years])
++
++	var birthplace := str(choices.get("birthplace", ""))
++	if not registry.has("locations", birthplace):
++		errors.append("birthplace 非法: %s" % birthplace)
++
++	var personality: Array = choices.get("personality", [])
++	if personality.size() < 3:
++		errors.append("personality 需要 3 个性格关键词，实际 %d 个" % personality.size())
++	for keyword in personality:
++		if str(keyword).strip_edges().is_empty():
++			errors.append("personality 关键词不得为空")
++	if str(choices.get("life_goal", "")).strip_edges().is_empty():
++		errors.append("life_goal 不得为空")
++
++	# 血统与资质必须自洽（哑炮血统 = 无魔法；有魔法血统 ≠ 哑炮资质）
++	var aptitude_id := str(choices.get("aptitude_id", "normal"))
++	if not registry.has("aptitudes", aptitude_id):
++		errors.append("aptitude_id 非法: %s" % aptitude_id)
++	var bloodline: Dictionary = registry.entry("bloodlines", bloodline_id)
++	var bloodline_has_magic := bool(bloodline.get("magic_aptitude", true))
++	if bloodline_id == "squib" and aptitude_id != "squib":
++		errors.append("哑炮血统无法拥有魔法资质（当前 aptitude_id=%s）；请把 aptitude_id 设为 squib" % aptitude_id)
++	if bloodline_has_magic and aptitude_id == "squib":
++		errors.append("血统 %s 拥有魔法天赋，不能选择哑炮资质" % bloodline_id)
++
++	if aptitude_id == "special":
++		var allowed := []
++		for option in (registry.entry("aptitudes", "special").get("special_options", []) as Array):
++			allowed.append(str(option))
++		var chosen := str(choices.get("aptitude_special", ""))
++		if not allowed.has(chosen):
++			errors.append("aptitude_special 非法: %s，允许值 %s" % [chosen, ", ".join(allowed)])
++	elif not str(choices.get("aptitude_special", "")).is_empty():
++		errors.append("aptitude_special 只有 aptitude_id=special 时才能设置: %s" % str(choices.get("aptitude_special", "")))
++
++	var wand_choice: Dictionary = choices.get("wand", {})
++	if not wand_choice.is_empty():
++		if not registry.has("wand_woods", str(wand_choice.get("wood", ""))):
++			errors.append("魔杖木材非法: %s" % str(wand_choice.get("wood", "")))
++		if not registry.has("wand_cores", str(wand_choice.get("core", ""))):
++			errors.append("魔杖杖芯非法: %s" % str(wand_choice.get("core", "")))
++		if not registry.has("wand_flexibilities", str(wand_choice.get("flexibility", ""))):
++			errors.append("魔杖弹性非法: %s" % str(wand_choice.get("flexibility", "")))
++	return errors
++
++static func default_skills_for(choices: Dictionary, registry: Registry) -> Dictionary:
++	var skills := {}
++	var pairs := [["bloodlines", "bloodline_id"], ["birth_identities", "birth_identity_id"]]
++	for pair in pairs:
++		var entry: Dictionary = registry.entry(str(pair[0]), str(choices.get(str(pair[1]), "")))
++		var bias: Dictionary = entry.get("skill_bias", {})
++		for skill_id in bias.keys():
++			skills[str(skill_id)] = int(skills.get(str(skill_id), 0)) + int(bias[skill_id])
++	return skills
++
++static func generate_wand(rng: RngService, registry: Registry) -> Dictionary:
++	var wood: String = str(rng.stream_pick("wand_wood", registry.ids("wand_woods").duplicate()))
++	var wood_entry: Dictionary = registry.entry("wand_woods", str(wood))
++	var core_ids := registry.ids("wand_cores").duplicate()
++	var core_id := str(rng.stream_pick("wand_core", core_ids))
++	var core_entry: Dictionary = registry.entry("wand_cores", core_id)
++	var flex_ids := registry.ids("wand_flexibilities").duplicate()
++	var flex_id := str(rng.stream_pick("wand_flex", flex_ids))
++	var length_ids := registry.ids("wand_lengths").duplicate()
++	var length_id := str(rng.stream_pick("wand_length", length_ids))
++	var length_entry: Dictionary = registry.entry("wand_lengths", length_id)
++	var inches := float(length_entry.get("inches", 11.0))
++	return {
++		"wood": str(wood),
++		"core": core_id,
++		"length_inches": inches,
++		"flexibility": flex_id,
++		"label": "%s，%s，%.2f英寸，%s" % [
++			str(wood_entry.get("label", wood)),
++			str(core_entry.get("label", core_id)),
++			inches,
++			str(registry.entry("wand_flexibilities", flex_id).get("label", flex_id)),
++		],
++	}
++
++static func assign_house(choices: Dictionary, rng: RngService, registry: Registry) -> String:
++	var requested := str(choices.get("house_id", "system"))
++	if requested != "system":
++		return requested
++	var bloodline_id := str(choices.get("bloodline_id", ""))
++	var bloodline: Dictionary = registry.entry("bloodlines", bloodline_id)
++	var age_years := int(choices.get("age_years", 11))
++	if not bool(bloodline.get("magic_aptitude", true)) or age_years < 11:
++		return "none"
++	var scores := {"gryffindor": 1.0, "slytherin": 1.0, "ravenclaw": 1.0, "hufflepuff": 1.0}
++	var bias := str(BLOODLINE_HOUSE_BIAS.get(bloodline_id, ""))
++	if not bias.is_empty():
++		scores[bias] = float(scores[bias]) + 1.0
++	var personality: Array = choices.get("personality", [])
++	for house in HOUSE_TENDENCY.keys():
++		for keyword in HOUSE_TENDENCY[house]:
++			for p in personality:
++				if str(p).contains(str(keyword)) or str(keyword).contains(str(p)):
++					scores[house] = float(scores[house]) + 1.5
++	var best := ""
++	var best_score := -1.0
++	var tie_break: Array = []
++	for house in scores.keys():
++		var s := float(scores[house])
++		if s > best_score:
++			best_score = s
++			best = house
++			tie_break = [house]
++		elif is_equal_approx(s, best_score):
++			tie_break.append(house)
++	if tie_break.size() > 1:
++		best = str(rng.stream_pick("house_tiebreak", tie_break))
++	return best
++
++static func create(choices: Dictionary, registry: Registry, rng: RngService) -> Result:
++	var out := Result.new()
++	out.errors = validate_choices(choices, registry)
++	if out.errors.size() > 0:
++		return out
++
++	var p := PlayerState.new_default()
++	p.name_text = str(choices["name_text"]).strip_edges()
++	p.gender = str(choices.get("gender", ""))
++	p.age_months = int(choices["age_years"]) * 12
++	p.bloodline_id = str(choices["bloodline_id"])
++	p.birth_identity_id = str(choices["birth_identity_id"])
++	p.birthplace = str(choices.get("birthplace", ""))
++	p.family_status = str(choices.get("family_status", ""))
++	p.house_id = assign_house(choices, rng, registry)
++	p.political_leaning_id = str(choices["political_leaning_id"])
++	p.personality = (choices.get("personality", []) as Array).duplicate()
++	p.life_goal = str(choices["life_goal"])
++	p.current_goal = p.life_goal
++	p.sim_style_id = str(choices["sim_style_id"])
++	p.location_id = str(choices.get("birthplace", "london_muggle"))
++
++	var bloodline: Dictionary = registry.entry("bloodlines", p.bloodline_id)
++	var identity: Dictionary = registry.entry("birth_identities", p.birth_identity_id)
++	p.money_knuts = int(identity.get("start_knuts", 0))
++
++	# 资质：random 在创建时掷定，且不得掷出哑炮（玩家没选哑炮血统）
++	var aptitude_id := str(choices["aptitude_id"])
++	if aptitude_id == "random":
++		var pool: Array = []
++		for candidate in registry.ids("aptitudes"):
++			var cid := str(candidate)
++			if cid == "random" or cid == "squib" or cid == "special":
++				continue
++			pool.append(cid)
++		aptitude_id = str(rng.stream_pick("aptitude", pool))
++	p.aptitude_id = aptitude_id
++	var aptitude: Dictionary = registry.entry("aptitudes", aptitude_id)
++
++	# 哑炮：无魔法、无魔杖（第七十五章）
++	var has_magic := bool(bloodline.get("magic_aptitude", true)) and aptitude_id != "squib"
++	if not has_magic:
++		p.magic_tier = MagicLevel.Tier.SQUIB
++		p.wand = {}
++		p.flags["no_magic"] = true
++		p.job = ""
++	else:
++		p.magic_tier = MagicLevel.Tier.PRE_SCHOOL
++		var wand_choice: Dictionary = choices.get("wand", {})
++		p.wand = wand_choice if not wand_choice.is_empty() else generate_wand(rng, registry)
++		p.magic["capacity"] = 10 + int(rng.stream_int("capacity", 0, 5))
++		p.magic["control"] = 10 + int(rng.stream_int("control", 0, 5))
++		p.magic["affinity"] = 10 + int(rng.stream_int("affinity", 0, 5))
++
++	# 血统自带标记与特殊资质标记（第十章：偏见真实存在）
++	for flag in (bloodline.get("default_flags", []) as Array):
++		p.flags[str(flag)] = true
++	for granted in (aptitude.get("grants", []) as Array):
++		p.flags[str(granted)] = true
++	# 反漏洞：只有 aptitude_id=special 才能写入 aptitude_special 与对应天赋标记
++	if aptitude_id == "special":
++		p.aptitude_special = str(choices.get("aptitude_special", ""))
++		if not p.aptitude_special.is_empty():
++			p.flags[p.aptitude_special] = true
++	p.flags["prejudice_level"] = float(bloodline.get("prejudice", 0.0))
++
++	# 初始技能
++	var bias := default_skills_for(choices, registry)
++	for skill_id in bias.keys():
++		p.add_skill(str(skill_id), int(bias[skill_id]))
++	if has_magic and p.skill("charms") < 1:
++		p.add_skill("charms", 1)
++
++	out.player = p
++	return out
+diff --git a/src/rules/character_creation.gd.uid b/src/rules/character_creation.gd.uid
+new file mode 100644
+index 0000000..d47ee8f
+--- /dev/null
++++ b/src/rules/character_creation.gd.uid
+@@ -0,0 +1 @@
++uid://d2sbhmo3sxk4f
+diff --git a/tests/creation_test.gd b/tests/creation_test.gd
+new file mode 100644
+index 0000000..e61ab6e
+--- /dev/null
++++ b/tests/creation_test.gd
+@@ -0,0 +1,165 @@
++class_name CreationTest
++extends RefCounted
++
++func base_choices() -> Dictionary:
++	return {
++		"era_id": "modern",
++		"bloodline_id": "muggle_born",
++		"birth_identity_id": "ordinary_wizard_family",
++		"name_text": "张三",
++		"gender": "男",
++		"age_years": 11,
++		"birthplace": "london_muggle",
++		"family_status": "父母均为麻瓜，家中无人相信魔法",
++		"aptitude_id": "normal",
++		"aptitude_special": "",
++		"wand": {},
++		"house_id": "system",
++		"political_leaning_id": "free_independent",
++		"personality": ["好奇", "固执", "怕黑"],
++		"life_goal": "我想知道魔法到底能走多远",
++		"sim_style_id": "mixed",
++	}
++
++func run() -> int:
++	var a := TestAssert.new()
++	var reg := Registry.load_default()
++
++	# 内容表新增项
++	a.eq(reg.validate().size(), 0, "技能与魔杖表加入后仍无校验错误")
++	a.is_true(reg.ids("skills").size() >= 19, "技能表至少 19 项")
++	a.is_true(reg.ids("wand_lengths").size() >= 10, "魔杖长度档位充足")
++	a.is_true(reg.ids("wand_cores").size() >= 6, "杖芯至少 6 种")
++	a.is_true(reg.ids("wand_woods").size() >= 10, "木材至少 10 种")
++
++	# 血统/身份里的 skill_bias 必须全部指向真实技能（跨表完整性）
++	for bloodline_id in reg.ids("bloodlines"):
++		for skill_id in reg.entry("bloodlines", bloodline_id).get("skill_bias", {}).keys():
++			a.is_true(reg.has("skills", skill_id), "血统 %s 引用了未定义技能 %s" % [bloodline_id, skill_id])
++	for identity_id in reg.ids("birth_identities"):
++		for skill_id in reg.entry("birth_identities", identity_id).get("skill_bias", {}).keys():
++			a.is_true(reg.has("skills", skill_id), "身份 %s 引用了未定义技能 %s" % [identity_id, skill_id])
++
++	# ---- 合法创建 ----
++	var rng := RngService.new(20260918)
++	var result := CharacterCreation.create(base_choices(), reg, rng)
++	a.eq(result.errors.size(), 0, "合法选择不应报错")
++	var p := result.player
++	a.eq(p.name_text, "张三", "姓名")
++	a.eq(p.age_months, 132, "11 岁 = 132 个月")
++	a.eq(p.money().formatted(), "10加隆 0西可 0纳特", "普通巫师家庭起始财产（第十八章自洽）")
++	a.eq(p.sim_style_id, "mixed", "模拟风格")
++	a.is_true(p.skill("muggle_world") >= 2, "麻瓜出身带来麻瓜世界见闻")
++	a.is_true(p.skill("charms") >= 1, "普通巫师家庭带来魔咒基础")
++	a.eq(p.personality.size(), 3, "三个性格关键词")
++	a.is_true(p.wand.has("wood"), "生成魔杖木材")
++	a.is_true(p.wand.has("label"), "魔杖有可读标签")
++	a.eq(p.magic["known_spells"].size(), 0, "入学前不掌握咒语（第六十九章防主角光环）")
++	a.is_true(p.alive, "活着")
++	a.eq(p.location_id, "london_muggle", "出生地")
++
++	# 魔杖长度必须来自内容表
++	var length_ids := reg.ids("wand_lengths")
++	a.is_true(length_ids.has(str(p.wand["length_inches"]).trim_suffix(".0")), "魔杖长度取自内容表")
++
++	# ---- 确定性：同种子同选择 → 完全相同 ----
++	var p_a := CharacterCreation.create(base_choices(), reg, RngService.new(99)).player
++	var p_b := CharacterCreation.create(base_choices(), reg, RngService.new(99)).player
++	a.eq(p_a.to_dict(), p_b.to_dict(), "同种子创建结果完全一致")
++
++	# ---- 哑炮：无魔法，且不能有咒语/魔杖 ----
++	var squib := base_choices()
++	squib["bloodline_id"] = "squib"
++	squib["aptitude_id"] = "squib"
++	var squib_result := CharacterCreation.create(squib, reg, RngService.new(1))
++	a.eq(squib_result.errors.size(), 0, "哑炮可以创建")
++	a.eq(squib_result.player.magic_tier, MagicLevel.Tier.SQUIB, "哑炮等级")
++	a.eq(squib_result.player.wand, {}, "哑炮没有魔杖")
++	a.is_true(squib_result.player.magic["known_spells"].is_empty(), "哑炮没有咒语")
++	a.is_true(squib_result.player.flags.has("no_magic"), "哑炮带 no_magic 标记")
++
++	# ---- 血统与资质冲突必须报错，而不是静默修正（第七十五章：哑炮无魔法天赋） ----
++	var conflict := base_choices()
++	conflict["bloodline_id"] = "squib"
++	conflict["aptitude_id"] = "excellent"
++	var conflict_errors := CharacterCreation.validate_choices(conflict, reg)
++	a.is_true(" | ".join(conflict_errors).contains("哑炮"), "哑炮血统与非哑炮资质冲突必须报错")
++
++	# ---- 反漏洞：未选特殊资质时不得注入特殊天赋标记 ----
++	var exploit := base_choices()
++	exploit["aptitude_special"] = "parselmouth"
++	var exploit_result := CharacterCreation.create(exploit, reg, RngService.new(11))
++	a.is_true(exploit_result.errors.size() > 0, "非特殊资质携带 aptitude_special 必须被拒绝")
++	a.is_true(exploit_result.player == null, "校验失败时不产出玩家")
++
++	# ---- 出生地必须是合法地点 id（否则世界演化会静默过滤传闻） ----
++	var bad_place := base_choices()
++	bad_place["birthplace"] = "不存在的出生地"
++	a.is_true(" | ".join(CharacterCreation.validate_choices(bad_place, reg)).contains("birthplace"), "非法出生地必须报错")
++
++	# ---- 非法输入逐个报错 ----
++	var bad := base_choices()
++	bad["era_id"] = "不存在的时代"
++	bad["bloodline_id"] = "不存在的血统"
++	bad["age_years"] = 3
++	bad["personality"] = ["只有一个"]
++	bad["life_goal"] = ""
++	var errs := CharacterCreation.validate_choices(bad, reg)
++	var joined := " | ".join(errs)
++	a.is_true(joined.contains("era_id"), "时代非法")
++	a.is_true(joined.contains("bloodline_id"), "血统非法")
++	a.is_true(joined.contains("age_years"), "年龄低于 11 必须报错")
++	a.is_true(joined.contains("personality"), "性格不足 3 项")
++	a.is_true(joined.contains("life_goal"), "目标为空")
++	var empty_kw := base_choices()
++	empty_kw["personality"] = ["", "好奇", "固执"]
++	a.is_true(" | ".join(CharacterCreation.validate_choices(empty_kw, reg)).contains("personality"), "空性格关键词必须报错")
++
++	# ---- 特殊资质必须指明具体天赋 ----
++	var special := base_choices()
++	special["aptitude_id"] = "special"
++	special["aptitude_special"] = "parselmouth"
++	var sp := CharacterCreation.create(special, reg, RngService.new(3))
++	a.eq(sp.errors.size(), 0, "特殊资质带具体天赋")
++	a.eq(sp.player.aptitude_special, "parselmouth", "记录蛇佬腔")
++	a.is_true(sp.player.flags.has("parselmouth"), "蛇佬腔写入标记")
++	special["aptitude_special"] = "不存在的天赋"
++	a.is_true(" | ".join(CharacterCreation.validate_choices(special, reg)).contains("aptitude_special"), "非法天赋报错")
++
++	# ---- 随机资质必须被掷定，且不能掷出哑炮（玩家没选哑炮血统） ----
++	var rand_apt := base_choices()
++	rand_apt["aptitude_id"] = "random"
++	for i in 30:
++		var r := CharacterCreation.create(rand_apt, reg, RngService.new(1000 + i))
++		a.ne(r.player.aptitude_id, "squib", "随机资质不得变成哑炮")
++		a.ne(r.player.aptitude_id, "random", "随机资质必须被解析")
++		a.ne(r.player.aptitude_id, "special", "随机资质不得掷出未指定天赋的特殊资质")
++
++	# ---- 学院判定 ----
++	var sly := base_choices()
++	sly["bloodline_id"] = "sacred_twenty_eight"
++	sly["house_id"] = "system"
++	sly["personality"] = ["野心", "精明", "算计"]
++	var sly_house := CharacterCreation.assign_house(sly, RngService.new(7), reg)
++	a.eq(sly_house, "slytherin", "血统偏置 + 性格匹配判定出斯莱特林")
++	var forced := base_choices()
++	forced["house_id"] = "ravenclaw"
++	a.eq(CharacterCreation.assign_house(forced, RngService.new(7), reg), "ravenclaw", "玩家指定学院优先")
++	var unschooled := base_choices()
++	unschooled["house_id"] = "none"
++	a.eq(CharacterCreation.assign_house(unschooled, RngService.new(7), reg), "none", "未入学不判学院")
++	var squib_house := base_choices()
++	squib_house["bloodline_id"] = "squib"
++	squib_house["aptitude_id"] = "squib"
++	a.eq(CharacterCreation.assign_house(squib_house, RngService.new(7), reg), "none", "哑炮不判学院")
++
++	# ---- 全部 12 血统都能创建成功（内容全覆盖） ----
++	for bloodline_id in reg.ids("bloodlines"):
++		var c := base_choices()
++		c["bloodline_id"] = bloodline_id
++		if bloodline_id == "squib":
++			c["aptitude_id"] = "squib"
++		var r := CharacterCreation.create(c, reg, RngService.new(42))
++		a.eq(r.errors.size(), 0, "血统 %s 可创建" % bloodline_id)
++
++	return a.report("creation")
+diff --git a/tests/creation_test.gd.uid b/tests/creation_test.gd.uid
+new file mode 100644
+index 0000000..6863000
+--- /dev/null
++++ b/tests/creation_test.gd.uid
+@@ -0,0 +1 @@
++uid://bcs0t0uartppt
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index bb44df5..415a3fc 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -9,6 +9,7 @@ const SUITES: Array[String] = [
+ 	"res://tests/model_test.gd",
+ 	"res://tests/clock_test.gd",
+ 	"res://tests/world_tick_test.gd",
++	"res://tests/creation_test.gd",
+ ]
+ 
+ func _initialize() -> void:

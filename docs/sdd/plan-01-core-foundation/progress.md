@@ -154,3 +154,33 @@ Task 5: 移交人类批次（与 HANDOFF §8 合并）——
   4. （Minor，新增 N5）`WorldState.game_seed` 仍是裸 int，>2^53 经 JSON 丢失，与 RngService 的字符串化不对称；须与存档系统任务同批解决。
   5. （Minor，测试缺口）仍无 `tick → to_dict → JSON → from_dict → tick` 的 WorldState 级存档续跑对比测试。
 Task 5: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `24d5d43`。工作区干净。
+
+---
+
+## Task 6（角色创建流水线）
+
+Task 6: 开工前发现并裁定计划缺陷 —— `generate_wand` 首行 `var wood: Dictionary = rng.stream_pick(...)`，而 `stream_pick` 返回字符串 id，
+  类型化赋值会运行期报错。裁定改为 `var wood: String = str(rng.stream_pick(...))`，计划与代码同步（controller 用探针确认 `stream_pick` 接受 PackedStringArray）。
+Task 6: 简报 `task-6-brief.md` 写盘后派发 worker subagent（deepseek-flash）。worker 提交
+  `f3d8a31 feat(creation): 第七十五章启动界面到玩家档案的创建流水线`（12 files, +448/−1），并立即写盘 `task-6-report.md`。
+  交付：`src/rules/character_creation.gd`、`data/skills.json`(19) + 四张魔杖表（woods 16 / cores 6 / flexibilities 6 / lengths 13）、
+  `src/core/registry.gd` 追加 5 表、`tests/creation_test.gd`（各含 .uid）。
+Task 6: Step 5 gate —— worker 自跑 `bash tools/test.sh`：先红（CharacterCreation 未定义，EXIT=1）后绿（`[creation] 141/0`，EXIT=0）；controller 独立复跑确认。
+Task 6: 第一轮审查（reviewer subagent，只读）→ Critical=0 / Important=3 / Minor=5，记录 `task-6-review.md`。reviewer 签核 wood 修正为唯一正确且无夹带。
+Task 6: Important —— (1) `aptitude_special` 反漏洞绕过：只在 `aptitude_id=="special"` 时校验，但 `create()` 无条件写 `p.flags[aptitude_special]`，可注入任意 flag；
+  (2) `birthplace` 未校验即写入 `player.location_id`，非法值会让世界演化静默过滤传闻；
+  (3) `wand_cores.rarity` 死字段（杖芯均匀抽取，与 Task 5 `weight` 同类）。
+Task 6: 修复轮 1（controller）提交 `2341540`：`validate_choices` 增加 `aptitude_special` 非 special 时的报错门 + `create()` 侧 special 门；
+  增加 `birthplace` 合法地点校验；`personality` 关键词非空 + `.duplicate()`；测试 +5 断言（141→146）、`sly_house` 精确断言、哑炮不判学院。
+Task 6: 修复轮 1 反证 —— 删两道校验门 → `[creation] 失败=3`，EXIT=1。scoped 复审 **通过**；提出 N1（`random` 可掷出 `special` 但无具体天赋）。
+Task 6: 修复轮 2（controller）提交 `61ad053`：随机资质池排除 `special`；测试随机资质循环新增 `a.ne(..., "special")`（+30，146→176）；计划同步。
+Task 6: 修复轮 2 反证 —— `special` 放回池 → `[creation] 失败=4`（30 种子中 4 个命中）。scoped 复审 **通过**（N1 ADDRESSED，无夹带）。
+Task 6: 最终全绿：`[creation] 断言=176 失败=0`、`总计失败=0`、`ALL TESTS PASSED`、EXIT=0。
+Task 6: 移交人类批次（与 HANDOFF §8 合并）——
+  1. （Minor）`wand_cores.rarity` 声明但未用于抽取（计划级，与 Task 5 `weight` 同类）。
+  2. （Minor）玩家自带魔杖的 `length_inches` 未校验（可传任意值），且「自带魔杖」分支无测试。
+  3. （Minor）`prejudice_level`（float）写入 bool 语义的 `flags`；建议提为 `PlayerState` 数值字段。
+  4. （Minor）`create()` 的 `no_magic` 与 squib 血统 `default_flags` 重复（断言部分空转）；`p.job=""` 冗余；`grants` 循环恒空转。
+  5. （Minor）`assign_house` 双向 `contains` 子串过宽、性格关键词无数量上限。
+  6. （Minor，新增）存档载入路径（`PlayerState.from_dict`）不重跑 `validate_choices`，「无天赋的特殊资质」可经手改存档进入状态；建议随存档任务补一次载入校验。
+Task 6: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `61ad053`。工作区干净。
