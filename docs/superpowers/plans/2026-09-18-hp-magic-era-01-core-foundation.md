@@ -1078,6 +1078,9 @@ func run() -> int:
 	var p2 := PlayerState.from_dict(p.to_dict())
 	a.eq(p2.name_text, "张三", "姓名往返")
 	a.eq(p2.to_dict(), p.to_dict(), "玩家状态完全往返")
+	# 端到端：经 JSON 字符串（真实存档路径）往返后仍必须逐字节相等
+	var p3 := PlayerState.from_dict(JSON.parse_string(JSON.stringify(p.to_dict())))
+	a.eq(p3.to_dict(), p.to_dict(), "经 JSON 字符串的玩家状态往返")
 
 	# ---- JsonUtil：JSON 数值规范化（存读档往返一致性的唯一保障） ----
 	a.is_true(typeof(JsonUtil.normalize(2.0)) == TYPE_INT, "2.0 归一为 int")
@@ -1109,6 +1112,14 @@ func run() -> int:
 	a.eq(w2.to_dict(), w.to_dict(), "世界状态完全往返")
 	a.eq(w2.registry, reg, "往返后重新挂载注册表")
 	a.is_true(w2.era()["id"] == "first_wizarding_war", "往返后仍能查询内容表")
+	# 端到端：经 JSON 字符串（真实存档路径）往返后仍必须相等
+	var w3 := WorldState.from_dict(JSON.parse_string(JSON.stringify(w.to_dict())), reg)
+	a.eq(w3.to_dict(), w.to_dict(), "经 JSON 字符串的世界状态往返")
+
+	# create 与 from_dict 必须产出同型的 world_vars（含整数值 float，如 witch_hunts.secrecy_integrity=1.0）
+	var we := WorldState.create("witch_hunts", PlayerState.from_dict({"name_text": "乙"}), 1, reg)
+	var we2 := WorldState.from_dict(we.to_dict(), reg)
+	a.eq(we2.world_vars, we.world_vars, "world_vars 类型在 create 与 from_dict 间一致")
 
 	# to_dict 不得包含瞬态注册表；也不得出现非 JSON 原生类型
 	var d := w.to_dict()
@@ -1299,7 +1310,7 @@ static func from_dict(d: Dictionary) -> PlayerState:
 	p.aptitude_id = str(d.get("aptitude_id", ""))
 	p.aptitude_special = str(d.get("aptitude_special", ""))
 	p.house_id = str(d.get("house_id", "none"))
-	p.political_leaning_id = str(d.get("political_leading_id", d.get("political_leaning_id", "")))
+	p.political_leaning_id = str(d.get("political_leaning_id", ""))
 	p.personality = JsonUtil.normalize(d.get("personality", []))
 	p.life_goal = str(d.get("life_goal", ""))
 	p.sim_style_id = str(d.get("sim_style_id", "mixed"))
@@ -1360,7 +1371,8 @@ static func create(era_id_: String, player_: PlayerState, seed_: int, registry_:
 	var start_year := int(era.get("start_year", 1991)) if era.get("start_year", null) != null else 1991
 	w.era_start_year = start_year
 	w.clock = GameClock.from_dict({"year": start_year, "month": 9, "turn": 0})
-	w.world_vars = (era.get("world_vars", {}) as Dictionary).duplicate(true)
+	# JSON 解析出的整数值 float 必须归一，保证 create 与 from_dict 的内存类型一致（HANDOFF 第 4 节第 1 条）
+	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
 	w.player.age_months = maxi(w.player.age_months, 0)
 	return w
 

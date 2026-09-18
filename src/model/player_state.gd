@@ -93,7 +93,7 @@ static func from_dict(d: Dictionary) -> PlayerState:
 	p.aptitude_id = str(d.get("aptitude_id", ""))
 	p.aptitude_special = str(d.get("aptitude_special", ""))
 	p.house_id = str(d.get("house_id", "none"))
-	p.political_leaning_id = str(d.get("political_leading_id", d.get("political_leaning_id", "")))
+	p.political_leaning_id = str(d.get("political_leaning_id", ""))
 	p.personality = JsonUtil.normalize(d.get("personality", []))
 	p.life_goal = str(d.get("life_goal", ""))
 	p.sim_style_id = str(d.get("sim_style_id", "mixed"))

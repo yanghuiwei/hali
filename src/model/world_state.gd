@@ -30,7 +30,8 @@ static func create(era_id_: String, player_: PlayerState, seed_: int, registry_:
 	var start_year := int(era.get("start_year", 1991)) if era.get("start_year", null) != null else 1991
 	w.era_start_year = start_year
 	w.clock = GameClock.from_dict({"year": start_year, "month": 9, "turn": 0})
-	w.world_vars = (era.get("world_vars", {}) as Dictionary).duplicate(true)
+	# JSON 解析出的整数值 float 必须归一，保证 create 与 from_dict 的内存类型一致（HANDOFF 第 4 节第 1 条）
+	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
 	w.player.age_months = maxi(w.player.age_months, 0)
 	return w
 
