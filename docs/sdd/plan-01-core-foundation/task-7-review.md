@@ -425,3 +425,78 @@ a.is_true(str(w2.flags.get("last_cast_narration","")).contains("上限"), ...)
 - `flags.erase` 使键**不存在**（而非 0），本次核对无任何代码使用 `flags.has("energy_loop_count")` 或直接下标读取，故无现状隐患；未来 Task 8+ 若新增「遍历 flags 展示」类消费方需注意缺失键语义（信息级，未验证）。
 - 未穷举仓库外/未来写入 `world.flags` 的第三方路径（当前 `src/` 全量 grep 仅 `spell_resolver.gd:122,124,126,133` 与 `world_state.gd:126` 写入，已逐条核对）。
 - 严格只读：未执行任何 git 写操作与仓库文件修改；三个沙箱（`/tmp/hali-ruling-probe`、`/tmp/hali-ruling-sbx`、`/tmp/hali-ruling-mut`）跑完已删除，仓库 `git status --porcelain` 空、`git diff --stat HEAD` 空。（`/tmp/hali_cmp`、`/tmp/hali_nobreak`、`/tmp/hali_probe` 为前几轮复审遗留，非本轮产物，未触碰。）
+
+---
+
+# 裁定实现修复 scoped 复审（N1/N2 关闭确认，提交 153487c）
+
+# 裁定实现修复 scoped 复审
+
+复审者：reviewer subagent（独立只读复审）　模型：deepseek-flash　范围：a0bc1d3..153487c
+
+## 结论
+- N1：**CLOSED**
+- N2：**CLOSED**
+- 无逻辑改动：**是**
+- 总评：**通过**
+
+## 证据
+
+### 1. diff 范围核对（`git diff --name-status/--numstat a0bc1d3..153487c`）
+```
+M HANDOFF.md                                   |  9 +-   (4 处改：§0 状态、Task 表 8 行、§6 前提、§8#27)
+M README.md                                    |  2 +-   (Task 8 行去掉「先裁定能量叠加语义」)
+M docs/sdd/plan-01-core-foundation/progress.md |  9 +    (新增裁定关闭记录)
+M docs/sdd/plan-01-core-foundation/task-7-review.md | 110 +  (追加上一轮裁定复审记录，纯新增)
+A docs/sdd/plan-01-core-foundation/task-7-ruling-review-brief.md | 61 +  (上一轮复审简报工件)
+M docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md | 2 +-  (仅 1795 行注释，与实现镜像)
+M src/model/world_state.gd                     | 2 +-   (1+/1−，仅第 74 行注释)
+```
+- **代码面唯一改动**：`git diff a0bc1d3..153487c -- src tests tools` 只输出 `world_state.gd:74` 一行注释替换；`tests/`、`tools/`、`data/` **零改动**（`--numstat -- tests` 为空）。
+- `flags.erase("energy_loop_count")` 及其上下文（`clock.advance_month()` 后、`time_rewind_count` 不重置）与 `a0bc1d3` **逐字一致**，未随注释一起被触碰。
+- 无新增/删除代码行、无 mode 变更、无越界文件；`progress.md`、`task-7-review.md`、简报为文档/审查工件。
+- 仓库镜像一致性：`docs/sdd/plan-01-core-foundation/` 与 gitignore 工作区 `.superpowers/sdd/2026-09-18-.../` 的 `task-7-review.md`、`task-7-ruling-review-brief.md` md5 完全相同（`cab9f5c0…` / `1fb6a23f…`），无分叉。
+
+### 2. N1 关闭证据
+```
+$ grep -rn "第七十五条" src tests docs/superpowers    →  无命中（exit=1）
+$ grep -rn "七十五|第75条|75 条" src tests docs/superpowers HANDOFF.md README.md
+  src/rules/character_creation.gd:200  # 哑炮：无魔法、无魔杖（第七十五章）        ← 正当引用
+  tests/creation_test.gd:81 / tests/registry_test.gd:14 / 计划 79,454,606,621,1919,2011,2427,2479,4290  ← 均为「第七十五章启动界面」正当引用
+```
+- 注释已改为（`src/model/world_state.gd:74`，计划 1795 同步）：
+  `# per-turn 语义（第五十五条·魔法体系漏洞保护 / HANDOFF §8 第 27 条裁定）：低阶咒语叠加计数每回合（月）重置；`
+- **引用正确性独立核实**：设计文档 `哈利·波特·魔法纪元.md:589` = `## 第五十五章·魔法体系漏洞保护`，正文即「必须防止：低阶咒语无限叠加变成无限能量…时间转换器无限回溯」；`:755` = `## 第七十五章·正式启动界面`。旧注释确属误引，新引用精确。
+- 仅存残留命中位于**复审工件自身对 finding 的引述**（`docs/sdd/.../task-7-review.md:417`、`progress.md:220`、本轮简报），符合 brief 的排除口径。
+
+### 3. N2 关闭证据
+```
+HANDOFF.md:10   …第 8 节第 27 条闸门（energy_loop_count/time_rewind_count 生命周期）**已由 Human 裁定并落地**（per-turn / 终身一次性，提交 a0bc1d3）…
+HANDOFF.md:150  | 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ⬜ 下一步 | — |
+HANDOFF.md:176  > ✅ 第 8 节第 27 条的闸门…已由 Human 裁定并落地（per-turn / 终身一次性，a0bc1d3）。
+HANDOFF.md:235  27. ~~（Task 7 Important）~~ **已裁定并落地（Human，提交 a0bc1d3）**：per-turn 语义 + tick() erase…time_rewind_count 终身一次性…
+README.md:27    | 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | 下一步 |
+$ grep -rn "先裁定|开工前必须裁定|必须先裁定|未决" HANDOFF.md README.md   →  无与 §8#27 相关命中
+```
+- §8#27 四处（`§0 一句话状态` / Task 表 / `§6 下一步` / `§8` 条目本体）均已转为「已裁定并落地」，并附裁定内容、实现 commit、断言增量（223→227）、以及 N3 约束；`§8` 原条目标题加删除线 + 原子项保留可追溯。README Task 8 行不再要求先裁定。
+
+### 4. 测试复跑（仓库内，只读，退出码 0）
+```
+[world_tick] 断言=104 失败=0
+[spell]      断言=227 失败=0
+==== 总计失败=0，失败套件=0 ====
+ALL TESTS PASSED
+全部通过。
+EXIT=0
+```
+- `[spell] 227/0` 与台账声称的 223→227 一致；`[probe] 失败=1` 为 harness 故意失败探针，不计入总计。注释改动未改变任何结果。
+- 运行后 `git status --porcelain --untracked-files=all` 为空、`git diff --stat HEAD` 为空；本轮**未做任何文件修改、未做任何 git 写操作**。
+
+## 残留发现
+| # | 严重度 | 位置 | 问题 | 建议 |
+|---|--------|------|------|------|
+| N3 | Minor（设计约束，**不阻塞**） | `src/model/world_state.gd:71-76`；HANDOFF:235 | per-turn 契约只在 `WorldState.tick()` 内兑现。若 Task 8 回合引擎绕过 `tick()` 直接 `clock.advance_month(s)`（`clock.advance_months` 在 `tests/model_test.gd:27`、`tests/world_tick_test.gd:27` 已被直接调用），计数不会重置，且**失败是静默的**（无报错、无返回差异），仅凭散文约束易被后续 worker 忽略 | **处置：接受为已记录的约束，不重开**。Task 8 落地时：(a) 将所有回合推进收敛到 `WorldState.tick()`（HANDOFF:235 已写明「勿直接 advance_month」）；(b) 补一条端到端断言「经回合引擎推进一回合后 `energy_loop_count` 归零/`lumos` 可重施」，把契约从文档升级为可执行测试；(c) 可选在 `clock.advance_month/advance_months` 文档注释标注「仅 `WorldState.tick()` 应调用」 |
+| N4 | Minor（测试覆盖缺口，**不阻塞**） | `tests/world_tick_test.gd`（无 `energy_loop_count` 断言）；`tests/spell_test.gd:73-82` | 本轮重置行为只有 spell_test 通过手动 `master.tick()` 间接覆盖，**world_tick 层零断言**（层与行为的归属错位）；另一 `no_unlimited_energy` 魔咒 `wingardium_leviosa` 未参与任何叠加/重置断言（全仓库仅 `model_test.gd:47-50` 的 `learn_spell`），共享同一全局 flag 的语义未被独立验证 | **处置：接受为 Minor，顺延至 Task 8 测试加固批次**（Task 8 本就要扩测试）。建议：(a) `tests/world_tick_test.gd` 增 1 条 `tick()` 后 `energy_loop_count` 键不存在/归零断言，把覆盖放到正确层级；(b) `spell_test` 增 1 条 `wingardium_leviosa` 与 `lumos` **共享计数器**的用例（A 咒叠到上限后 B 咒同样被拦），封死「两咒各自计数」的误解 |
+| N5 | Trivial（台账表述） | `docs/sdd/plan-01-core-foundation/progress.md:206` | 历史条目仍写 `Task 7: 移交人类批次 / Task 8 前必须裁定`，关闭记录在 8 行后的 `:214`。progress.md 为时序台账，原样保留可接受，但快速扫描者可能停在此行再次误判为未决闸门 | 建议在该行后追加半句「（已裁定，见下 214 行）」，或给标题加删除线；纯文案、无行为影响，可由 Task 8 收尾时一并处理 |
+
+**备注**：以上 N3/N4/N5 均为**非阻塞**项，N1/N2 关闭判定不受其影响；本轮唯一新发现为 N5。

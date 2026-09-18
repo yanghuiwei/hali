@@ -219,3 +219,6 @@ Task 7 后续裁定（Human：「按你建议来」）—— HANDOFF §8 第 27 
   裁定实现复审（reviewer subagent，只读）→ **通过**（per-turn 与终身一次性均 ADDRESSED，Task 8 计划兼容，无夹带）；
   提出 N1（注释误引「第七十五条」，应作「第五十五条」，已改）、N2（台账仍记为未决闸门，已在本文件与 HANDOFF 关闭）、
   N3（per-turn 契约绑定 `tick()`，Task 8 回合推进必须经 `tick()`）、N4（world_tick 层与 wingardium 同 flag 断言缺口）。
+Task 7 裁定实现修复复审 → **通过**（N1/N2 CLOSED，无逻辑改动）。残留 N3（per-turn 契约绑定 `WorldState.tick()`，Task 8 回合推进必须统一经 `tick()`，并补端到端断言）、
+  N4（world_tick 层与 `wingardium_leviosa` 同 flag 的覆盖缺口）、N5（台账历史条目表述）均为非阻塞，顺延到 Task 8 测试加固批次。
+Task 7: 修复轮收尾提交 `153487c`（注释引用改为「第五十五条·魔法体系漏洞保护」+ 关闭 HANDOFF §8#27 闸门）。交付点 = 分支顶端 `153487c`。
