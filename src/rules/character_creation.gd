@@ -190,7 +190,7 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) -> 
 		var pool: Array = []
 		for candidate in registry.ids("aptitudes"):
 			var cid := str(candidate)
-			if cid == "random" or cid == "squib":
+			if cid == "random" or cid == "squib" or cid == "special":
 				continue
 			pool.append(cid)
 		aptitude_id = str(rng.stream_pick("aptitude", pool))

@@ -2060,6 +2060,7 @@ func run() -> int:
 		var r := CharacterCreation.create(rand_apt, reg, RngService.new(1000 + i))
 		a.ne(r.player.aptitude_id, "squib", "随机资质不得变成哑炮")
 		a.ne(r.player.aptitude_id, "random", "随机资质必须被解析")
+		a.ne(r.player.aptitude_id, "special", "随机资质不得掷出未指定天赋的特殊资质")
 
 	# ---- 学院判定 ----
 	var sly := base_choices()
@@ -2413,7 +2414,7 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) -> 
 		var pool: Array = []
 		for candidate in registry.ids("aptitudes"):
 			var cid := str(candidate)
-			if cid == "random" or cid == "squib":
+			if cid == "random" or cid == "squib" or cid == "special":
 				continue
 			pool.append(cid)
 		aptitude_id = str(rng.stream_pick("aptitude", pool))
