@@ -16,6 +16,7 @@ const TABLE_FILES: Dictionary = {
 	"wand_cores": "wand_cores.json",
 	"wand_flexibilities": "wand_flexibilities.json",
 	"wand_lengths": "wand_lengths.json",
+	"spells": "spells.json",
 }
 
 var duplicate_ids: PackedStringArray = PackedStringArray()

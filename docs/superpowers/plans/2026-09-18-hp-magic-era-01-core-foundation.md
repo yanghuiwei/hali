@@ -2772,7 +2772,7 @@ static func cast(world: WorldState, spell_id: String, conditions: Dictionary, rn
 		match guard:
 			"no_rare_resource_duplication":
 				if RARE_RARITIES.has(target_rarity):
-					return _blocked_outcome("复制咒无法复制%s级资源：世界资源必须有成本、有产出、有消耗" % target_rarity, guard_ids)
+					return _blocked_outcome("复制咒无法复制稀有资源（%s）：世界资源必须有成本、有产出、有消耗" % target_rarity, guard_ids)
 			"no_resurrection":
 				if not target_alive:
 					return _blocked_outcome("治疗咒无法复活死者：死亡真实且不可逆", guard_ids)
