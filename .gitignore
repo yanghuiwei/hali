@@ -1,0 +1,14 @@
+# 忽略本机 Godot 可执行文件（约 180MB，不入库）
+*.exe
+
+# Godot 导入缓存（构建产物）
+.godot/
+
+# 导出产物
+export/
+build/
+
+# 临时文件
+*.tmp
+*.bak
+.DS_Store
