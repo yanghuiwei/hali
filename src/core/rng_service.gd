@@ -31,15 +31,18 @@ func chance(name: String, probability: float) -> bool:
 func state_dict() -> Dictionary:
 	# 先物化基础流：保证存档里始终有随机状态可恢复（即使本次回合没有抽过任何随机数）
 	stream("world")
-	var out := {}
+	var streams := {}
 	for name in _streams.keys():
 		var rng: RandomNumberGenerator = _streams[name]
-		out[name] = {"seed": rng.seed, "state": rng.state}
-	return out
+		streams[name] = {"seed": rng.seed, "state": rng.state}
+	# seed_value 也必须入档：恢复后新建的命名流要用原种子派生，否则会退回构造时的 seed
+	return {"seed_value": seed_value, "streams": streams}
 
 func load_state(d: Dictionary) -> void:
-	for name in d.keys():
-		var entry: Dictionary = d[name]
+	seed_value = int(d.get("seed_value", seed_value))
+	var streams: Dictionary = d.get("streams", {})
+	for name in streams.keys():
+		var entry: Dictionary = streams[name]
 		var rng := RandomNumberGenerator.new()
 		rng.seed = int(entry.get("seed", 0))
 		rng.state = int(entry.get("state", 0))

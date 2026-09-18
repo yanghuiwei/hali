@@ -45,6 +45,11 @@ func run() -> int:
 	var r8 := RngService.new(42)
 	r8.load_state(snapshot)
 	a.eq(r8.stream_int("world", 0, 999999), next_a, "恢复后继续抽同一随机数")
+	# 恢复后新建的命名流必须沿用原 seed，而不是构造时的 seed（否则不同实例读同一存档会分叉）
+	var r9 := RngService.new(0)
+	r9.load_state(snapshot)
+	a.eq(r9.stream_int("new_stream", 0, 999999),
+		RngService.new(42).stream_int("new_stream", 0, 999999), "恢复后新流沿用原 seed")
 	a.eq(JSON.stringify(snapshot).length() > 0, true, "随机状态可 JSON 序列化")
 
 	return a.report("clock")

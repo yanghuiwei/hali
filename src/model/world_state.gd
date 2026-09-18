@@ -132,6 +132,7 @@ func tick() -> Array:
 			log.append(ev)
 			if is_major:
 				add_fact("major", str(picked.get("text", "")))
+				break   # 同月最多一起重大事件，保证 MAJOR_EVENT_GAP 成立
 
 	# 3) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
 	var style_now := sim_style()

@@ -22,7 +22,6 @@ func run() -> int:
 	p.sim_style_id = "mixed"
 	p.location_id = "london_muggle"
 	var w := WorldState.create("modern", p, 20260918, reg)
-	var rng := RngService.new(w.game_seed)
 
 	var start_year := w.clock.year
 	w.clock.advance_months(12)
@@ -43,15 +42,22 @@ func run() -> int:
 		var v := float(w.world_vars[key])
 		a.between(v, 0.0, 1.0, "世界变量 %s 在界内" % key)
 
-	# 第六十八章防过度热闹：major 事件必须稀少
+	# 第六十八章防过度热闹：major 事件必须稀少，且相邻 major 至少相隔 12 个月
 	var w2 := WorldState.create("second_wizarding_war", p, 1234, reg)
 	w2.player.sim_style_id = "epic_wizard_war_typo"   # 未知风格必须被安全处理
+	w2.player.location_id = "ministry_of_magic"       # 让 major 候选真的进入候选集，避免断言空转
 	var major_count := 0
+	var last_major_turn := -1000
+	var min_gap := 9999
 	for i in 240:
 		for e in w2.tick():
 			if bool(e.get("major", false)):
 				major_count += 1
+				min_gap = mini(min_gap, int(e["turn"]) - last_major_turn)
+				last_major_turn = int(e["turn"])
+	a.is_true(major_count >= 1, "该配置下至少出现一次 major，避免断言空转（实际=%d）" % major_count)
 	a.is_true(major_count <= 20, "240 个月内 major 事件不超过 20 次（约 1/12 月上限），实际=%d" % major_count)
+	a.is_true(min_gap >= 12, "相邻 major 事件至少相隔 12 个月（实际最小间隔=%d）" % min_gap)
 
 	# 确定性：同种子同世界 → 同演化
 	var wa := WorldState.create("modern", PlayerState.new_default(), 777, reg)
@@ -67,11 +73,15 @@ func run() -> int:
 	var w3 := WorldState.create("modern", PlayerState.new_default(), 5, reg)
 	w3.player.bloodline_id = "muggle_born"
 	w3.player.house_id = "none"
+	w3.player.location_id = "ministry_of_magic"   # 让 ministry 类传闻真的进入候选集，避免断言空转
 	var leaked := false
+	var events_seen := 0
 	for i in 40:
 		for e in w3.tick():
+			events_seen += 1
 			if str(e.get("category", "")) == "魔法部内幕":
 				leaked = true
+	a.is_true(events_seen > 0, "该配置下确实产生了事件（否则信息保护断言空转）")
 	a.is_false(leaked, "未入学麻瓜出身者不应收到“魔法部内幕”级信息")
 
 	return a.report("world_tick")
