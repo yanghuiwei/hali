@@ -1,13 +1,13 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-18（Task 8 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 8 交付时为 `432adc8`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
+> 最后更新：2026-09-18（Task 9 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 9 交付时为 `d9135ab`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
 
 ---
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–8 并通过独立审查（Task 4/5/6/7 含修复轮；Task 8 的 3 条 Important 均为计划级/架构级，已登记 §8 待后续裁定）。** 下一步是 Task 9「状态面板格式化 + 第七十二章强制自检」（用完整实现替换 Task 8 的最小 `SelfCheck` 桩）。
+**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–9 并通过独立审查（Task 4/5/6/7 含修复轮；Task 8 的 3 条 Important 均为计划级/架构级，已登记 §8 待后续裁定）。** 下一步是 Task 10「存档与读档」（Task 9 已用完整实现替换 Task 8 的 `SelfCheck` 最小桩，并落地第六十二至六十五章面板）。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -21,14 +21,14 @@
 | --- | --- |
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
-| `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一提交 |
-| 当前 HEAD | `plan-01-core-foundation` 顶端 `432adc8`（Task 8），下次从 `git log` 看即可 |
+| `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一祖先 |
+| 当前 HEAD | `plan-01-core-foundation` 顶端 `d9135ab`（Task 9），下次从 `git log` 看即可 |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
 git checkout plan-01-core-foundation
-git log --oneline -5     # 顶部应是最新的 docs(handoff) 提交，其下依次 432adc8 / 79d15aa / 153487c / a0bc1d3
+git log --oneline -5     # 顶部应是最新的 docs(handoff) 提交，其下依次 d9135ab / 463a73d / 432adc8 / 79d15aa
 ```
 
 `main` 已通过 PR #1 合并到 `eccc871`（含 Task 1–3 代码）；本地 `plan-01-core-foundation` 已在 Task 4 开工时 fast-forward 到同一提交，之后的新提交仍落在执行分支上，先不合回 `main`。
@@ -81,6 +81,8 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 [creation] 断言=176 失败=0
 [spell] 断言=223 失败=0
 [gm] 断言=38 失败=0
+[panel] 断言=65 失败=0
+[selfcheck] 断言=26 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
 == 3/3 主场景冒烟 ==
@@ -106,7 +108,7 @@ src/rules/               # magic_level(已完成) · character_creation · spell
                          # · state_ops · self_check
 src/gm/                  # game_master(接口) · scripted_game_master(离线确定性替身，计划 02 换 LLM)
 src/persist/             # save_codec · save_store
-src/ui/                  # panel_formatter · main.tscn · main.gd
+src/ui/                  # panel_formatter(已完成) · main.tscn · main.gd（后两者任务 11）
 tests/                   # run_tests.gd(运行器) · assert.gd(零依赖断言库) · *_test.gd(每任务一套件)
 docs/superpowers/plans/  # 实现计划
 docs/sdd/                # 过程台账/简报/报告/审查包（第 7 节）
@@ -149,8 +151,8 @@ taskkill //PID <PID> //F
 | 6 | 角色创建流水线 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f3d8a31` + `2341540` + `61ad053` |
 | 7 | 魔咒解析器与反漏洞守卫 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f323b55` + `3499881` + `d52ebda` |
 | 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ✅ 完成（审查 Approved with findings；3 Important 计划级，已登记 §8） | `432adc8` |
-| 9 | 状态面板格式化 + 强制自检 | ⬜ 下一步（用完整实现替换 Task 8 的 `SelfCheck` 最小桩） | — |
-| 10 | 存档与读档 | ⬜ | — |
+| 9 | 状态面板格式化 + 强制自检 | ✅ 完成（审查 Approved with findings；0 Critical / 0 Important / 6 Minor，已登记 §8） | `d9135ab` |
+| 10 | 存档与读档 | ⬜ 下一步 | — |
 | 11 | 主界面与运行说明 | ⬜ | — |
 
 逐事件台账（含每次审查的原始结论、发现的严重度、控制器补跑证据）：
@@ -171,15 +173,18 @@ taskkill //PID <PID> //F
 - Task 7 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-7-review.md`（含三轮独立 reviewer 输出与反证）
 - **Task 8**：`GameMaster`/`GmResult` 接口 + `ScriptedGameMaster`（确定性关键词裁决）+ `StateOps`（唯一审计状态入口）+ `Progression`（第七十章反刷，同（技能,地点）重复收益递减）+ `TurnEngine`（一回合 = 一月；死亡不可逆、自检挂起、世界照常 `tick()`）+ `SelfCheck` 最小桩。审查 **Approved with findings**（Critical=0 / Important=3 / Minor=5）；3 条 Important 均为计划级/架构级（同回合同掷骰、叙事 RNG 未入档、GM 直改世界），已登记 §8。
 - Task 8 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-8-review.md`
+- **Task 9**：`PanelFormatter`（第六十二至六十五章文本面板：人生状态 / 魔法能力 / 社会关系 / 势力）+ 完整 `SelfCheck`（第七十二章：`snapshot` 七项 + `ooc_report` 四项 + `report`）替换 Task 8 最小桩，新增 `src/ui/` 目录。审查 **Approved with findings**（Critical=0 / Important=0 / Minor=6）。开工中裁定计划内部矛盾（`player_panel` 不输出姓名 vs 测试断言 `contains("张三")`），作最小修正新增 `【姓名】` 行并同步计划；审查批准该偏离为唯一正确且无夹带。
+- Task 9 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-9-review.md`
 
 ---
 
-## 6. 下一步怎么执行（Task 9）
+## 6. 下一步怎么执行（Task 10）
 
-> ✅ 第 8 节第 27 条闸门（`energy_loop_count`/`time_rewind_count` 生命周期）已由 Human 裁定并落地（per-turn / 终身一次性，`a0bc1d3`）；Task 8 的 3 条 Important 已登记 §8。
+> ✅ 第 8 节第 27 条闸门（`energy_loop_count`/`time_rewind_count` 生命周期）已由 Human 裁定并落地（per-turn / 终身一次性，`a0bc1d3`）。
+> Task 9 已完成（第六十二至六十五章面板 + 第七十二章完整自检），下一步是 **Task 10「存档与读档」**。
 
-1. 先读计划里 `### Task 9: 状态面板格式化 + 第七十二章强制自检`（含完整代码块与预期输出）；
-   用完整实现替换 Task 8 写入的 `src/rules/self_check.gd` 最小桩（HANDOFF §8#1 已确认按计划留桩可接受）。
+1. 先读计划里 `### Task 10: 存档与读档`（约第 3881 行起，含完整代码块与预期输出）。
+   **Task 10 必须同时收口几条存档级 Important/Minor**（见 §8）：#9（`from_dict` 对显式 null/非容器字段的健壮性）、#17/#34（叙事 RNG 未入档，读档后随机流重放）、#19（`game_seed` 裸 int 经 JSON 精度丢失）、#20（`tick → to_dict → JSON → from_dict → tick` 端到端续跑对比缺失）、#26（载入路径不重跑 `validate_choices`）。
 2. 按 superpowers 的 **subagent-driven-development** 流程推进：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录。
 3. **子代理必须使用与主会话相同的大模型**（本机为 `deepseek/deepseek-flash`）：`pi -p --provider deepseek --model deepseek-flash ...`，不要用 harness 默认模型。
 4. **提交前必须有绿灯**：`bash tools/test.sh` 输出 + 原始文本留存到报告里。Task 3 的流程教训（实现者没跑 Step 5、没写报告，控制器事后补跑）已在台账登记为 P1 流程发现，Task 4 起未重演。
@@ -197,17 +202,17 @@ taskkill //PID <PID> //F
 
 ---
 
-## 8. 待人类裁定项（不阻塞 Task 5）
+## 8. 待人类裁定项（不阻塞 Task 10）
 
-前 3 条是计划预检遗留，其后是 Task 3 / Task 4 审查产出。**第 2 条（魔杖价矛盾）已在 Task 4 开工前按正典裁定并落地**（7–10 加隆；测试取下限 7 加隆）。其余项均为计划级/文档级，或要到 Task 7–10 才触发，不阻塞 Task 5。
+前 3 条是计划预检遗留，其后是逐任务审查产出。**第 1 条（Task 8 故意留 `SelfCheck` 最小桩）已由 Task 9 用完整实现替换而关闭**；**第 2 条（魔杖价矛盾）已在 Task 4 开工前按正典裁定并落地**。其余项均为计划级/文档级，或要到 Task 10–11 才触发。
 
-1. **Task 8 故意留 `SelfCheck` 最小桩**（计划明说任务 9 用完整实现替换），reviewer 可能判为 placeholder —— 确认"按计划留桩"可接受。
+1. ~~**Task 8 故意留 `SelfCheck` 最小桩**~~ **已关闭（Task 9）**：完整 `SelfCheck`（`snapshot`/`ooc_report`/`report`）已替换最小桩（`d9135ab`），`gm_test` 仍绿。
 2. ~~**魔杖价自相矛盾**~~ **已裁定（Task 4）**：按正典 `哈利·波特·魔法纪元.md:223`「一根普通魔杖：7‑10加隆」，测试取价格下限 7 加隆（3451 纳特），期望 `"3加隆 0西可 0纳特"`；计划与测试两处已同步。裁定记录见 `docs/sdd/plan-01-core-foundation/task-4-review.md`。
 3. **Task 8 `ScriptedGameMaster` 直接调 `SpellResolver.cast()`**（直接改世界）而不是返回 `cast_spell` delta，与"GM 返回 delta、引擎负责应用"的契约不符 —— 确认是否接受（计划内已文档化）。
 4. **哑炮失败率**：`BANDS[0] = (1.00, 1.00)` 但 `effective_rate(SQUIB)` 早退返回 `0.95`，等于哑炮有 5% 施法成功率，与正典「哑炮…无法施展咒语」的严格读法冲突（Task 7 判定直接走 `effective_rate`）。二选一：把 `BANDS[0]` 改成 `(0.95, 0.95)`，或让 `effective_rate` 对 SQUIB 返回 1.0 / 直接拒绝施法。另注 `base_rate(SQUIB)=1.0` 超出 `effective_rate` 文档化的 `[0.005, 0.95]` 值域，是潜在陷阱。
-5. **`Money` 负值显示未定义**：`Money.from_knuts(-50)` → `parts() = [0, -2, -16]`，`formatted() = "0加隆 -2西可 -16纳特"`。第六十二章财富面板在债务场景会显示该形态，Task 9 落地前需要定义。
+5. **`Money` 负值显示未定义**：`Money.from_knuts(-50)` → `parts() = [0, -2, -16]`，`formatted() = "0加隆 -2西可 -16纳特"`。**Task 9 已落地面板（`player_panel`/`power_panel` 会输出该形态），但仍未定义**：债务场景会显示负值西可/纳特。需裁定债务格式（如「负债 X 加隆」）或在 `Money` 层定义。
 6. **大师级失败率上界 0.02** 对正典「低于2%」是开/闭区间歧义，测试用 `<=` 掩盖了它。
-7. **Task 9 `power_panel`** 把「法律执行 / 傲罗 / 威正加摩」多个标签映射到同一批 `world_vars`（`war_pressure` / `ministry_stability` / `corruption`）—— 纯显示问题，确认可接受。
+7. **（Task 9 已落地，扩展）`power_panel` 标签映射** 把 **7 个标签**映射到 **4 个 `world_vars`**：法律执行→`war_pressure`、傲罗/稳定度→`ministry_stability`、威森加摩/腐败度→`corruption`、国际→`muggle_relations`（与「麻瓜关系」重复）。纯显示问题，确认可接受，或后续补独立的 `international_relations` 等键。
 8. **是否先补 Task 3 的测试强度缺口**（审查 Minor）：`magic_level_test` 的 clamp 上下界两条断言实际空转（0.9075 < 0.95、0.01 > 0.005），`BANDS` 只精确断言 5/10 档、`LABELS` 只断言 3/10，`money_test` 的负值只测了 `total_knuts()`。选择：立即补，或作为计划级补测留到后续任务批量处理（注意同型缺口会复制到 Task 5/7/9）。
 9. **（Task 4 审查 Important，范围外）** `PlayerState.from_dict` / `WorldState.from_dict` 收到显式 `null`/非容器字段时，可能因类型化赋值运行期报错（仅畸形/手改存档触发，正常 `to_dict→JSON→from_dict` 不触发）。建议 Task 10 加 `typeof` 回退，或明确「存档只由 `to_dict()` 产出」。
 10. **（Task 4 Minor）** `JsonUtil.normalize` 未覆盖非有限 float、≥2^53 的整数值 float、Dictionary 键类型；当前游戏数值不触发，建议在计划/注释写明这三条限制。
@@ -253,6 +258,15 @@ taskkill //PID <PID> //F
 38. **（Task 8 Minor）** `Progression` 窗口 `turn - entry <= WINDOW_TURNS` 是闭区间（实际保留 13 个回合偏移，与「12 回合内」差一）；`gain==0` 也追加记录，同一回合反复调用可无界累积；键从不 GC（换地点即新建）；「换环境重新计算」导致两地点轮换可把惩罚减半。
 39. **（Task 8 Minor，文档级）** 计划 Interfaces 少列 `set_player_flag`、`set_magic_tier` 与 `relation_delta.interest`；`GmResult.audit_required` 无消费者；`tags` 未出现在 `submit` 返回字典（UI 拿不到 cast/train 分类）。
 40. **（Task 8 Minor，测试强度）** 空转/弱断言：`cast_result.narration.contains("照明咒") or narration.length()>0`（右操作数恒真）、`w5.clock.year >= before_year` 恒真、`money_before` 未使用、cast 循环未验证计数真的到上限、自检只查标题未查内容且未断言第 14 回合 `audit` 为空、`op_errors` 消息内容未断言；另缺 `set_flag`/`set_player_flag`/`set_magic_tier`/`relation_delta`、`know_fact` 空/`system` 来源、非字典条、blocked 提交不推进回合等负例。建议与 Task 9/10 测试加固批次合并。
+
+### Task 9 审查新增（均不阻塞 Task 10，但需登记）
+
+41. **（Task 9 Minor，扩展 §8#7）** `power_panel` 的「国际」与「麻瓜关系」同映射到 `muggle_relations`，连同已登记的映射共 7 标签→4 变量；纯显示，无新误映射（逐字照抄计划）。见上 §8#7。
+42. **（Task 9 Minor，计划级）** 第七十二章第 1 项「人物行为偏离设定」依赖 `npcs[*].ooc_violation`，但该字段在 `src/`、`data/` 全库无写入者 → 生产路径恒为「通过」，检查空转。须由叙事层/未来任务写入，或在计划注明为人工/AI 标注项。
+43. **（Task 9 Minor，测试强度）** 负例缺口：`events_block` 空数组、`_top_skill`/`_skills_line` 空技能、`_label` 未知/空 id、`relation_panel` 空关系、非哑炮空魔杖、`snapshot` 空 npcs/pending/history、`ooc_report` 空来源泄露/canon 锚点超前、`is_audit_turn` 负数、哑炮分支仅 2 子串。建议与 §8#8/#40 的测试加固批次合并。
+44. **（Task 9 Minor，§8#5 触发）** `Money` 负值显示已经由 `player_panel`/`power_panel` 暴露到 UI；见 §8#5。
+45. **（Task 9 Minor，§8#9 同类）** `var rel: Dictionary = p.relations[npc_id]`、`var family: Dictionary = flags.get("family", {})`、`float(world_vars[key])` 在畸形/手改状态下可能运行期报错；建议加 `typeof` 回退，或明确「状态只由 `to_dict()` 产出」。
+46. **（Task 9 Minor）** `SelfCheck.ooc_report` 的 `timeline_detail` 在「年份早于锚点」与「canon 事实超前」同时成立时被后者覆盖，只报最后一条异常原因（不影响 yes/no 判定）。
 
 ---
 

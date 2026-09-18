@@ -3649,6 +3649,7 @@ static func player_panel(world: WorldState) -> String:
 	var p := world.player
 	var lines: Array[String] = []
 	lines.append("《哈利·波特·魔法纪元·人生状态》")
+	lines.append("【姓名】%s" % p.name_text)   # Task 9 修正：测试断言 contains("张三")，但正典第六十二章清单本身不含姓名；补一个附加字段（测试即契约，不弱化断言）
 	lines.append("【时间】%s 【年龄】%d岁 【血统】%s" % [world.clock.formatted(), p.age_years(), _label(world, "bloodlines", p.bloodline_id)])
 	lines.append("【身份】%s 【所在地】%s 【职业】%s" % [_label(world, "houses", p.house_id), _label(world, "locations", p.location_id), (p.job if not p.job.is_empty() else "无")])
 	lines.append("【财富】%s 【家庭】%s" % [p.money().formatted(), _label(world, "birth_identities", p.birth_identity_id)])

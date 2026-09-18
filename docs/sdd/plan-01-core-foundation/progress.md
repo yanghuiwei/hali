@@ -243,3 +243,41 @@ Task 8: Important（均为计划级/架构级，**本轮不修**，登记 HANDOF
 Task 8: 流程正确性复核通过：死亡/自检挂起不推进时间；回合推进统一经 `WorldState.tick()`（满足 Task 7 裁定的 per-turn）；自检第 15 回合触发并持久化 `awaiting_audit_ack`。
 Task 8: 按 HANDOFF 流程（Task 5 先例），3 Important + 5 Minor 均登记人类/后续批次，本任务不做修复轮。
 Task 8: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `432adc8`。工作区干净。
+
+---
+
+## Task 9（状态面板格式化 + 第七十二章强制自检）
+
+Task 9: 开工前新增 `src/ui/` 目录（第六十二至六十五章文本面板）与完整 `SelfCheck`（替换 Task 8 最小桩）。
+  简报 `task-9-brief.md` 写盘，含一条强制裁定：计划 Step 6 的 `git add` 漏列新脚本自动生成的 `*.gd.uid`，
+  按 HANDOFF §4 第 5 条显式补入 `panel_formatter.gd.uid` / `panel_test.gd.uid` / `selfcheck_test.gd.uid`。
+Task 9: 派发 worker subagent（deepseek-flash）。worker 提交
+  `d9135ab feat(ui): 第六十二至六十五章面板与第七十二章强制自检`（8 files, +395/−2），并立即写盘 `task-9-report.md`。
+  交付：`src/ui/panel_formatter.gd`、`src/rules/self_check.gd`（完整实现）、`tests/panel_test.gd`、
+  `tests/selfcheck_test.gd`（各含 .uid）、`tests/run_tests.gd`（SUITES 追加 panel/selfcheck 两套件）。
+Task 9: Step 5 gate —— worker 自跑 `bash tools/test.sh`：先红（`PanelFormatter`/`SelfCheck.snapshot` 未定义，EXIT=1）后绿
+  （`[panel] 65/0`、`[selfcheck] 26/0`、`[gm] 38/0`，EXIT=0）；controller 独立复跑确认同样全绿。
+Task 9: 开工中发现并裁定计划内部矛盾（测试 vs 实现）——计划 Step 1 的 `panel_test.gd` 断言 `panel.contains("张三")`，
+  但计划 Step 4 的 `player_panel()` **从不输出玩家姓名**，正典第六十二章面板清单同样不含姓名字段。逐字照抄必红。
+  worker 做**最小修正**：`player_panel()` 在标题行后新增一行 `lines.append("【姓名】%s" % p.name_text)`，
+  未改动任何既有输出行与全部断言；计划 Step 4 代码块已同步该行。
+Task 9: 第一轮审查（reviewer subagent，只读，deepseek-flash）→ **Approved with findings**：Critical=0 / Important=0 / Minor=6，
+  记录 `task-9-review.md`。reviewer 逐字核验 `panel_test.gd` / `selfcheck_test.gd` / `self_check.gd` 与计划 IDENTICAL；
+  `panel_formatter.gd` 仅 1 行新增（姓名），`run_tests.gd` 仅 +2 行；三条新 `.uid` 均已入库；
+  独立复核四项自检命中路径真触发（非空转）；`gm_test` 仍 38/0（完整 `report` 仍含两段标题，`is_audit_turn` 语义未变）。
+Task 9: 审查对「姓名」唯一偏离的裁定 —— **批准**：确为计划内部矛盾，修正最小、无夹带、未弱化断言；
+  正典第六十二章是「格式清单」而非封闭白名单，`status_line()` 本就输出 `name_text`，附加字段不构成实质违背。
+  备选「删测试断言」被否（测试即契约，不弱化断言）。残留计划债已在计划 Step 4 同步。
+Task 9: 移交后续/人类批次的 Minor（与 HANDOFF §8 合并）——
+  1. （Minor，扩展 §8#7）`power_panel` 把 7 个标签压到 4 个 `world_vars`：法律执行→`war_pressure`、傲罗/稳定度→`ministry_stability`、
+     威森加摩/腐败度→`corruption`、**国际→`muggle_relations`（与「麻瓜关系」重复）**；纯显示，建议补独立键或登记为已知简化。
+  2. （Minor，计划级）第七十二章「人物行为偏离设定」的 `ooc_violation` 在 `src/`/`data/` 全库无写入者，生产路径恒为「通过」（检查空转）；
+     须由叙事层/未来任务写入或注明为人工/AI 标注项。
+  3. （Minor，测试强度）负例缺口：`events_block` 空数组、`_top_skill`/`_skills_line` 空技能、`_label` 未知/空 id、
+     `relation_panel` 空关系、非哑炮空魔杖、`snapshot` 空 npcs/pending/history、`ooc_report` 空来源泄露/canon 超前、`is_audit_turn` 负数；
+     建议按 §8#8 模式与 Task 10/11 批量补测。
+  4. （Minor，§8#5 触发）`Money` 负值显示「0加隆 -2西可 -16纳特」经 `player_panel`/`power_panel` 暴露到 UI；需裁定债务显示格式。
+  5. （Minor，§8#9 同类）`var rel: Dictionary = p.relations[npc_id]`、`var family: Dictionary = flags.get("family", {})`、
+     `float(world_vars[key])` 在畸形/手改状态下可能运行期报错。
+  6. （Minor）`timeline_detail` 在「年份早于锚点」与「canon 事实超前」同时成立时，只报最后一条异常原因（不影响 yes/no 判定）。
+Task 9: 交付点 —— 分支 `plan-01-core-foundation` 顶端（Task 9 提交 `d9135ab` + 本次文档收尾提交）。工作区干净。
