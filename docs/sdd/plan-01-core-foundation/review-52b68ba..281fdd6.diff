@@ -1,0 +1,71 @@
+# Review package: 52b68ba..281fdd6
+
+## Commits
+281fdd6 fix(test): 测试运行器在套件语法错误时必须自行退出而不是挂住
+
+## Files changed
+ tests/run_tests.gd | 34 +++++++++++++++++++++++-----------
+ 1 file changed, 23 insertions(+), 11 deletions(-)
+
+## Diff
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index 2ceea88..d429e17 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -3,33 +3,45 @@ extends SceneTree
+ # 每个任务把自己的套件追加到这里。路径必须真实存在，缺失即失败。
+ const SUITES: Array[String] = [
+ 	"res://tests/harness_test.gd",
+ 	"res://tests/registry_test.gd",
+ ]
+ 
+ func _initialize() -> void:
+ 	var total_failures := 0
+ 	var failed_suites := 0
+ 	for path in SUITES:
+-		if not FileAccess.file_exists(path):
+-			printerr("缺少测试套件: ", path)
++		# 有风险的调用（读文件、load、new、run）全部收在 _run_suite 里：
++		# 套件抛出的运行期错误只中止那个函数，_initialize 仍会走到末尾的打印与 quit()，
++		# 保证任何情况下都以 quit(...) 结束，不会挂住进程。
++		var result: Variant = _run_suite(path)
++		if result == null:
+ 			total_failures += 1
+ 			failed_suites += 1
+ 			continue
+-		var script: GDScript = load(path)
+-		if script == null:
+-			# 语法错误会让 load() 返回 null
+-			printerr("套件无法加载（语法错误？）: ", path)
+-			total_failures += 1
+-			failed_suites += 1
+-			continue
+-		var suite = script.new()
+-		var failures := int(suite.run())
++		var failures := int(result)
+ 		if failures > 0:
+ 			failed_suites += 1
+ 		total_failures += failures
+ 	print("==== 总计失败=%d，失败套件=%d ====" % [total_failures, failed_suites])
+ 	if total_failures > 0:
+ 		quit(1)
+ 	else:
+ 		print("ALL TESTS PASSED")
+ 		quit(0)
++
++# 返回套件失败数；套件缺失 / 无法加载 / 无法实例化 / 运行中抛错时返回 null。
++func _run_suite(path: String) -> Variant:
++	if not FileAccess.file_exists(path):
++		printerr("缺少测试套件: ", path)
++		return null
++	var script: GDScript = load(path)
++	if script == null:
++		# 有些加载失败会让 load() 返回 null
++		printerr("套件无法加载（语法错误？）: ", path)
++		return null
++	if not script.can_instantiate():
++		# 语法错误的脚本 load() 会返回非 null 的坏 GDScript，new() 会抛错并中止本函数
++		printerr("套件无法实例化（语法错误？）: ", path)
++		return null
++	var suite = script.new()
++	return int(suite.run())
