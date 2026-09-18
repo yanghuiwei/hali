@@ -45,9 +45,16 @@ static func validate_choices(choices: Dictionary, registry: Registry) -> PackedS
 	if age_years < MIN_AGE_YEARS or age_years > MAX_AGE_YEARS:
 		errors.append("age_years 必须在 %d–%d 之间，实际 %d" % [MIN_AGE_YEARS, MAX_AGE_YEARS, age_years])
 
+	var birthplace := str(choices.get("birthplace", ""))
+	if not registry.has("locations", birthplace):
+		errors.append("birthplace 非法: %s" % birthplace)
+
 	var personality: Array = choices.get("personality", [])
 	if personality.size() < 3:
 		errors.append("personality 需要 3 个性格关键词，实际 %d 个" % personality.size())
+	for keyword in personality:
+		if str(keyword).strip_edges().is_empty():
+			errors.append("personality 关键词不得为空")
 	if str(choices.get("life_goal", "")).strip_edges().is_empty():
 		errors.append("life_goal 不得为空")
 
@@ -69,6 +76,8 @@ static func validate_choices(choices: Dictionary, registry: Registry) -> PackedS
 		var chosen := str(choices.get("aptitude_special", ""))
 		if not allowed.has(chosen):
 			errors.append("aptitude_special 非法: %s，允许值 %s" % [chosen, ", ".join(allowed)])
+	elif not str(choices.get("aptitude_special", "")).is_empty():
+		errors.append("aptitude_special 只有 aptitude_id=special 时才能设置: %s" % str(choices.get("aptitude_special", "")))
 
 	var wand_choice: Dictionary = choices.get("wand", {})
 	if not wand_choice.is_empty():
@@ -165,7 +174,7 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) -> 
 	p.family_status = str(choices.get("family_status", ""))
 	p.house_id = assign_house(choices, rng, registry)
 	p.political_leaning_id = str(choices["political_leaning_id"])
-	p.personality = choices.get("personality", [])
+	p.personality = (choices.get("personality", []) as Array).duplicate()
 	p.life_goal = str(choices["life_goal"])
 	p.current_goal = p.life_goal
 	p.sim_style_id = str(choices["sim_style_id"])
@@ -206,11 +215,13 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) -> 
 	# 血统自带标记与特殊资质标记（第十章：偏见真实存在）
 	for flag in (bloodline.get("default_flags", []) as Array):
 		p.flags[str(flag)] = true
-	p.aptitude_special = str(choices.get("aptitude_special", ""))
 	for granted in (aptitude.get("grants", []) as Array):
 		p.flags[str(granted)] = true
-	if not p.aptitude_special.is_empty():
-		p.flags[p.aptitude_special] = true
+	# 反漏洞：只有 aptitude_id=special 才能写入 aptitude_special 与对应天赋标记
+	if aptitude_id == "special":
+		p.aptitude_special = str(choices.get("aptitude_special", ""))
+		if not p.aptitude_special.is_empty():
+			p.flags[p.aptitude_special] = true
 	p.flags["prejudice_level"] = float(bloodline.get("prejudice", 0.0))
 
 	# 初始技能

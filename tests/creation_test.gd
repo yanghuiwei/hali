@@ -85,6 +85,18 @@ func run() -> int:
 	var conflict_errors := CharacterCreation.validate_choices(conflict, reg)
 	a.is_true(" | ".join(conflict_errors).contains("哑炮"), "哑炮血统与非哑炮资质冲突必须报错")
 
+	# ---- 反漏洞：未选特殊资质时不得注入特殊天赋标记 ----
+	var exploit := base_choices()
+	exploit["aptitude_special"] = "parselmouth"
+	var exploit_result := CharacterCreation.create(exploit, reg, RngService.new(11))
+	a.is_true(exploit_result.errors.size() > 0, "非特殊资质携带 aptitude_special 必须被拒绝")
+	a.is_true(exploit_result.player == null, "校验失败时不产出玩家")
+
+	# ---- 出生地必须是合法地点 id（否则世界演化会静默过滤传闻） ----
+	var bad_place := base_choices()
+	bad_place["birthplace"] = "不存在的出生地"
+	a.is_true(" | ".join(CharacterCreation.validate_choices(bad_place, reg)).contains("birthplace"), "非法出生地必须报错")
+
 	# ---- 非法输入逐个报错 ----
 	var bad := base_choices()
 	bad["era_id"] = "不存在的时代"
@@ -99,6 +111,9 @@ func run() -> int:
 	a.is_true(joined.contains("age_years"), "年龄低于 11 必须报错")
 	a.is_true(joined.contains("personality"), "性格不足 3 项")
 	a.is_true(joined.contains("life_goal"), "目标为空")
+	var empty_kw := base_choices()
+	empty_kw["personality"] = ["", "好奇", "固执"]
+	a.is_true(" | ".join(CharacterCreation.validate_choices(empty_kw, reg)).contains("personality"), "空性格关键词必须报错")
 
 	# ---- 特殊资质必须指明具体天赋 ----
 	var special := base_choices()
@@ -125,13 +140,17 @@ func run() -> int:
 	sly["house_id"] = "system"
 	sly["personality"] = ["野心", "精明", "算计"]
 	var sly_house := CharacterCreation.assign_house(sly, RngService.new(7), reg)
-	a.is_true(["slytherin", "gryffindor", "ravenclaw", "hufflepuff"].has(sly_house), "判定出真实学院")
+	a.eq(sly_house, "slytherin", "血统偏置 + 性格匹配判定出斯莱特林")
 	var forced := base_choices()
 	forced["house_id"] = "ravenclaw"
 	a.eq(CharacterCreation.assign_house(forced, RngService.new(7), reg), "ravenclaw", "玩家指定学院优先")
 	var unschooled := base_choices()
 	unschooled["house_id"] = "none"
 	a.eq(CharacterCreation.assign_house(unschooled, RngService.new(7), reg), "none", "未入学不判学院")
+	var squib_house := base_choices()
+	squib_house["bloodline_id"] = "squib"
+	squib_house["aptitude_id"] = "squib"
+	a.eq(CharacterCreation.assign_house(squib_house, RngService.new(7), reg), "none", "哑炮不判学院")
 
 	# ---- 全部 12 血统都能创建成功（内容全覆盖） ----
 	for bloodline_id in reg.ids("bloodlines"):
