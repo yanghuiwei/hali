@@ -6,6 +6,10 @@
 
 - 正典规格（唯一事实来源）：[`哈利·波特·魔法纪元.md`](哈利·波特·魔法纪元.md)
 - 实现计划：[`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`](docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md)
+- **换机器 / 交接 / 续做：先读 [`HANDOFF.md`](HANDOFF.md)**（分支、Godot 引擎获取、当前进度、待裁定项、踩过的坑）
+- 执行过程台账：[`docs/sdd/plan-01-core-foundation/progress.md`](docs/sdd/plan-01-core-foundation/progress.md)
+
+> 开发在分支 **`plan-01-core-foundation`** 上进行；`main` 只有文档，收尾（任务 11）后再合并。
 
 ## 当前进度
 
@@ -13,10 +17,10 @@
 
 | 任务 | 内容 | 状态 |
 | --- | --- | --- |
-| 1 | 仓库引导 + Godot 工程 + 无头测试骨架 | 进行中 |
-| 2 | 内容注册表 + 正典内容表 | 待办 |
-| 3 | 货币 + 魔法等级与失败率 | 待办 |
-| 4 | 玩家与世界数据模型 | 待办 |
+| 1 | 仓库引导 + Godot 工程 + 无头测试骨架 | ✅ 完成 |
+| 2 | 内容注册表 + 正典内容表 | ✅ 完成 |
+| 3 | 货币 + 魔法等级与失败率 | ✅ 完成 |
+| 4 | 玩家与世界数据模型 | 下一步 |
 | 5 | 确定性随机 + 月度世界演化 | 待办 |
 | 6 | 角色创建流水线 | 待办 |
 | 7 | 魔咒解析器与反漏洞守卫 | 待办 |
