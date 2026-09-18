@@ -1,0 +1,467 @@
+# Review package: 9899229..d52ebda
+
+## Commits
+f323b55 feat(spell): 魔咒解析器与第五十五条反漏洞守卫
+3499881 fix(spell): 稀有度词表补中文「稀有」防绕过 + 补门钥匙/未知条件用例
+d52ebda fix(spell): 稀有度守卫改为 fail-closed 白名单 + 归一化，封死变体绕过
+
+## Files changed
+ data/spells.json                                   |  34 +++++
+ .../2026-09-18-hp-magic-era-01-core-foundation.md  |  27 +++-
+ src/core/registry.gd                               |   1 +
+ src/rules/spell_resolver.gd                        | 132 ++++++++++++++++++
+ src/rules/spell_resolver.gd.uid                    |   1 +
+ tests/run_tests.gd                                 |   1 +
+ tests/spell_test.gd                                | 150 +++++++++++++++++++++
+ tests/spell_test.gd.uid                            |   1 +
+ 8 files changed, 342 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/data/spells.json b/data/spells.json
+new file mode 100644
+index 0000000..6d862ef
+--- /dev/null
++++ b/data/spells.json
+@@ -0,0 +1,34 @@
++[
++	{"id": "lumos", "label": "照明咒", "category": "基础魔咒", "min_tier": "麻瓜出身未入学", "difficulty": 0.0, "forbidden": false, "guards": ["no_unlimited_energy"], "side_effects": ["咒语反噬", "短暂失语"], "note": "最基础的咒语之一"},
++	{"id": "wingardium_leviosa", "label": "悬浮咒", "category": "基础魔咒", "min_tier": "霍格沃茨新生", "difficulty": 0.02, "forbidden": false, "guards": ["no_unlimited_energy"], "side_effects": ["目标偏转", "魔力失控"], "note": "发音错误会让目标乱飞"},
++	{"id": "alohomora", "label": "开锁咒", "category": "基础魔咒", "min_tier": "霍格沃茨新生", "difficulty": 0.02, "forbidden": false, "guards": [], "side_effects": ["目标偏转", "魔力枯竭"], "note": "对魔法加固的锁常常无效"},
++	{"id": "reparo", "label": "修复咒", "category": "基础魔咒", "min_tier": "霍格沃茨新生", "difficulty": 0.03, "forbidden": false, "guards": [], "side_effects": ["咒语反噬", "目标偏转"], "note": "修复不是复原，破碎的东西会留下痕迹"},
++	{"id": "scourgify", "label": "清洁咒", "category": "基础魔咒", "min_tier": "麻瓜出身未入学", "difficulty": 0.0, "forbidden": false, "guards": [], "side_effects": ["目标偏转"], "note": "家务魔法的基础"},
++	{"id": "incendio", "label": "生火咒", "category": "基础魔咒", "min_tier": "霍格沃茨新生", "difficulty": 0.05, "forbidden": false, "guards": [], "side_effects": ["爆炸", "伤害自己", "伤害同伴"], "note": "火不认人"},
++	{"id": "diffindo", "label": "切割咒", "category": "基础魔咒", "min_tier": "霍格沃茨新生", "difficulty": 0.03, "forbidden": false, "guards": [], "side_effects": ["伤害自己", "伤害同伴"], "note": "精确度要求高"},
++	{"id": "expelliarmus", "label": "缴械咒", "category": "防御与战斗魔咒", "min_tier": "霍格沃茨新生", "difficulty": 0.03, "forbidden": false, "guards": [], "side_effects": ["目标偏转", "魔力枯竭"], "note": "傲罗的基础功"},
++	{"id": "stupefy", "label": "昏迷咒", "category": "防御与战斗魔咒", "min_tier": "O.W.L水平", "difficulty": 0.05, "forbidden": false, "guards": [], "side_effects": ["目标偏转", "伤害同伴"], "note": "多人同时施放会叠加威力"},
++	{"id": "impedimenta", "label": "障碍咒", "category": "防御与战斗魔咒", "min_tier": "霍格沃茨新生", "difficulty": 0.03, "forbidden": false, "guards": [], "side_effects": ["目标偏转"], "note": "阻断而非伤害"},
++	{"id": "protego", "label": "铁甲咒", "category": "防御与战斗魔咒", "min_tier": "O.W.L水平", "difficulty": 0.06, "forbidden": false, "guards": [], "side_effects": ["咒语反噬", "魔力枯竭"], "note": "挡不住不可饶恕咒"},
++	{"id": "confringo", "label": "粉身碎骨", "category": "防御与战斗魔咒", "min_tier": "N.E.W.T水平", "difficulty": 0.10, "forbidden": false, "guards": [], "side_effects": ["爆炸", "伤害自己", "伤害同伴"], "note": "破坏力强，代价真实"},
++	{"id": "expulso", "label": "爆炸咒", "category": "防御与战斗魔咒", "min_tier": "N.E.W.T水平", "difficulty": 0.10, "forbidden": false, "guards": [], "side_effects": ["爆炸", "伤害自己"], "note": "环境会改变结果"},
++	{"id": "incarcerous", "label": "束缚咒", "category": "防御与战斗魔咒", "min_tier": "O.W.L水平", "difficulty": 0.05, "forbidden": false, "guards": [], "side_effects": ["目标偏转", "魔力枯竭"], "note": "绳索可被切断"},
++	{"id": "expecto_patronum", "label": "守护神咒", "category": "防御与战斗魔咒", "min_tier": "N.E.W.T水平", "difficulty": 0.12, "forbidden": false, "guards": [], "side_effects": ["魔力枯竭", "情绪失控"], "note": "需要足够快乐的记忆；形态由性格决定"},
++	{"id": "evanesco", "label": "消失术", "category": "变形术", "min_tier": "O.W.L水平", "difficulty": 0.06, "forbidden": false, "guards": [], "side_effects": ["目标偏转", "魔力枯竭"], "note": "消失不等于摧毁"},
++	{"id": "aparecium", "label": "显形术", "category": "变形术", "min_tier": "O.W.L水平", "difficulty": 0.04, "forbidden": false, "guards": [], "side_effects": ["咒语反噬"], "note": "隐形墨水与隐藏文字"},
++	{"id": "animagus", "label": "阿尼马格斯", "category": "变形术", "min_tier": "熟练成年巫师", "difficulty": 0.15, "forbidden": false, "guards": ["requires_registration"], "side_effects": ["咒语反噬", "魔力失控", "伤害自己"], "note": "人变动物，必须登记；未登记属违法"},
++	{"id": "legilimens", "label": "摄神取念", "category": "心智魔法", "min_tier": "N.E.W.T水平", "difficulty": 0.12, "forbidden": false, "guards": ["restricted_mind_magic"], "side_effects": ["咒语反噬", "短暂失语"], "note": "滥用摄神取念是禁忌（第二十五章）"},
++	{"id": "occlumency", "label": "大脑封闭术", "category": "心智魔法", "min_tier": "O.W.L水平", "difficulty": 0.10, "forbidden": false, "guards": [], "side_effects": ["魔力枯竭", "情绪失控"], "note": "防御性心智魔法"},
++	{"id": "obliviate", "label": "遗忘咒", "category": "心智魔法", "min_tier": "N.E.W.T水平", "difficulty": 0.14, "forbidden": true, "guards": ["restricted_mind_magic"], "side_effects": ["目标偏转", "咒语反噬"], "note": "记忆可以被破坏，且很难精确"},
++	{"id": "confundo", "label": "混淆咒", "category": "心智魔法", "min_tier": "O.W.L水平", "difficulty": 0.10, "forbidden": true, "guards": ["restricted_mind_magic"], "side_effects": ["目标偏转"], "note": "法律与道德风险随使用次数上升"},
++	{"id": "imperio", "label": "夺魂咒", "category": "心智魔法", "min_tier": "熟练成年巫师", "difficulty": 0.14, "forbidden": true, "guards": ["unforgivable"], "side_effects": ["咒语反噬", "魔力枯竭"], "note": "不可饶恕咒，阿兹卡班级罪行"},
++	{"id": "crucio", "label": "钻心咒", "category": "死亡与灵魂魔法", "min_tier": "熟练成年巫师", "difficulty": 0.16, "forbidden": true, "guards": ["unforgivable"], "side_effects": ["咒语反噬", "情绪失控"], "note": "不可饶恕咒，需要真正的恶意"},
++	{"id": "avada_kedavra", "label": "阿瓦达索命", "category": "死亡与灵魂魔法", "min_tier": "专家级", "difficulty": 0.20, "forbidden": true, "guards": ["unforgivable"], "side_effects": ["咒语反噬", "魔力枯竭"], "note": "不可饶恕咒；死亡不可逆"},
++	{"id": "inferi", "label": "阴尸", "category": "死亡与灵魂魔法", "min_tier": "大师级", "difficulty": 0.25, "forbidden": true, "guards": ["forbidden_lifetime", "unforgivable"], "side_effects": ["爆炸", "咒语反噬"], "note": "操纵死者，极度禁忌"},
++	{"id": "horcrux", "label": "魂器", "category": "死亡与灵魂魔法", "min_tier": "神话级", "difficulty": 0.50, "forbidden": true, "guards": ["forbidden_lifetime"], "side_effects": ["伤害自己", "咒语反噬"], "note": "分裂灵魂，最深的禁忌"},
++	{"id": "apparition", "label": "幻影移形", "category": "时间与空间魔法", "min_tier": "N.E.W.T水平", "difficulty": 0.12, "forbidden": false, "guards": [], "side_effects": ["分体", "被困", "伤害自己"], "note": "需要目的地、决心、从容"},
++	{"id": "portkey", "label": "门钥匙", "category": "时间与空间魔法", "min_tier": "熟练成年巫师", "difficulty": 0.08, "forbidden": false, "guards": ["requires_ministry_approval"], "side_effects": ["目标偏转"], "note": "需要魔法部批准"},
++	{"id": "time_turner", "label": "时间转换器", "category": "时间与空间魔法", "min_tier": "大师级", "difficulty": 0.30, "forbidden": true, "guards": ["no_time_rewind"], "side_effects": ["时间乱流", "伤害自己"], "note": "极度魔法部管制，禁止无限回溯"},
++	{"id": "geminio", "label": "复制咒", "category": "变形术", "min_tier": "O.W.L水平", "difficulty": 0.08, "forbidden": false, "guards": ["no_rare_resource_duplication"], "side_effects": ["目标偏转", "魔力枯竭"], "note": "复制品会劣化，且不能复制稀有资源"},
++	{"id": "vulnera_sanentur", "label": "治疗咒", "category": "魔药学与草药学", "min_tier": "O.W.L水平", "difficulty": 0.08, "forbidden": false, "guards": ["no_resurrection"], "side_effects": ["咒语反噬", "魔力枯竭"], "note": "治疗师不是万能复活机"}
++]
+diff --git a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+index 093ee43..d38178b 100644
+--- a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
++++ b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+@@ -2496,7 +2496,7 @@ git commit -m "feat(creation): 第七十五章启动界面到玩家档案的创
+     - `static cast(world: WorldState, spell_id: String, conditions: Dictionary, rng: RngService) -> Outcome`
+     - `static modifiers_from(conditions: Dictionary) -> Dictionary`
+   - `conditions` 字典键（第二十二章环境因素 + 目标属性）：
+-    `combat_stress, injury, emotion, wand_mismatch, unfamiliar_spell, dark_magic_interference`（float 0..1）；`target_alive: bool`；`target_rarity: String`（`common`/`rare`/`legendary`）
++    `combat_stress, injury, emotion, wand_mismatch, unfamiliar_spell, dark_magic_interference`（float 0..1）；`target_alive: bool`；`target_rarity: String`（`common`/`rare`/`legendary`；比较前先 strip_edges + 小写归一，未在普通白名单内的值一律按稀有处理）
+   - `data/spells.json`：`id,label,category,min_tier(等级标签),difficulty(float),forbidden(bool),guards[],side_effects[],note`
+   - 守卫 id：`no_rare_resource_duplication`、`no_resurrection`、`no_time_rewind`、`no_unlimited_energy`、`unforgivable`、`requires_registration`、`requires_ministry_approval`、`forbidden_lifetime`
+ 
+@@ -2551,6 +2551,14 @@ func run() -> int:
+ 	a.is_true(rare.blocked_reason.contains("稀有"), "稀有资源原因明确")
+ 	var common := SpellResolver.cast(mid, "geminio", {"target_rarity": "common"}, RngService.new(2))
+ 	a.is_false(common.blocked, "复制普通物品不被拦截")
++	# 稀有度词表必须同时识别中文（否则中文「稀有」会静默绕过反复制守卫）
++	var rare_cn := SpellResolver.cast(mid, "geminio", {"target_rarity": "稀有"}, RngService.new(2))
++	a.is_true(rare_cn.blocked, "中文「稀有」也必须被反复制守卫拦截")
++	# 归一化 + fail-closed：大小写/空白/繁体/未知稀有度都不得绕过反复制守卫
++	for rarity in ["Rare", "稀有 ", "傳說", "uncommon", "epic"]:
++		a.is_true(SpellResolver.cast(mid, "geminio", {"target_rarity": rarity}, RngService.new(2)).blocked, "稀有度变体 %s 必须被拦截" % rarity)
++	a.is_false(SpellResolver.cast(mid, "geminio", {"target_rarity": "普通"}, RngService.new(2)).blocked, "中文「普通」视为普通物品")
++	a.is_false(SpellResolver.cast(mid, "geminio", {"target_rarity": " Common "}, RngService.new(2)).blocked, "归一化后 Common 视为普通物品")
+ 
+ 	# ---- 第五十五条：治疗咒不得无限复活 ----
+ 	var dead := SpellResolver.cast(mid, "vulnera_sanentur", {"target_alive": false}, RngService.new(3))
+@@ -2591,6 +2599,12 @@ func run() -> int:
+ 	master.player.flags["animagus_registered"] = true
+ 	a.is_false(SpellResolver.cast(master, "animagus", {}, RngService.new(8)).blocked, "登记后可变形")
+ 
++	# ---- 需魔法部批准的门钥匙 ----
++	master.flags.erase("ministry_approval")
++	a.is_true(SpellResolver.cast(master, "portkey", {}, RngService.new(12)).blocked, "无魔法部批准不得使用门钥匙")
++	master.flags["ministry_approval"] = true
++	a.is_false(SpellResolver.cast(master, "portkey", {}, RngService.new(12)).blocked, "有批准后可使用门钥匙")
++
+ 	# ---- 失败率必须落在规格区间内（用难度 0 的咒语对齐等级区间），环境因素抬高失败率 ----
+ 	var adult := make_world(reg, MagicLevel.Tier.ADULT)
+ 	var calm := SpellResolver.cast(adult, "lumos", {}, RngService.new(9))
+@@ -2604,6 +2618,7 @@ func run() -> int:
+ 	}, RngService.new(9))
+ 	a.between(stressed.failure_rate, 0.92, 0.95, "六项满值环境因素把失败率推到上界")
+ 	a.is_true(modifiers_from_test(adult) > 0.0, "未知条件被忽略")
++	a.is_false(SpellResolver.modifiers_from({"不存在的因素": 1.0}).has("不存在的因素"), "未知条件键被丢弃")
+ 
+ 	# ---- 确定性 ----
+ 	var seq_a := []
+@@ -2714,7 +2729,9 @@ const GUARDS: Dictionary = {
+ 	"restricted_mind_magic": "受限心智魔法：滥用即违法",
+ }
+ 
+-const RARE_RARITIES: Array[String] = ["rare", "legendary", "史诗", "传奇", "神话"]
++# 稀有度采用 fail-closed 白名单：只有显式认定的普通稀有度才允许复制，
++# 大小写/空白先归一；未知值（含繁体、拼写变体、任意字符串）一律按稀有处理，避免绕过守卫。
++const COMMON_RARITIES: Array[String] = ["common", "普通", "常见"]
+ const ENERGY_LOOP_LIMIT := 3
+ const TIME_REWIND_LIMIT := 1
+ 
+@@ -2767,12 +2784,12 @@ static func cast(world: WorldState, spell_id: String, conditions: Dictionary, rn
+ 
+ 	var legal_risk := false
+ 	var target_alive := bool(conditions.get("target_alive", true))
+-	var target_rarity := str(conditions.get("target_rarity", "common"))
++	var target_rarity := str(conditions.get("target_rarity", "common")).strip_edges().to_lower()
+ 	for guard in guard_ids:
+ 		match guard:
+ 			"no_rare_resource_duplication":
+-				if RARE_RARITIES.has(target_rarity):
+-					return _blocked_outcome("复制咒无法复制%s级资源：世界资源必须有成本、有产出、有消耗" % target_rarity, guard_ids)
++				if not COMMON_RARITIES.has(target_rarity):
++					return _blocked_outcome("复制咒无法复制稀有资源（%s）：世界资源必须有成本、有产出、有消耗" % target_rarity, guard_ids)
+ 			"no_resurrection":
+ 				if not target_alive:
+ 					return _blocked_outcome("治疗咒无法复活死者：死亡真实且不可逆", guard_ids)
+diff --git a/src/core/registry.gd b/src/core/registry.gd
+index 26f0a64..547e64a 100644
+--- a/src/core/registry.gd
++++ b/src/core/registry.gd
+@@ -16,6 +16,7 @@ const TABLE_FILES: Dictionary = {
+ 	"wand_cores": "wand_cores.json",
+ 	"wand_flexibilities": "wand_flexibilities.json",
+ 	"wand_lengths": "wand_lengths.json",
++	"spells": "spells.json",
+ }
+ 
+ var duplicate_ids: PackedStringArray = PackedStringArray()
+diff --git a/src/rules/spell_resolver.gd b/src/rules/spell_resolver.gd
+new file mode 100644
+index 0000000..6f28518
+--- /dev/null
++++ b/src/rules/spell_resolver.gd
+@@ -0,0 +1,132 @@
++class_name SpellResolver
++extends RefCounted
++
++# 第五十五条 / 第二十五章守卫说明（同时是唯一合法守卫集合）
++const GUARDS: Dictionary = {
++	"no_rare_resource_duplication": "禁止复制咒无限复制稀有资源",
++	"no_resurrection": "禁止治疗咒无限复活",
++	"no_time_rewind": "禁止时间转换器无限回溯",
++	"no_unlimited_energy": "禁止低阶咒语无限叠加",
++	"unforgivable": "不可饶恕咒：触犯法律",
++	"requires_registration": "需要登记（阿尼马格斯）",
++	"requires_ministry_approval": "需要魔法部批准",
++	"forbidden_lifetime": "终身禁忌",
++	"restricted_mind_magic": "受限心智魔法：滥用即违法",
++}
++
++# 稀有度采用 fail-closed 白名单：只有显式认定的普通稀有度才允许复制，
++# 大小写/空白先归一；未知值（含繁体、拼写变体、任意字符串）一律按稀有处理，避免绕过守卫。
++const COMMON_RARITIES: Array[String] = ["common", "普通", "常见"]
++const ENERGY_LOOP_LIMIT := 3
++const TIME_REWIND_LIMIT := 1
++
++class Outcome:
++	var ok: bool = false
++	var blocked: bool = false
++	var blocked_reason: String = ""
++	var failure_rate: float = 1.0
++	var roll: float = 1.0
++	var success: bool = false
++	var side_effect: String = ""
++	var narration: String = ""
++	var guards: PackedStringArray = PackedStringArray()
++	var legal_risk: bool = false
++
++static func modifiers_from(conditions: Dictionary) -> Dictionary:
++	var out := {}
++	for key in MagicLevel.MODIFIER_KEYS:
++		out[key] = clampf(float(conditions.get(key, 0.0)), 0.0, 1.0)
++	return out
++
++static func _blocked_outcome(reason: String, guards: PackedStringArray) -> Outcome:
++	var o := Outcome.new()
++	o.ok = false
++	o.blocked = true
++	o.blocked_reason = reason
++	o.guards = guards
++	o.narration = "（%s）" % reason
++	return o
++
++static func cast(world: WorldState, spell_id: String, conditions: Dictionary, rng: RngService) -> Outcome:
++	var registry := world.registry
++	var spell := registry.entry("spells", spell_id)
++	var guard_ids := PackedStringArray()
++	for guard in (spell.get("guards", []) as Array):
++		guard_ids.append(str(guard))
++	if spell.is_empty():
++		return _blocked_outcome("未知魔咒：%s" % spell_id, guard_ids)
++
++	var player := world.player
++	var min_tier := MagicLevel.index_of_label(str(spell.get("min_tier", "")))
++	if min_tier < 0:
++		min_tier = MagicLevel.Tier.MYTH
++	if player.magic_tier < min_tier:
++		return _blocked_outcome("魔法等级不足：%s 需要 %s，当前为 %s" % [
++			str(spell.get("label", spell_id)),
++			MagicLevel.label_of(min_tier),
++			MagicLevel.label_of(player.magic_tier),
++		], guard_ids)
++
++	var legal_risk := false
++	var target_alive := bool(conditions.get("target_alive", true))
++	var target_rarity := str(conditions.get("target_rarity", "common")).strip_edges().to_lower()
++	for guard in guard_ids:
++		match guard:
++			"no_rare_resource_duplication":
++				if not COMMON_RARITIES.has(target_rarity):
++					return _blocked_outcome("复制咒无法复制稀有资源（%s）：世界资源必须有成本、有产出、有消耗" % target_rarity, guard_ids)
++			"no_resurrection":
++				if not target_alive:
++					return _blocked_outcome("治疗咒无法复活死者：死亡真实且不可逆", guard_ids)
++			"no_time_rewind":
++				if int(world.flags.get("time_rewind_count", 0)) >= TIME_REWIND_LIMIT:
++					return _blocked_outcome("时间转换器禁止无限回溯", guard_ids)
++			"no_unlimited_energy":
++				if int(world.flags.get("energy_loop_count", 0)) >= ENERGY_LOOP_LIMIT:
++					return _blocked_outcome("低阶咒语叠加已达上限，无法继续累积能量", guard_ids)
++			"forbidden_lifetime":
++				return _blocked_outcome("终身禁忌：%s" % str(spell.get("label", spell_id)), guard_ids)
++			"requires_registration":
++				if not player.flags.has("animagus_registered"):
++					return _blocked_outcome("未在魔法部登记，不得成为阿尼马格斯", guard_ids)
++			"requires_ministry_approval":
++				if not world.flags.has("ministry_approval"):
++					return _blocked_outcome("缺少魔法部批准", guard_ids)
++			"unforgivable":
++				legal_risk = true
++			"restricted_mind_magic":
++				legal_risk = true
++
++	if bool(spell.get("forbidden", false)):
++		legal_risk = true
++
++	# 失败率：等级区间 + 环境因素 + 资质偏移 + 咒语难度
++	var aptitude_delta := float(registry.entry("aptitudes", player.aptitude_id).get("failure_delta", 0.0))
++	var rate := MagicLevel.effective_rate(player.magic_tier, modifiers_from(conditions), aptitude_delta + float(spell.get("difficulty", 0.0)))
++
++	var o := Outcome.new()
++	o.ok = true
++	o.guards = guard_ids
++	o.legal_risk = legal_risk
++	o.failure_rate = rate
++	o.roll = rng.stream_float("spell_roll")
++	o.success = o.roll > rate
++
++	var label := str(spell.get("label", spell_id))
++	if o.success:
++		o.narration = "%s成功。" % label
++		# 需要代价的魔法对象在成功时也要显式结算（第十五章：没有免费的魔力）
++		if guard_ids.has("no_unlimited_energy"):
++			world.flags["energy_loop_count"] = int(world.flags.get("energy_loop_count", 0)) + 1
++		if guard_ids.has("no_time_rewind"):
++			world.flags["time_rewind_count"] = int(world.flags.get("time_rewind_count", 0)) + 1
++		if legal_risk:
++			world.flags["illegal_cast_count"] = int(world.flags.get("illegal_cast_count", 0)) + 1
++			o.narration += "（法律与道德风险已记录）"
++	else:
++		var effects: Array = spell.get("side_effects", [])
++		o.side_effect = str(rng.stream_pick("spell_side_effect", effects)) if not effects.is_empty() else "魔力失控"
++		o.narration = "%s失败：%s。" % [label, o.side_effect]
++		if o.side_effect == "魔力枯竭" or o.side_effect == "分体" or o.side_effect == "时间乱流":
++			world.flags["last_serious_mishap_turn"] = world.clock.turn
++	return o
+diff --git a/src/rules/spell_resolver.gd.uid b/src/rules/spell_resolver.gd.uid
+new file mode 100644
+index 0000000..ffac0b9
+--- /dev/null
++++ b/src/rules/spell_resolver.gd.uid
+@@ -0,0 +1 @@
++uid://dw0q1b4qlfafg
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index 415a3fc..52f8c2c 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -10,6 +10,7 @@ const SUITES: Array[String] = [
+ 	"res://tests/clock_test.gd",
+ 	"res://tests/world_tick_test.gd",
+ 	"res://tests/creation_test.gd",
++	"res://tests/spell_test.gd",
+ ]
+ 
+ func _initialize() -> void:
+diff --git a/tests/spell_test.gd b/tests/spell_test.gd
+new file mode 100644
+index 0000000..2f1945f
+--- /dev/null
++++ b/tests/spell_test.gd
+@@ -0,0 +1,150 @@
++class_name SpellTest
++extends RefCounted
++
++func make_world(reg: Registry, tier: int) -> WorldState:
++	var p := PlayerState.new_default()
++	p.bloodline_id = "half_blood"
++	p.aptitude_id = "normal"
++	p.magic_tier = tier
++	p.location_id = "hogwarts"
++	var w := WorldState.create("modern", p, 20260918, reg)
++	return w
++
++func run() -> int:
++	var a := TestAssert.new()
++	var reg := Registry.load_default()
++
++	a.eq(reg.validate().size(), 0, "魔咒表加入后仍无校验错误")
++	a.is_true(reg.ids("spells").size() >= 24, "魔咒表至少 24 条")
++
++	# 内容完整性：每条魔咒的 min_tier 必须是合法等级标签，守卫必须是已定义守卫
++	for spell_id in reg.ids("spells"):
++		var spell := reg.entry("spells", spell_id)
++		a.is_true(MagicLevel.index_of_label(str(spell.get("min_tier", ""))) >= 0, "魔咒 %s 的 min_tier 非法" % spell_id)
++		for guard in (spell.get("guards", []) as Array):
++			a.is_true(SpellResolver.GUARDS.has(str(guard)), "魔咒 %s 引用未知守卫 %s" % [spell_id, str(guard)])
++		a.is_true((spell.get("side_effects", []) as Array).size() > 0, "魔咒 %s 必须有失败副作用" % spell_id)
++
++	# ---- 等级不足被拦截（第二十三章） ----
++	var low := make_world(reg, MagicLevel.Tier.FIRST_YEAR)
++	var rng := RngService.new(1)
++	var blocked := SpellResolver.cast(low, "expecto_patronum", {}, rng)
++	a.is_true(blocked.blocked, "新生无法施展守护神咒")
++	a.is_true(blocked.blocked_reason.contains("等级"), "拦截原因说明等级不足")
++	a.is_false(blocked.ok, "被拦截时 ok=false")
++
++	var unknown := SpellResolver.cast(low, "没有这条魔咒", {}, rng)
++	a.is_true(unknown.blocked, "未知魔咒被拦截")
++	a.is_true(unknown.blocked_reason.contains("未知"), "未知魔咒原因明确")
++
++	# ---- 第五十五条：复制咒不得无限复制稀有资源 ----
++	var mid := make_world(reg, MagicLevel.Tier.ADULT)
++	var rare := SpellResolver.cast(mid, "geminio", {"target_rarity": "rare"}, RngService.new(2))
++	a.is_true(rare.blocked, "复制稀有资源被拦截")
++	a.is_true(rare.blocked_reason.contains("稀有"), "稀有资源原因明确")
++	var common := SpellResolver.cast(mid, "geminio", {"target_rarity": "common"}, RngService.new(2))
++	a.is_false(common.blocked, "复制普通物品不被拦截")
++	# 稀有度词表必须同时识别中文（否则中文「稀有」会静默绕过反复制守卫）
++	var rare_cn := SpellResolver.cast(mid, "geminio", {"target_rarity": "稀有"}, RngService.new(2))
++	a.is_true(rare_cn.blocked, "中文「稀有」也必须被反复制守卫拦截")
++	# 归一化 + fail-closed：大小写/空白/繁体/未知稀有度都不得绕过反复制守卫
++	for rarity in ["Rare", "稀有 ", "傳說", "uncommon", "epic"]:
++		a.is_true(SpellResolver.cast(mid, "geminio", {"target_rarity": rarity}, RngService.new(2)).blocked, "稀有度变体 %s 必须被拦截" % rarity)
++	a.is_false(SpellResolver.cast(mid, "geminio", {"target_rarity": "普通"}, RngService.new(2)).blocked, "中文「普通」视为普通物品")
++	a.is_false(SpellResolver.cast(mid, "geminio", {"target_rarity": " Common "}, RngService.new(2)).blocked, "归一化后 Common 视为普通物品")
++
++	# ---- 第五十五条：治疗咒不得无限复活 ----
++	var dead := SpellResolver.cast(mid, "vulnera_sanentur", {"target_alive": false}, RngService.new(3))
++	a.is_true(dead.blocked, "对死者施治疗术被拦截")
++	a.is_true(dead.blocked_reason.contains("复活") or dead.blocked_reason.contains("死者"), "复活原因明确")
++	var alive_target := SpellResolver.cast(mid, "vulnera_sanentur", {"target_alive": true}, RngService.new(3))
++	a.is_false(alive_target.blocked, "对活人施治疗术不被拦截")
++
++	# ---- 第五十五条：时间转换器不得无限回溯 ----
++	var master := make_world(reg, MagicLevel.Tier.MASTER)
++	master.flags["time_rewind_count"] = 0
++	a.is_false(SpellResolver.cast(master, "time_turner", {}, RngService.new(4)).blocked, "首次时间回溯允许（但受严格限制）")
++	master.flags["time_rewind_count"] = 1
++	a.is_true(SpellResolver.cast(master, "time_turner", {}, RngService.new(4)).blocked, "第二次时间回溯被拦截")
++
++	# ---- 第五十五条：低阶咒语无限叠加 ----
++	master.flags["energy_loop_count"] = 0
++	a.is_false(SpellResolver.cast(master, "lumos", {}, RngService.new(5)).blocked, "正常照明咒")
++	master.flags["energy_loop_count"] = 3
++	a.is_true(SpellResolver.cast(master, "lumos", {}, RngService.new(5)).blocked, "低阶咒语叠加过量被拦截")
++
++	# ---- 第二十五章：不可饶恕咒不拦截，但必须留下法律风险 ----
++	var unforgivable := SpellResolver.cast(master, "imperio", {}, RngService.new(6))
++	a.is_false(unforgivable.blocked, "不可饶恕咒可以被使用")
++	a.is_true(unforgivable.legal_risk, "不可饶恕咒带法律风险")
++	a.is_true(forbidden_count(reg) >= 6, "至少 6 条禁忌/受限魔咒")
++
++	# ---- 魂器：终身禁忌，永久拦截（需要神话级才能绕过等级拦截，真正让守卫生效） ----
++	var myth := make_world(reg, MagicLevel.Tier.MYTH)
++	var horcrux := SpellResolver.cast(myth, "horcrux", {}, RngService.new(7))
++	a.is_true(horcrux.blocked, "魂器永远被拦截")
++	a.is_true(horcrux.guards.has("forbidden_lifetime"), "魂器带终身禁忌守卫")
++	a.is_true(horcrux.blocked_reason.contains("禁忌"), "魂器拦截原因说明禁忌")
++
++	# ---- 需登记的阿尼马格斯 ----
++	master.player.flags.erase("animagus_registered")
++	a.is_true(SpellResolver.cast(master, "animagus", {}, RngService.new(8)).blocked, "未登记不得变形")
++	master.player.flags["animagus_registered"] = true
++	a.is_false(SpellResolver.cast(master, "animagus", {}, RngService.new(8)).blocked, "登记后可变形")
++
++	# ---- 需魔法部批准的门钥匙 ----
++	master.flags.erase("ministry_approval")
++	a.is_true(SpellResolver.cast(master, "portkey", {}, RngService.new(12)).blocked, "无魔法部批准不得使用门钥匙")
++	master.flags["ministry_approval"] = true
++	a.is_false(SpellResolver.cast(master, "portkey", {}, RngService.new(12)).blocked, "有批准后可使用门钥匙")
++
++	# ---- 失败率必须落在规格区间内（用难度 0 的咒语对齐等级区间），环境因素抬高失败率 ----
++	var adult := make_world(reg, MagicLevel.Tier.ADULT)
++	var calm := SpellResolver.cast(adult, "lumos", {}, RngService.new(9))
++	a.between(calm.failure_rate, 0.02, 0.05, "熟练成年巫师基础咒语失败率 2-5%（第二十二章）")
++	# 咒语难度是在等级区间之上的额外偏移
++	var hard := SpellResolver.cast(adult, "confringo", {}, RngService.new(9))
++	a.is_true(hard.failure_rate > calm.failure_rate, "高难度咒语失败率更高")
++	var stressed := SpellResolver.cast(adult, "lumos", {
++		"combat_stress": 1.0, "injury": 1.0, "emotion": 1.0,
++		"wand_mismatch": 1.0, "unfamiliar_spell": 1.0, "dark_magic_interference": 1.0,
++	}, RngService.new(9))
++	a.between(stressed.failure_rate, 0.92, 0.95, "六项满值环境因素把失败率推到上界")
++	a.is_true(modifiers_from_test(adult) > 0.0, "未知条件被忽略")
++	a.is_false(SpellResolver.modifiers_from({"不存在的因素": 1.0}).has("不存在的因素"), "未知条件键被丢弃")
++
++	# ---- 确定性 ----
++	var seq_a := []
++	var seq_b := []
++	for i in 10:
++		seq_a.append(SpellResolver.cast(adult, "expelliarmus", {}, RngService.new(100 + i)).success)
++		seq_b.append(SpellResolver.cast(adult, "expelliarmus", {}, RngService.new(100 + i)).success)
++	a.eq(seq_a, seq_b, "同种子同结果")
++
++	# ---- 成功与失败都要有旁白；失败必须有副作用 ----
++	var any_success := false
++	var any_failure := false
++	for i in 50:
++		var out := SpellResolver.cast(adult, "stupefy", {"combat_stress": 1.0}, RngService.new(200 + i))
++		a.is_true(out.narration.length() > 0, "必须有旁白")
++		if out.success:
++			any_success = true
++			a.eq(out.side_effect, "", "成功无副作用")
++		else:
++			any_failure = true
++			a.is_true(out.side_effect.length() > 0, "失败必有副作用（第二十二章）")
++	a.is_true(any_success, "50 次里应有成功")
++	a.is_true(any_failure, "50 次里应有失败")
++
++	return a.report("spell")
++
++func forbidden_count(reg: Registry) -> int:
++	var n := 0
++	for spell_id in reg.ids("spells"):
++		if bool(reg.entry("spells", spell_id).get("forbidden", false)):
++			n += 1
++	return n
++
++func modifiers_from_test(w: WorldState) -> float:
++	var m := SpellResolver.modifiers_from({"不存在的因素": 1.0, "combat_stress": 0.5})
++	return float(m.get("combat_stress", 0.0))
+diff --git a/tests/spell_test.gd.uid b/tests/spell_test.gd.uid
+new file mode 100644
+index 0000000..1dc316c
+--- /dev/null
++++ b/tests/spell_test.gd.uid
+@@ -0,0 +1 @@
++uid://cjb8dakjr5134

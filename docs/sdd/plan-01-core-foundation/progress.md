@@ -184,3 +184,29 @@ Task 6: 移交人类批次（与 HANDOFF §8 合并）——
   5. （Minor）`assign_house` 双向 `contains` 子串过宽、性格关键词无数量上限。
   6. （Minor，新增）存档载入路径（`PlayerState.from_dict`）不重跑 `validate_choices`，「无天赋的特殊资质」可经手改存档进入状态；建议随存档任务补一次载入校验。
 Task 6: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `61ad053`。工作区干净。
+
+---
+
+## Task 7（魔咒解析器与反漏洞守卫）
+
+Task 7: 开工前发现并裁定计划缺陷 —— `no_rare_resource_duplication` 的拦截文案用 `% target_rarity`（英文 `"rare"`），
+  与测试 `blocked_reason.contains("稀有")` 冲突。按测试意图改为「复制咒无法复制稀有资源（%s）…」，计划与代码同步。
+Task 7: 简报 `task-7-brief.md` 写盘后派发 worker subagent（deepseek-flash）。worker 提交
+  `f323b55 feat(spell): 魔咒解析器与第五十五条反漏洞守卫`（8 files, +304/−1），并立即写盘 `task-7-report.md`。
+  交付：`src/rules/spell_resolver.gd`、`data/spells.json`（32 条）、`src/core/registry.gd` 追加 spells、`tests/spell_test.gd`（各含 .uid）。
+Task 7: Step 5 gate —— worker 自跑 `bash tools/test.sh`：先红（SpellResolver 未定义，EXIT=1）后绿（`[spell] 212/0`，EXIT=0）；controller 独立复跑确认。
+Task 7: 第一轮审查（reviewer subagent，只读）→ Critical=0 / Important=2 / Minor=4，记录 `task-7-review.md`。reviewer 签核「稀有」文案修正为唯一正确且无夹带。
+Task 7: Important —— (1) `RARE_RARITIES` 缺中文「稀有」，传中文可绕过反复制守卫；
+  (2) `energy_loop_count` 终身累计、无重置点，第 4 次成功施放基础咒即永久封禁（计划层语义，需 Human 裁定）。
+Task 7: 修复轮 1（controller）提交 `3499881`：`RARE_RARITIES` 补「稀有」「传说」；补中文稀有负例、门钥匙（requires_ministry_approval 此前零覆盖）、未知条件键丢弃断言（212→216）。
+Task 7: 修复轮 1 反证 —— 移除「稀有」→ `[spell] 失败=1`。scoped 复审 **通过**；提出 R1：denylist + 精确匹配仍可被繁体/大小写/空白/未知值绕过。
+Task 7: 修复轮 2（controller）提交 `d52ebda`：改为 fail-closed 白名单 `COMMON_RARITIES=["common","普通","常见"]` + `strip_edges().to_lower()` 归一；补变体负例与归一化正例（216→223）；计划 Interfaces 同步。
+Task 7: 修复轮 2 反证 —— 去掉归一化 → `[spell] 失败=1`。scoped 复审 **通过**（R1 ADDRESSED，独立枚举无绕过路径，无夹带）。
+Task 7: 最终全绿：`[spell] 断言=223 失败=0`、`总计失败=0`、`ALL TESTS PASSED`、EXIT=0。
+Task 7: 移交人类批次 / Task 8 前必须裁定（与 HANDOFF §8 合并）——
+  1. （Important，**Task 8 实施前必须裁定**）`energy_loop_count`（以及 `time_rewind_count`）的语义：per-turn / per-scene / per-life；
+     当前实现为终身累计、无重置，Task 8 计划 2956–2958 已固化该语义，改语义须同步改计划。
+  2. （Minor）`illegal_cast_count` 仅成功时自增（未遂不计）；被拦截 `Outcome` 的 `failure_rate=1.0` 语义；
+     `difficulty` 为绝对失败率偏移（文档表述）；`legilimens`/`confundo` 的 legal_risk、计数器自增等测试缺口；
+     白名单 `常见` 与简体 `传说` 零独立断言；全角空白/全角拉丁会被 fail-closed 过度拦截。
+Task 7: 交付点 —— 分支 `plan-01-core-foundation` 顶端 `d52ebda`。工作区干净。
