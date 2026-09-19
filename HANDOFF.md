@@ -7,7 +7,7 @@
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已全部完成（Task 1–11）并通过独立审查（Task 4/5/6/7/10/11 含修复轮；Task 8 的 3 条 Important 为计划级，已登记 §8）。** 窗口程序可运行：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。下一步是**计划 02「LLM 叙事引擎」**，或先完成 §8 的人类裁定与计划 Step 6 的人工 GUI 验收。
+**计划 01「核心模拟地基」（共 11 个任务）已全部完成（Task 1–11）并通过独立审查（Task 4/5/6/7/10/11 含修复轮；Task 8 的 3 条 Important 为计划级，已登记 §8）。** 另完成一轮**计划外收尾加固**（StateOps 输入硬化、测试强度补强、运行器静默假绿哨兵、UI 焦点，`e094a52` + `7d24783`）。窗口程序可运行：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。下一步是**计划 02「LLM 叙事引擎」**，或先完成 §8 的人类裁定与计划 Step 6 的人工 GUI 验收。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -22,7 +22,7 @@
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
 | `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一祖先 |
-| 当前 HEAD | `plan-01-core-foundation` 顶端 `ecf523c`（Task 11），下次从 `git log` 看即可 |
+| 当前 HEAD | `plan-01-core-foundation` 顶端 `7d24783`（计划 01 + 收尾加固），下次从 `git log` 看即可 |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
@@ -227,7 +227,7 @@ taskkill //PID <PID> //F
 5. **`Money` 负值显示未定义**：`Money.from_knuts(-50)` → `parts() = [0, -2, -16]`，`formatted() = "0加隆 -2西可 -16纳特"`。**Task 9 已落地面板（`player_panel`/`power_panel` 会输出该形态），但仍未定义**：债务场景会显示负值西可/纳特。需裁定债务格式（如「负债 X 加隆」）或在 `Money` 层定义。
 6. **大师级失败率上界 0.02** 对正典「低于2%」是开/闭区间歧义，测试用 `<=` 掩盖了它。
 7. **（Task 9 已落地，扩展）`power_panel` 标签映射** 把 **7 个标签**映射到 **4 个 `world_vars`**：法律执行→`war_pressure`、傲罗/稳定度→`ministry_stability`、威森加摩/腐败度→`corruption`、国际→`muggle_relations`（与「麻瓜关系」重复）。纯显示问题，确认可接受，或后续补独立的 `international_relations` 等键。
-8. **是否先补 Task 3 的测试强度缺口**（审查 Minor）：`magic_level_test` 的 clamp 上下界两条断言实际空转（0.9075 < 0.95、0.01 > 0.005），`BANDS` 只精确断言 5/10 档、`LABELS` 只断言 3/10，`money_test` 的负值只测了 `total_knuts()`。选择：立即补，或作为计划级补测留到后续任务批量处理（注意同型缺口会复制到 Task 5/7/9）。
+8. ~~**是否先补 Task 3 的测试强度缺口**（审查 Minor）~~ **已收口（加固批次 `e094a52`）**：`magic_level_test` 已逐档钉住十档 `BANDS`/`LABELS` 并用真越界输入验证 clamp（22→48 断言）；`money_test` 补了负值 `parts()`/`formatted()`/往返（15→18）。
 9. **（Task 4 Important，范围外）~~已由 Task 10 局部收口~~**：Task 10 在 `SaveCodec.decode` 加 `_validate_payload`（顶层容器/标量类型校验）+ `from_dict` 后 `world/player/clock` 非 null 兜底，使「null 型毒对象」不再返回 `ok=true`。**残余**：容器类型正确但内层值类型错（如 `player.magic:{"known_spells":123}`、`rng_state:{"streams":123}`）仍可能静默降级或在 `from_dict` 内报错后返回 `ok=false`（伴随 stderr 噪音）。彻底修法：嵌套白名单校验，或不依赖类型化赋值错误。见 §8#47。
 10. **（Task 4 Minor）** `JsonUtil.normalize` 未覆盖非有限 float、≥2^53 的整数值 float、Dictionary 键类型；当前游戏数值不触发，建议在计划/注释写明这三条限制。
 11. **（Task 4 Minor）** 计划 Interfaces 段（约 1000–1020 行）缺 `era_start_year`、`PlayerState.new_default()`、`normalize -> Variant`，与 Step 代码不一致（纯文档级）。
@@ -268,10 +268,10 @@ taskkill //PID <PID> //F
 34. **（Task 8 Important，计划级，与 §8#17 同源）** `TurnEngine.rng` 全文从不掷数，真正影响叙事的 `ScriptedGameMaster.rng`（work/social/spell_roll）**未入档**；`world.rng_state` 存的是一个空转 RNG。读档后叙事随机流从头开始（同一「打工」收益恒定、社交掷骰重放），破坏「存档往返一致」不变量。测试 `w8.rng_state.size() > 0` 对此零覆盖。**Task 10 必须补 `submit → to_dict → JSON → from_dict → 重建引擎 → submit` 的端到端对比**，并决定「引擎持有唯一 RNG 并注入 GM」还是「改述为派生式确定性并删除 `rng_state`」。
 35. **（Task 8 Important，架构，扩展 §8#3）** `ScriptedGameMaster.act` 直接改世界（`SpellResolver.cast` 写能量/时间/非法施法计数，`Progression.gain` 写 `recent_training`），绕过 `StateOps`（计划内已文档化）。审查新增三条后果：(a) 副作用不进 `deltas_applied`，与第七章「所有变更经 StateOps 便于审计」相悖；(b) 被守卫拦截的施法既无 `op_errors` 也无状态痕迹，调用方无法区分「拒绝」与「正常」；(c) `last_cast_success`/`last_cast_narration` 只有 StateOps 路径会写，生产路径恒为陈旧/未设。留待人类裁定。
 36. **（Task 8 Minor）** `TurnEngine.submit` 的 `deltas_applied` 实际是「请求的 delta」（被 StateOps 拒绝的 op 也在其中），字段名误导；建议改名或按 `op_errors` 过滤。
-37. **（Task 8 Minor）** `StateOps` 输入硬化缺口：`set_flag`/`set_player_flag` 空 key 静默写 `flags[""]`；`know_fact` 空 `fact_id` 静默写入；`add_money` 非数值静默变 0；`relation_delta` 不校验 `npc_id`、增量无上下限。建议补错误与负例测试。
+37. **（Task 8 Minor）~~已收口（加固批次 `e094a52`）~~**：`set_flag`/`set_player_flag` 空 key、`know_fact` 空 `fact_id`、`add_money` 非数值、`relation_delta` 空 `npc_id` 现均报错且**不写入**（`gm_test` 有对称的「未写入」断言 + 反证）。**残余**：`relation_delta` 增量仍无上下限。
 38. **（Task 8 Minor）** `Progression` 窗口 `turn - entry <= WINDOW_TURNS` 是闭区间（实际保留 13 个回合偏移，与「12 回合内」差一）；`gain==0` 也追加记录，同一回合反复调用可无界累积；键从不 GC（换地点即新建）；「换环境重新计算」导致两地点轮换可把惩罚减半。
 39. **（Task 8 Minor，文档级）** 计划 Interfaces 少列 `set_player_flag`、`set_magic_tier` 与 `relation_delta.interest`；`GmResult.audit_required` 无消费者；`tags` 未出现在 `submit` 返回字典（UI 拿不到 cast/train 分类）。
-40. **（Task 8 Minor，测试强度）** 空转/弱断言：`cast_result.narration.contains("照明咒") or narration.length()>0`（右操作数恒真）、`w5.clock.year >= before_year` 恒真、`money_before` 未使用、cast 循环未验证计数真的到上限、自检只查标题未查内容且未断言第 14 回合 `audit` 为空、`op_errors` 消息内容未断言；另缺 `set_flag`/`set_player_flag`/`set_magic_tier`/`relation_delta`、`know_fact` 空/`system` 来源、非字典条、blocked 提交不推进回合等负例。建议与 Task 9/10 测试加固批次合并。
+40. **（Task 8 Minor，测试强度）~~已收口（加固批次 `e094a52`）~~**：`cast_result` 去掉了恒真右操作数、`money_before` 真正使用、cast 循环断言计数不增长、`op_errors` 消息内容断言、补了 `set_flag`/`set_player_flag`/`set_magic_tier`/`relation_delta`、`know_fact` 空/`system` 来源、非字典条、blocked 提交不推进回合（38→59 断言）。**未补残余**：第 14 回合 `audit` 为空、哑炮分支子串。
 
 ### Task 9 审查新增（均不阻塞 Task 10，但需登记）
 
@@ -291,11 +291,13 @@ taskkill //PID <PID> //F
 
 ### Task 11 审查新增（计划 01 收尾；均为 UI/测试强度，非阻塞）
 
-51. **（Task 11 Minor，UI 焦点）** 从创建界面点「读取存档」成功后未 `command_edit.grab_focus()`（`_on_start_pressed` 有），焦点可能停在已隐藏的按钮上。建议顺手补一行。
-52. **（Task 11 Minor，UI 仪轨）** `_on_audit` 按钮先打印报告再立即 `acknowledge_audit()`，弱化「必须读完再确认」的仪式感（引擎侧第 72 章不变量仍成立）；若要保留，改为提示输入「确认自检」。
-53. **（Task 11 Minor，假绿风险）** `tools/test.sh` 冒烟只看 `$?`，不 `grep "main scene ready"`；若 Godot 在脚本加载失败时返回 0，冒烟可能假绿。建议加 `grep -q`。
-54. **（Task 11 Minor）** `main.gd` 的 `_turn_count` 是死变量（只增不读，且 `blocked` 提交也自增）。
+51. ~~**（Task 11 Minor，UI 焦点）**~~ **已收口（`e094a52`）**：`_on_load` 成功后 `command_edit.grab_focus()`。
+52. **（Task 11 Minor，UI 仪轨）** `_on_audit` 按钮先打印报告再立即 `acknowledge_audit()`，弱化「必须读完再确认」的仪式感（引擎侧第 72 章不变量仍成立）；若要保留，改为提示输入「确认自检」。（未做，留待裁定）
+53. ~~**（Task 11 Minor，假绿风险）**~~ **已收口（`e094a52`）**：`tools/test.sh` 冒烟 `tee` + `grep -q "main scene ready"`，未命中即失败；临时文件加 `trap ... EXIT`。
+54. ~~**（Task 11 Minor）**~~ **已收口（`e094a52`）**：删除死变量 `_turn_count`。
 55. **（Task 11，人工验收缺口）** 计划 Step 6 的 8 项 GUI 验收 headless 无法自动执行（点击创建、下拉/SpinBox、存档/读档按钮、重启读档、第 15 回合挂起与「确认自检」）；两轮审查均只做了静态论证 + 场景可加载冒烟。**留待人类实际跑一遍**。
+56. **（加固批次发现，Minor）** `run_tests.gd` 新增的 `report_calls` 哨兵只覆盖「套件中途中止、未调用 `report()`」；**非中止**运行期错误（如字符串 `%r` 格式错误）仍会 `EXIT=0`。若要全堵，需对 stderr 做白名单扫描或让套件返回期望断言数。
+57. **（加固批次发现，Minor）** `save_test.gd` 「非十六进制校验和被拒」断言命名夸大（实现只是普通校验和不匹配，并无 hex 解析）；建议改名。
 
 ---
 
@@ -305,7 +307,7 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `ecf523c` / `70ad341` / `dbd93d2` / `d9135ab` / `432adc8` / `eccc871`
+  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `7d24783` / `e094a52` / `ecf523c` / `70ad341` / `d9135ab` / `eccc871`
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致

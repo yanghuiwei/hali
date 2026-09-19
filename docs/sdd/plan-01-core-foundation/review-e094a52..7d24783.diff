@@ -1,0 +1,56 @@
+== 提交 ==
+7d24783 test(hardening): 补齐非法输入“不写入”断言 + 十档 LABELS 精确断言 + 冒烟临时文件 trap
+
+== diff（仅代码/测试/脚本，review diff 略） ==
+diff --git a/tests/gm_test.gd b/tests/gm_test.gd
+index 2cea222..e9fba47 100644
+--- a/tests/gm_test.gd
++++ b/tests/gm_test.gd
+@@ -52,6 +52,7 @@ func run() -> int:
+ 	a.is_false(w.player.known_facts.has("r3"), "system 来源未写入")
+ 
+ 	# 输入硬化：空 key / 非数字 add_money / 空 npc_id / 非字典条都记错误且不写入
++	var money_before_bad := w.player.money_knuts
+ 	var errs4 := StateOps.apply(w, [
+ 		{"op": "set_flag", "key": "", "value": true},
+ 		{"op": "set_player_flag", "key": "", "value": true},
+@@ -61,6 +62,9 @@ func run() -> int:
+ 	])
+ 	a.eq(errs4.size(), 5, "非法输入与非法条目都记错误")
+ 	a.is_false(w.flags.has(""), "空 flag key 未写入")
++	a.is_false(w.player.flags.has(""), "空 player flag key 未写入")
++	a.eq(w.player.money_knuts, money_before_bad, "非法 add_money 不改动财富")
++	a.is_false(w.player.relations.has(""), "空 npc_id 未写入")
+ 
+ 	# 合法集合：set_flag / set_player_flag / set_magic_tier / relation_delta
+ 	var errs5 := StateOps.apply(w, [
+diff --git a/tests/magic_level_test.gd b/tests/magic_level_test.gd
+index 01b8cd4..b3ac4e7 100644
+--- a/tests/magic_level_test.gd
++++ b/tests/magic_level_test.gd
+@@ -8,6 +8,13 @@ func run() -> int:
+ 	a.eq(MagicLevel.LABELS.size(), 10, "十级")
+ 	a.eq(MagicLevel.label_of(MagicLevel.Tier.SQUIB), "哑炮", "第一级")
+ 	a.eq(MagicLevel.label_of(MagicLevel.Tier.PRE_SCHOOL), "麻瓜出身未入学", "第二级")
++	a.eq(MagicLevel.label_of(MagicLevel.Tier.FIRST_YEAR), "霍格沃茨新生", "第三级（§8#8：逐档钉住文本）")
++	a.eq(MagicLevel.label_of(MagicLevel.Tier.OWL), "O.W.L水平", "第四级")
++	a.eq(MagicLevel.label_of(MagicLevel.Tier.NEWT), "N.E.W.T水平", "第五级")
++	a.eq(MagicLevel.label_of(MagicLevel.Tier.ADULT), "熟练成年巫师", "第六级")
++	a.eq(MagicLevel.label_of(MagicLevel.Tier.EXPERT), "专家级", "第七级")
++	a.eq(MagicLevel.label_of(MagicLevel.Tier.MASTER), "大师级", "第八级")
++	a.eq(MagicLevel.label_of(MagicLevel.Tier.LEGEND), "传奇级", "第九级")
+ 	a.eq(MagicLevel.label_of(MagicLevel.Tier.MYTH), "神话级", "第十级")
+ 	a.eq(MagicLevel.index_of_label("N.E.W.T水平"), MagicLevel.Tier.NEWT, "按标签反查")
+ 	a.eq(MagicLevel.index_of_label("不存在的等级"), -1, "未知标签返回 -1")
+diff --git a/tools/test.sh b/tools/test.sh
+index 597e973..c629f75 100644
+--- a/tools/test.sh
++++ b/tools/test.sh
+@@ -23,6 +23,7 @@ unit=$?
+ echo "== 3/3 主场景冒烟 =="
+ if [ -f "$ROOT/src/ui/main.tscn" ]; then
+ 	smoke_log="$(mktemp)"
++	trap 'rm -f "$smoke_log"' EXIT
+ 	"$GODOT" --headless --path . --quit-after 5 2>&1 | tee "$smoke_log"
+ 	smoke=${PIPESTATUS[0]}
+ 	# 只看退出码不够：脚本加载失败但引擎返回 0 时会假绿，必须确认场景真的 _ready 了

@@ -371,3 +371,25 @@ Task 11: 交付点 —— 分支 `plan-01-core-foundation` 顶端（`ecf523c` + 
   → `PanelFormatter` 四面板 + `SelfCheck` 第七十二章自检 → `SaveCodec`/`SaveStore` 存读档 → `src/ui/main.tscn` 可运行窗口。
 - 待人类：计划 Step 6 的人工 GUI 验收（8 项）；§8 登记的若干计划级/架构级项（哑炮失败率、ScriptedGameMaster 直改世界、
   `game_seed` int64、嵌套存档校验等）留待计划 02 或收尾批次。
+
+---
+
+## 计划 01 收尾加固批次（post-plan，控制器执行）
+
+> 触发：计划 01 的 11 个任务已全部完成后，人类要求「继续任务、最后再验收」。本批只做 **HANDOFF §8 中不需要人类裁定、且不改产品策略**的收尾：测试强度补强 + 低风险 bugfix。
+> 未做（留待人类裁定）：哑炮失败率（§8#4）、`ScriptedGameMaster` 直改世界（§8#3/#35）、`Money` 负值格式（§8#5）、`game_seed` int64（§8#19）、`Progression` 12 回合闭区间（§8#38）、嵌套存档白名单（§8#47）、`SaveStore` temp+rename（§8#49）。
+
+加固批次: 提交 `e094a52`（11 files, +175/−20）：
+  - `src/rules/state_ops.gd`（§8#37）：`add_money` 非数字、`set_flag`/`set_player_flag` 空 key、`know_fact` 空 `fact_id`、`relation_delta` 空 `npc_id` 一律报错且不写入。
+  - 测试补强（§8#8/#40）：`magic_level` 十档 BANDS + 真越界 clamp；`money` 负值现状；`gm` 补 op_errors 内容、四类负例与正例、非字典条、打工加钱、施法旁白、月份推进、被拒提交不推进回合；`panel`/`selfcheck`/`save` 空/边界与路径净化。
+  - `tests/assert.gd` + `tests/run_tests.gd`：新增 `TestAssert.report_calls` 哨兵，检测「套件中途报错、未调用 report()」的静默假绿（Task 1 遗留 minor 收口）。反证：注入中止性错误 → `总计失败=1`、EXIT=1。
+  - `src/ui/main.gd`（§8#51/#54）：`_on_load` 成功后 `command_edit.grab_focus()`；删除死变量 `_turn_count`。
+  - `tools/test.sh`（§8#53）：冒烟 `tee` 捕获并 `grep -q "main scene ready"`，未命中即判失败；临时文件加 `trap ... EXIT`。
+加固批次: 第一轮审查（reviewer，只读）→ **Approved with findings**：Critical=0 / **Important=1** / Minor=4，记录 `hardening-review.md`。
+  Important：`set_player_flag`/`add_money`/`relation_delta` 只断言错误计数、未断言「非法输入不写入」，反证可让回归静默通过。
+加固批次: 修复提交 `7d24783`：补 3 条「不写入」断言（player flag / money_knuts / relations）；`magic_level` 十档 `label_of` 逐档精确断言；`test.sh` 加 trap。
+  反证：注入 `set_player_flag` 仍写入 → `[gm] 空 player flag key 未写入`、失败=1、EXIT=1。
+加固批次: 修复轮 scoped 复审（reviewer，只读）→ **通过**（Important #1 ADDRESSED、Minor #2/#4 ADDRESSED、无新缺陷），记录 `hardening-rereview.md`。
+加固批次: 最终全绿：13 套件失败=0（`money 18 / magic_level 48 / gm 59 / panel 71 / selfcheck 32 / save 96`）、`总计失败=0`、`main scene ready`、`全部通过。`、EXIT=0。
+加固批次: 残余（登记）—— `save_test` 一条断言命名夸大（实为校验和不匹配）；`run_tests` 哨兵只覆盖中止性错误、非中止运行期错误仍不判失败；`relation_delta` 增量无上下限；§8#40/#43 个别负例（第 14 回合 audit 为空、哑炮分支子串）未补。
+加固批次: 交付点 —— 分支顶端 `7d24783`（+ 本次文档收尾提交）。
