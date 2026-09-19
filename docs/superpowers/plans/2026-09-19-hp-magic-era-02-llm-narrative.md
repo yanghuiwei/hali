@@ -513,7 +513,7 @@ func make_world() -> WorldState:
 	p.location_id = "hogwarts"
 	p.money_knuts = 4930
 	p.skills["potions"] = 3
-	p.flags["secret_internal"] = 1
+	p.flags["_secret_internal"] = 1
 	var w := WorldState.create("modern", p, 20260918, reg)
 	w.add_fact("major", "第一次巫师会议")
 	w.log.append({"turn": 1, "kind": "mundane", "text": "日子照常过。"})
@@ -526,7 +526,7 @@ func run() -> int:
 	var req2 := PromptBuilder.build(w, "我要练习魔药学")
 	a.eq(req1.system_prompt, req2.system_prompt, "系统提示确定")
 	a.eq(req1.user_prompt, req2.user_prompt, "用户提示确定")
-	a.is_true(req1.system_prompt.contains("<玩家行动>") == false, "系统提示不含玩家原文")
+	a.is_true(req1.system_prompt.contains("我要练习魔药学") == false, "系统提示不含玩家原文")
 	a.is_true(req1.user_prompt.contains("<玩家行动>我要练习魔药学</玩家行动>"), "玩家输入被定界")
 	a.is_true(req1.system_prompt.contains("忽略"), "系统提示声明忽略定界符内指令")
 	a.is_false(req1.user_prompt.contains("api_key"), "用户提示不含密钥字段")

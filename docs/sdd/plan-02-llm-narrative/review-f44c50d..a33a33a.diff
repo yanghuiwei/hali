@@ -1,0 +1,131 @@
+== 提交 ==
+a33a33a feat(gm): LlmProvider 接口与 Mock provider
+
+== diff ==
+diff --git a/src/gm/llm_provider.gd b/src/gm/llm_provider.gd
+new file mode 100644
+index 0000000..7c0854e
+--- /dev/null
++++ b/src/gm/llm_provider.gd
+@@ -0,0 +1,23 @@
++class_name LlmProvider
++extends RefCounted
++
++class LlmRequest:
++	var system_prompt: String = ""
++	var user_prompt: String = ""
++	var temperature: float = 0.8
++	var max_tokens: int = 1024
++	var timeout_ms: int = 30000
++	var json_mode: bool = true
++
++class LlmResponse:
++	var ok: bool = false
++	var text: String = ""
++	var error: String = ""
++	var http_status: int = 0
++	var latency_ms: int = 0
++
++# 可能是协程；调用方统一 `await provider.complete(req)`。
++func complete(_request: LlmRequest) -> LlmResponse:
++	var r := LlmResponse.new()
++	r.error = "未实现的 provider"
++	return r
+diff --git a/src/gm/llm_provider.gd.uid b/src/gm/llm_provider.gd.uid
+new file mode 100644
+index 0000000..575e0ec
+--- /dev/null
++++ b/src/gm/llm_provider.gd.uid
+@@ -0,0 +1 @@
++uid://y0nnuht4jsox
+diff --git a/src/gm/providers/mock_provider.gd b/src/gm/providers/mock_provider.gd
+new file mode 100644
+index 0000000..1c2579d
+--- /dev/null
++++ b/src/gm/providers/mock_provider.gd
+@@ -0,0 +1,20 @@
++class_name MockLlmProvider
++extends LlmProvider
++
++var queue: Array[String] = []
++var errors: Array[String] = []
++var requests: Array = []
++
++func complete(request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
++	requests.append(request)
++	var index := requests.size() - 1
++	var r := LlmProvider.LlmResponse.new()
++	if index < errors.size() and not str(errors[index]).is_empty():
++		r.error = str(errors[index])
++		return r
++	if index < queue.size():
++		r.ok = true
++		r.text = str(queue[index])
++		return r
++	r.error = "mock 队列为空"
++	return r
+diff --git a/src/gm/providers/mock_provider.gd.uid b/src/gm/providers/mock_provider.gd.uid
+new file mode 100644
+index 0000000..0fbc824
+--- /dev/null
++++ b/src/gm/providers/mock_provider.gd.uid
+@@ -0,0 +1 @@
++uid://myoqnhxl4fgt
+diff --git a/tests/llm_test.gd b/tests/llm_test.gd
+new file mode 100644
+index 0000000..9c9a625
+--- /dev/null
++++ b/tests/llm_test.gd
+@@ -0,0 +1,33 @@
++class_name LlmTest
++extends RefCounted
++
++func run() -> int:
++	var a := TestAssert.new()
++
++	# ---- MockLlmProvider ----
++	var mock := MockLlmProvider.new()
++	mock.queue = ["{\"ok\":1}", "{\"ok\":2}"]
++	var req := LlmProvider.LlmRequest.new()
++	req.system_prompt = "sys"
++	req.user_prompt = "usr"
++	var r1: LlmProvider.LlmResponse = await mock.complete(req)
++	a.is_true(r1.ok, "第一次 mock 成功")
++	a.eq(r1.text, "{\"ok\":1}", "按队列出队")
++	var r2: LlmProvider.LlmResponse = await mock.complete(req)
++	a.eq(r2.text, "{\"ok\":2}", "第二次出队")
++	var r3: LlmProvider.LlmResponse = await mock.complete(req)
++	a.is_false(r3.ok, "队列空返回失败")
++	a.eq(mock.requests.size(), 3, "记录每次请求")
++	a.eq(mock.requests[0].system_prompt, "sys", "请求内容被记录")
++
++	# mock 错误注入
++	var mock2 := MockLlmProvider.new()
++	mock2.queue = ["{\"ok\":1}", "{\"ok\":2}"]
++	mock2.errors = ["boom", ""]
++	var e1: LlmProvider.LlmResponse = await mock2.complete(req)
++	a.is_false(e1.ok, "错误注入生效")
++	a.eq(e1.error, "boom", "错误信息保留")
++	var e2: LlmProvider.LlmResponse = await mock2.complete(req)
++	a.is_true(e2.ok, "第二次无错误")
++
++	return a.report("llm")
+diff --git a/tests/llm_test.gd.uid b/tests/llm_test.gd.uid
+new file mode 100644
+index 0000000..d5e78ce
+--- /dev/null
++++ b/tests/llm_test.gd.uid
+@@ -0,0 +1 @@
++uid://0p5msw86bl7v
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index d2a25cf..8518b67 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -18,6 +18,7 @@ const SUITES: Array[String] = [
+ 	"res://tests/selfcheck_test.gd",
+ 	"res://tests/save_test.gd",
+ 	"res://tests/async_probe_test.gd",
++	"res://tests/llm_test.gd",
+ ]
+ 
+ func _initialize() -> void:
