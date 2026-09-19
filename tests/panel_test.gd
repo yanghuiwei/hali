@@ -85,4 +85,20 @@ func run() -> int:
 	a.is_true(block.contains("经济"), "事件块含分类")
 	a.is_true(block.contains("魔药材料涨价了"), "事件块含文本")
 
+	# 空/边界分支
+	a.eq(PanelFormatter.events_block([]), "本月没有特别的消息。", "空事件块")
+	var empty_p := PlayerState.new_default()
+	var w_empty := WorldState.create("modern", empty_p, 1, reg)
+	a.is_true(PanelFormatter.status_line(w_empty).contains("未知"), "未知地点回退为未知")
+	a.is_true(PanelFormatter.relation_panel(w_empty).contains("暂无关键人物"), "空关系面板")
+	a.is_true(PanelFormatter.player_panel(w_empty).contains("未知"), "空政治倾向回退为未知")
+	# 非哑炮但无魔杖 → 未拥有
+	var no_wand := PlayerState.new_default()
+	no_wand.name_text = "王五"
+	no_wand.magic_tier = MagicLevel.Tier.FIRST_YEAR
+	no_wand.wand = {}
+	var w_nw := WorldState.create("modern", no_wand, 1, reg)
+	a.is_true(PanelFormatter.magic_panel(w_nw).contains("未拥有"), "无魔杖的巫师显示未拥有")
+	a.is_true(PanelFormatter.magic_panel(w_nw).contains("未成形"), "无守护神显示未成形")
+
 	return a.report("panel")

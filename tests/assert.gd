@@ -1,6 +1,9 @@
 class_name TestAssert
 extends RefCounted
 
+# 全局计数：report() 每被调用一次 +1。运行器用它检测“套件中途报错、没走到 report”的静默假绿。
+static var report_calls: int = 0
+
 var checks: int = 0
 var failures: PackedStringArray = PackedStringArray()
 
@@ -44,6 +47,7 @@ func fail(msg: String) -> void:
 	failures.append(msg)
 
 func report(suite: String) -> int:
+	report_calls += 1
 	for f in failures:
 		printerr("[%s] %s" % [suite, f])
 	print("[%s] 断言=%d 失败=%d" % [suite, checks, failures.size()])

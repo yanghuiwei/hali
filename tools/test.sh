@@ -22,8 +22,15 @@ unit=$?
 
 echo "== 3/3 主场景冒烟 =="
 if [ -f "$ROOT/src/ui/main.tscn" ]; then
-	"$GODOT" --headless --path . --quit-after 5
-	smoke=$?
+	smoke_log="$(mktemp)"
+	"$GODOT" --headless --path . --quit-after 5 2>&1 | tee "$smoke_log"
+	smoke=${PIPESTATUS[0]}
+	# 只看退出码不够：脚本加载失败但引擎返回 0 时会假绿，必须确认场景真的 _ready 了
+	if ! grep -q "main scene ready" "$smoke_log"; then
+		echo "主场景冒烟未出现 'main scene ready'（脚本可能未加载）" >&2
+		smoke=1
+	fi
+	rm -f "$smoke_log"
 else
 	echo "（跳过：src/ui/main.tscn 尚未创建，任务 11 将启用）"
 	smoke=0

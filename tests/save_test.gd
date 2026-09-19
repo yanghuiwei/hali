@@ -96,6 +96,24 @@ func run() -> int:
 	a.is_true(SaveStore.delete_slot("slot1", test_dir), "删除成功")
 	a.eq(SaveStore.list_slots(test_dir).size(), 0, "删除后为空")
 
+	# 槽路径净化：不得逃逸 base_dir
+	for raw_slot in ["../evil", "a/b\\c:d", "  ", ".."]:
+		var p := SaveStore.slot_path(str(raw_slot), "user://test_saves")
+		a.is_true(p.begins_with("user://test_saves/"), "槽路径不逃逸: %s" % str(raw_slot))
+		a.is_false(p.contains("../"), "槽路径不含 ../: %s" % str(raw_slot))
+	a.is_true(SaveStore.slot_path("", "user://test_saves").ends_with("slot.json"), "空槽名回退 slot")
+	# 缺失目录 / 缺失槽
+	a.eq(SaveStore.list_slots("user://no_such_dir_xyz").size(), 0, "缺失目录列为空")
+	a.is_false(SaveStore.delete_slot("不存在槽", test_dir), "删除缺失槽返回 false")
+	# 校验和负例
+	a.eq(SaveCodec.checksum("").length(), 64, "空串校验和长度 64")
+	a.is_false(bool(SaveCodec.decode(text.replace("checksum: ", "checksum: zz"), reg)["ok"]), "非十六进制校验和被拒")
+	# 覆盖保存
+	var overwrite := SaveStore.save("slot1", w, test_dir)
+	a.is_true(bool(overwrite["ok"]), "覆盖保存成功")
+	a.eq(SaveStore.list_slots(test_dir).size(), 1, "覆盖后仍只有一个槽")
+	SaveStore.delete_slot("slot1", test_dir)
+
 	# ---- 存读档后世界必须继续一致演化（随机流状态被持久化） ----
 	var w2 := make_world()
 	var rng := RngService.new(w2.game_seed)

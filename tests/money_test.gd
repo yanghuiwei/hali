@@ -27,6 +27,12 @@ func run() -> int:
 	a.eq(plus.total_knuts(), 150, "add 返回新对象")
 	a.eq(plus.subtract(Money.from_knuts(200)).total_knuts(), -50, "允许负债（第十九章：家族破产）")
 
+	# 负值分段/格式的现状（HANDOFF §8#5 待人类裁定）；锁定现状以便裁定落地时能察觉回归
+	var debt := Money.from_knuts(-50)
+	a.eq(debt.parts(), [0, -2, -16], "负值分段（现状）")
+	a.eq(debt.formatted(), "0加隆 -2西可 -16纳特", "负值格式（现状，待裁定）")
+	a.eq(Money.from_dict(debt.to_dict()).total_knuts(), -50, "负值往返一致")
+
 	# 往返
 	var d := Money.from_knuts(493 * 3 + 17 * 2 + 5).to_dict()
 	a.eq(d, {"galleons": 3, "sickles": 2, "knuts": 5}, "to_dict 归一")

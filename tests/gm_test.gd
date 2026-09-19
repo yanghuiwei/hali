@@ -37,7 +37,45 @@ func run() -> int:
 		{"op": "set_location", "location_id": "不存在的地点"},
 	])
 	a.eq(errs2.size(), 2, "非法魔咒与地点都报错")
+	a.is_true(" | ".join(errs2).contains("未知魔咒"), "错误信息指出未知魔咒")
+	a.is_true(" | ".join(errs2).contains("未知地点"), "错误信息指出未知地点")
 	a.is_false(w.player.knows_spell("不存在的魔咒"), "非法魔咒未写入")
+
+	# know_fact 负例：空 fact_id / 空来源 / system 来源都不得写入
+	var errs3 := StateOps.apply(w, [
+		{"op": "know_fact", "fact_id": "", "source": "传闻"},
+		{"op": "know_fact", "fact_id": "r2", "source": ""},
+		{"op": "know_fact", "fact_id": "r3", "source": "system"},
+	])
+	a.eq(errs3.size(), 3, "know_fact 三种非法输入各报一个错")
+	a.is_false(w.player.known_facts.has("r2"), "空来源未写入")
+	a.is_false(w.player.known_facts.has("r3"), "system 来源未写入")
+
+	# 输入硬化：空 key / 非数字 add_money / 空 npc_id / 非字典条都记错误且不写入
+	var errs4 := StateOps.apply(w, [
+		{"op": "set_flag", "key": "", "value": true},
+		{"op": "set_player_flag", "key": "", "value": true},
+		{"op": "add_money", "knuts": "很多"},
+		{"op": "relation_delta", "npc_id": "", "trust": 5},
+		42,
+	])
+	a.eq(errs4.size(), 5, "非法输入与非法条目都记错误")
+	a.is_false(w.flags.has(""), "空 flag key 未写入")
+
+	# 合法集合：set_flag / set_player_flag / set_magic_tier / relation_delta
+	var errs5 := StateOps.apply(w, [
+		{"op": "set_flag", "key": "met_dumbledore", "value": true},
+		{"op": "set_player_flag", "key": "owl", "value": true},
+		{"op": "set_magic_tier", "tier": 5},
+		{"op": "relation_delta", "npc_id": "npc_x", "trust": 3, "interest": 2, "hostility": -1},
+	])
+	a.eq(errs5.size(), 0, "合法集合无错误")
+	a.is_true(bool(w.flags.get("met_dumbledore", false)), "set_flag 生效")
+	a.is_true(bool(w.player.flags.get("owl", false)), "set_player_flag 生效")
+	a.eq(w.player.magic_tier, 5, "set_magic_tier 生效")
+	a.eq(int(w.player.relations["npc_x"]["trust"]), 3, "relation_delta trust 生效")
+	a.eq(int(w.player.relations["npc_x"]["interest"]), 2, "relation_delta interest 生效")
+	a.eq(int(w.player.relations["npc_x"]["hostility"]), -1, "relation_delta 允许负敌意增量")
 
 	# know_fact 必须带来源（第四十三章：信息分来源可信度）
 	StateOps.apply(w, [{"op": "know_fact", "fact_id": "r1", "source": "破釜酒吧传闻"}])
@@ -52,6 +90,7 @@ func run() -> int:
 	w2.flags["energy_loop_count"] = 3
 	StateOps.apply(w2, [{"op": "cast_spell", "spell_id": "lumos", "conditions": {}}])
 	a.is_true(str(w2.flags.get("last_cast_narration", "")).contains("上限"), "达到上限后施法被拦截")
+	a.eq(int(w2.flags.get("energy_loop_count", 0)), 3, "被拦截后叠加计数不再增长")
 
 	# ---- Progression：第七十章反刷 ----
 	var w3 := make_world()
@@ -82,6 +121,8 @@ func run() -> int:
 	var work := gm.act(w4, "我去对角巷打工赚钱")
 	a.is_true(work.deltas.size() > 0, "打工产生增量")
 	a.is_true(work.tags.has("work"), "打上 work 标签")
+	StateOps.apply(w4, work.deltas)
+	a.is_true(w4.player.money_knuts > money_before, "打工后财富增加")
 	var unknown := gm.act(w4, "我对着墙思考宇宙的尽头")
 	a.is_true(unknown.narration.length() > 0, "未知行动也要有叙事，而不是崩溃")
 	a.is_true(unknown.tags.has("idle"), "未知行动归为 idle")
@@ -89,7 +130,7 @@ func run() -> int:
 	# 施法意图必须能被识别并走 SpellResolver
 	var cast_result := gm.act(w4, "我念出 照明咒")
 	a.is_true(cast_result.tags.has("cast"), "识别施法意图")
-	a.is_true(cast_result.narration.contains("照明咒") or cast_result.narration.length() > 0, "施法旁白")
+	a.is_true(cast_result.narration.contains("照明咒"), "施法旁白含咒语名")
 
 	# ---- TurnEngine：世界不会停下来等玩家（第四十七章） ----
 	var w5 := make_world()
@@ -100,7 +141,8 @@ func run() -> int:
 	a.has_key(r, "narration", "返回叙事")
 	a.has_key(r, "events", "返回本月事件")
 	a.eq(w5.clock.turn, before_turn + 1, "每次提交推进一个回合")
-	a.is_true(w5.clock.year >= before_year, "时间向前")
+	a.eq(w5.clock.year, before_year, "9→10 月不跨年")
+	a.eq(w5.clock.month, 10, "回合推进使月份前进（9→10）")
 
 	# ---- 第七十二章：第 15 回合强制自检，并且必须等待玩家确认 ----
 	var w6 := make_world()
@@ -114,8 +156,10 @@ func run() -> int:
 	a.is_true(audit_seen.contains("人设OOC自检报告"), "第 15 回合输出 OOC 自检报告")
 	a.is_true(bool(w6.flags.get("awaiting_audit_ack", false)), "自检后挂起，等待指令")
 
+	var turn_before_block := w6.clock.turn
 	var blocked_res := engine6.submit("我要继续上课")
 	a.is_true(bool(blocked_res.get("blocked", false)), "未确认自检前拒绝继续剧情")
+	a.eq(w6.clock.turn, turn_before_block, "被拒提交不推进回合")
 	a.is_true(str(blocked_res["narration"]).contains("自检"), "提示先确认自检")
 	engine6.acknowledge_audit()
 	a.is_false(bool(w6.flags.get("awaiting_audit_ack", false)), "确认后解除挂起")

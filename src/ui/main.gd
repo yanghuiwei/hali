@@ -203,8 +203,6 @@ func _personality_words() -> Array:
 			words.append(word)
 	return words
 
-var _turn_count := 0
-
 func _append(text: String) -> void:
 	log_view.append_text(text + "\n")
 
@@ -227,7 +225,6 @@ func _on_command_submitted(text: String) -> void:
 		command_edit.text = ""
 		return
 	var result := engine.submit(text)
-	_turn_count += 1
 	_append(">>> %s" % text)
 	_append(str(result["narration"]))
 	var events: Array = result["events"]
@@ -282,6 +279,7 @@ func _on_load() -> void:
 		creation_error.text = ""
 	_append("读档成功：%s" % str(result["path"]))
 	_append(PanelFormatter.player_panel(world))
+	command_edit.grab_focus()
 
 func _on_audit() -> void:
 	if world == null:

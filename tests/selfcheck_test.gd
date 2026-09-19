@@ -66,4 +66,21 @@ func run() -> int:
 	var full := SelfCheck.report(w)
 	a.is_true(full.contains("【剧情快照】") and full.contains("【人设OOC自检报告】"), "report 含两段")
 
+	# 负回合 + 空世界占位 + 空来源泄露 + canon 锚点超前
+	a.is_false(SelfCheck.is_audit_turn(-15), "负回合不自检")
+	var w_empty := make_world(reg)
+	w_empty.npcs.clear()
+	w_empty.pending.clear()
+	w_empty.history.clear()
+	var snap_empty := SelfCheck.snapshot(w_empty)
+	a.is_true(snap_empty.contains("（尚未建立关键 NPC 关系网络）"), "空 NPC 占位")
+	a.is_true(snap_empty.contains("（无）"), "空进行中事件占位")
+	a.is_true(snap_empty.contains("（尚无）"), "空历史占位")
+	var w_leak := make_world(reg)
+	w_leak.player.known_facts["x"] = ""
+	a.is_true(SelfCheck.ooc_report(w_leak).contains("玩家信息被提前泄露：异常"), "空来源也算泄露")
+	var w_future := make_world(reg)
+	w_future.history.append({"kind": "canon", "text": "未来事件", "year": 2999, "turn": 0})
+	a.is_true(SelfCheck.ooc_report(w_future).contains("历史时间线错误：异常"), "canon 事实超前被抓到")
+
 	return a.report("selfcheck")

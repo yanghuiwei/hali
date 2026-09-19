@@ -55,4 +55,14 @@ func _run_suite(path: String) -> Variant:
 		printerr("套件无法实例化（语法错误？）: ", path)
 		return null
 	var suite = script.new()
-	return int(suite.run())
+	var reports_before := TestAssert.report_calls
+	var result = suite.run()
+	# 运行期错误会让 suite.run() 提前中止（typed int 函数返回 0），单看返回值无法区分 0 失败与根本没跑完。
+	# 用 report() 调用计数做哨兵：没调用 report 就说明套件中途报错。
+	if TestAssert.report_calls == reports_before:
+		printerr("套件未正常结束（未调用 report，运行期错误？）: ", path)
+		return null
+	if typeof(result) != TYPE_INT:
+		printerr("套件未返回整数结果（运行期错误？）: ", path)
+		return null
+	return int(result)
