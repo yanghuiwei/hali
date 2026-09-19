@@ -1,13 +1,13 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-19（**计划 01 已完成并合入 `main`；计划 02「LLM 叙事引擎」Task 1–11 完成、Task 12 文档收尾中**）。交付点 = 分支 `plan-02-llm-narrative` 顶端（以 `git log` 为准）。
+> 最后更新：2026-09-19（**计划 01 与计划 02「LLM 叙事引擎」均已完成并合入 `main`**）。交付点 = 分支 `main` 顶端（以 `git log` 为准）。
 
 ---
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」已完成并合入 `main`（`026efe3`）。计划 02「LLM 叙事引擎」（共 12 个任务）Task 1–11 已完成**：`LlmProvider`/`MockLlmProvider`/`OpenAiCompatProvider`、`LlmSettings`、`GmResponseParser`、`PromptBuilder`、`OpGuard`、`LlmGameMaster`（重试+降级）、`TurnEngine.submit_async`、UI 异步接线；另有 `StateOps.train_skill` 与 §8#33 RNG 加盐。每步都经独立审查（含修复轮）。计划 02 计划：`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`；spec：`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`。下一步：计划 02 收尾（人工真机 LLM 联调）或计划 03。
+**计划 01「核心模拟地基」与计划 02「LLM 叙事引擎」均已完成并合入 `main`。** 计划 02（12 任务）：`LlmProvider`/`MockLlmProvider`/`OpenAiCompatProvider`、`LlmSettings`、`GmResponseParser`、`PromptBuilder`、`OpGuard`、`LlmGameMaster`（重试+降级）、`TurnEngine.submit_async`、UI 异步接线；另有 `StateOps.train_skill` 与 §8#33 RNG 加盐。计划全文：`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`；设计 spec：`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`。下一步：真机 LLM 联调（人工）或计划 03。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -20,7 +20,7 @@
 | 项 | 值 |
 | --- | --- |
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
-| 执行分支 | **`plan-02-llm-narrative`**（从 `main` 拉出；计划 01 已合入 `main` \(`026efe3`\)） |
+| 执行分支 | **`main`**（计划 01 与计划 02 均已合入；后续计划从 `main` 拉新分支） |
 | `main` | 已包含**计划 01 全部**（Task 1–11 + 收尾加固），顶端 `026efe3`。注：远端 PR #2 曾误合并 Task 5 的旧 tip（`d4186c5`），已用 `026efe3` 合并修正（tree 与 `b196d26` 一致、无冲突）。 |
 | 当前 HEAD | `plan-01-core-foundation` == `main` == `026efe3` |
 
