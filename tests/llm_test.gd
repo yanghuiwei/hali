@@ -70,4 +70,37 @@ func run() -> int:
 	var bad_tags := GmResponseParser.parse('{"narration":"x","ops":[],"tags":{}}')
 	a.is_false(bad_tags.ok, "tags 非数组失败")
 
+	# ---- OpGuard ----
+	var gw := Registry.load_default()
+	var gp := PlayerState.new_default()
+	gp.location_id = "hogwarts"
+	var gworld := WorldState.create("modern", gp, 1, gw)
+	var gres := OpGuard.sanitize_detailed(gworld, [
+		{"op": "gain_skill", "skill_id": "potions", "amount": 99},
+		{"op": "add_money", "knuts": 999999},
+		{"op": "relation_delta", "npc_id": "npc_a", "trust": 999, "hostility": -999},
+		{"op": "set_magic_tier", "tier": 9},
+		{"op": "set_flag", "key": "_gm_rng_counter", "value": 0},
+		{"op": "know_fact", "fact_id": "f1", "source": "system"},
+		{"op": "cast_spell", "spell_id": "lumos", "conditions": {}},
+	])
+	a.eq(gres.ops[0]["op"], "train_skill", "gain_skill 被改写为 train_skill")
+	a.eq(gres.ops[0]["base_gain"], 4, "忽略 LLM 的 amount")
+	a.eq(gres.ops[1]["knuts"], OpGuard.MAX_MONEY_GAIN, "add_money 钳到上限")
+	a.eq(gres.ops[2]["trust"], OpGuard.MAX_RELATION_DELTA, "relation_delta 正向上限")
+	a.eq(gres.ops[2]["hostility"], -OpGuard.MAX_RELATION_DELTA, "relation_delta 负向下限")
+	a.is_true(absi(int(gres.ops[3]["tier"]) - gp.magic_tier) <= 1, "set_magic_tier 只允许 ±1")
+	a.eq(gres.ops.size(), 5, "拒绝保留 flag 与 system 来源后剩 5 个 op")
+	var has_reserved := false
+	for o in gres.ops:
+		if str(o.get("op", "")) == "set_flag" and str(o.get("key", "")).begins_with("_"):
+			has_reserved = true
+	a.is_false(has_reserved, "下划线 flag 被拒")
+	a.is_false(gres.ops.has({"op": "know_fact", "fact_id": "f1", "source": "system"}), "system 来源被拒")
+	a.is_true(gres.warnings.size() >= 3, "产生警告")
+	var many: Array = []
+	for i in 50:
+		many.append({"op": "set_job", "job": "x"})
+	a.eq(OpGuard.sanitize(gworld, many).size(), OpGuard.MAX_OPS, "ops 数量截断")
+
 	return a.report("llm")
