@@ -47,4 +47,23 @@ func run() -> int:
 	var s3 := LlmSettings.load_from("user://no_such_settings.json")
 	a.is_false(s3.is_configured(), "缺失文件回退默认")
 
+	# ---- GmResponseParser ----
+	var ok := GmResponseParser.parse('{"narration":"你好","ops":[{"op":"set_job","job":"学生"}],"tags":["train","bogus"]}')
+	a.is_true(ok.ok, "合法 JSON 解析成功")
+	a.eq(ok.narration, "你好", "narration 取出")
+	a.eq(ok.ops.size(), 1, "ops 取出")
+	a.eq(ok.tags, PackedStringArray(["train"]), "tags 白名单过滤未知")
+	var fenced := GmResponseParser.parse("```json\n{\"narration\":\"裹住\",\"ops\":[],\"tags\":[]}\n```")
+	a.is_true(fenced.ok, "markdown 围栏可剥离")
+	var no_narr := GmResponseParser.parse('{"ops":[]}')
+	a.is_false(no_narr.ok, "缺 narration 失败")
+	var bad_json := GmResponseParser.parse("不是 JSON")
+	a.is_false(bad_json.ok, "非法 JSON 失败")
+	var bad_ops := GmResponseParser.parse('{"narration":"x","ops":{}}')
+	a.is_false(bad_ops.ok, "ops 非数组失败")
+	var long_text := "{\"narration\":\"%s\",\"ops\":[],\"tags\":[]}" % "长".repeat(5000)
+	var long_res := GmResponseParser.parse(long_text)
+	a.is_true(long_res.ok, "超长叙事仍可解析")
+	a.eq(long_res.narration.length(), GmResponseParser.MAX_NARRATION, "超长叙事被截断")
+
 	return a.report("llm")
