@@ -186,7 +186,7 @@ func _on_start_pressed() -> void:
 		_show_creation_error("创建失败：\n%s" % "\n".join(result.errors))
 		return
 	world = WorldState.create(choices["era_id"], result.player, rng.seed_value, registry)
-	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
+	engine = TurnEngine.new(world, _build_gm(), rng)
 	creation_box.visible = false
 	play_box.visible = true
 	_append("【原著优先级别已启用】本世界以《哈利·波特》原著七部小说为正典。")
@@ -202,6 +202,13 @@ func _personality_words() -> Array:
 		if not word.is_empty():
 			words.append(word)
 	return words
+
+func _build_gm() -> GameMaster:
+	var settings := LlmSettings.load_from()
+	if settings.is_configured():
+		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng))
+	status_label.text = "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
+	return ScriptedGameMaster.new(rng)
 
 func _append(text: String) -> void:
 	log_view.append_text(text + "\n")
@@ -224,8 +231,10 @@ func _on_command_submitted(text: String) -> void:
 		_append("（自检已确认。世界继续向前。）")
 		command_edit.text = ""
 		return
-	var result := engine.submit(text)
+	command_edit.editable = false
 	_append(">>> %s" % text)
+	_append("（世界正在回应…）")
+	var result: Dictionary = await engine.submit_async(text)
 	_append(str(result["narration"]))
 	var events: Array = result["events"]
 	if not events.is_empty():
@@ -236,6 +245,7 @@ func _on_command_submitted(text: String) -> void:
 		_append(str(result["audit"]))
 		_append("（自检完毕。等待你的指令——输入“确认自检”继续。）")
 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
+	command_edit.editable = true
 	command_edit.text = ""
 
 func _on_status() -> void:
@@ -271,7 +281,7 @@ func _on_load() -> void:
 		return
 	world = result["world"]
 	rng = RngService.new(world.game_seed)
-	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
+	engine = TurnEngine.new(world, _build_gm(), rng)
 	creation_box.visible = false
 	play_box.visible = true
 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
