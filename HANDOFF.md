@@ -9,6 +9,8 @@
 
 **计划 01「核心模拟地基」与计划 02「LLM 叙事引擎」均已完成并合入 `main`。** 计划 02（12 任务）：`LlmProvider`/`MockLlmProvider`/`OpenAiCompatProvider`、`LlmSettings`、`GmResponseParser`、`PromptBuilder`、`OpGuard`、`LlmGameMaster`（重试+降级）、`TurnEngine.submit_async`、UI 异步接线；另有 `StateOps.train_skill` 与 §8#33 RNG 加盐。计划全文：`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`；设计 spec：`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`。下一步：真机 LLM 联调（人工）或计划 03。
 
+**接下来要做什么：见 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（队列 A = 计划 02 文档收口；队列 B = 人工验收 / 计划 03；含恢复核对命令与协作约定）。
+
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
 - 过程台账 / 简报 / 报告 / 审查包：`docs/sdd/plan-01-core-foundation/`（见第 7 节）
