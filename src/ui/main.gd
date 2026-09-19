@@ -292,10 +292,11 @@ func _on_load() -> void:
 		return
 	world = result["world"]
 	rng = RngService.new(world.game_seed)
-	engine = TurnEngine.new(world, _build_gm(), rng)
 	creation_box.visible = false
 	play_box.visible = true
 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
+	# 先设状态行，再建 GM：_build_gm 在未配置时会向状态行追加提示（F4）
+	engine = TurnEngine.new(world, _build_gm(), rng)
 	if creation_error != null:
 		creation_error.text = ""
 	_append("读档成功：%s" % str(result["path"]))
