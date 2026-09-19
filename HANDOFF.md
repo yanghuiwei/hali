@@ -20,18 +20,18 @@
 | 项 | 值 |
 | --- | --- |
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
-| 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
-| `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一祖先 |
-| 当前 HEAD | `plan-01-core-foundation` 顶端 `7d24783`（计划 01 + 收尾加固），下次从 `git log` 看即可 |
+| 执行分支 | `plan-01-core-foundation`（已与 `main` 同步；**计划 01 已并入 `main`**，后续计划建议从 `main` 拉新分支） |
+| `main` | 已包含**计划 01 全部**（Task 1–11 + 收尾加固），顶端 `026efe3`。注：远端 PR #2 曾误合并 Task 5 的旧 tip（`d4186c5`），已用 `026efe3` 合并修正（tree 与 `b196d26` 一致、无冲突）。 |
+| 当前 HEAD | `plan-01-core-foundation` == `main` == `026efe3` |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
-git checkout plan-01-core-foundation
-git log --oneline -5     # 顶部应是最新的 docs(handoff) 提交，其下依次 d9135ab / 463a73d / 432adc8 / 79d15aa
+git checkout main        # 计划 01 已并入 main（要接着开发的也建议从这里拉分支）
+git log --oneline -3     # 顶部应是 026efe3（合并修正）/ b196d26 / 7d24783
 ```
 
-`main` 已通过 PR #1 合并到 `eccc871`（含 Task 1–3 代码）；本地 `plan-01-core-foundation` 已在 Task 4 开工时 fast-forward 到同一提交，之后的新提交仍落在执行分支上，先不合回 `main`。
+计划 01 收尾时把 `plan-01-core-foundation` 合回了 `main`：远端 PR #2 实际合并的是 Task 5 的旧 tip `d4186c5`（不含 Task 6–11），因此本地以 `026efe3` 把旧 merge 与完整分支合并修正，`origin/main` 与 `b196d26` 的 tree 完全一致。
 
 ---
 
@@ -307,7 +307,7 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `7d24783` / `e094a52` / `ecf523c` / `70ad341` / `d9135ab` / `eccc871`
+  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `026efe3` / `b196d26` / `7d24783` / `e094a52` / `70ad341` / `eccc871`
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致
