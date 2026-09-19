@@ -21,11 +21,11 @@ echo "== 2/3 单元测试 =="
 unit=$?
 
 echo "== 3/3 主场景冒烟 =="
-if [ -f "$ROOT/ui/main.tscn" ]; then
+if [ -f "$ROOT/src/ui/main.tscn" ]; then
 	"$GODOT" --headless --path . --quit-after 5
 	smoke=$?
 else
-	echo "（跳过：ui/main.tscn 尚未创建，任务 11 将启用）"
+	echo "（跳过：src/ui/main.tscn 尚未创建，任务 11 将启用）"
 	smoke=0
 fi
 

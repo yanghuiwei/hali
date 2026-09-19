@@ -5,6 +5,7 @@ config_version=5
 config/name="哈利·波特·魔法纪元"
 config/description="魔法世界沙盘·超高自由度人生模拟器"
 config/features=PackedStringArray("4.7")
+run/main_scene="res://src/ui/main.tscn"
 
 [display]
 

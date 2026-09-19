@@ -353,11 +353,11 @@ echo "== 2/3 单元测试 =="
 unit=$?
 
 echo "== 3/3 主场景冒烟 =="
-if [ -f "$ROOT/ui/main.tscn" ]; then
+if [ -f "$ROOT/src/ui/main.tscn" ]; then
 	"$GODOT" --headless --path . --quit-after 5
 	smoke=$?
 else
-	echo "（跳过：ui/main.tscn 尚未创建，任务 11 将启用）"
+	echo "（跳过：src/ui/main.tscn 尚未创建，任务 11 将启用）"
 	smoke=0
 fi
 
@@ -4239,17 +4239,17 @@ git commit -m "feat(persist): 第七十一章存档编解码与存槽"
 
 **Interfaces:**
 - Consumes: `Registry`、`CharacterCreation`、`WorldState`、`TurnEngine`、`ScriptedGameMaster`、`RngService`、`PanelFormatter`、`SelfCheck`、`SaveCodec`、`SaveStore`
-- Produces: 可运行的窗口程序（创建流程 → 主循环）；`project.godot` 的 `run/main_scene = "res://ui/main.tscn"`
+- Produces: 可运行的窗口程序（创建流程 → 主循环）；`project.godot` 的 `run/main_scene = "res://src/ui/main.tscn"`
 
 - [ ] **Step 1: 写失败测试（场景冒烟断言）**
 
-场景冒烟在任务 1 的 `tools/test.sh` 里已经就位：只要 `ui/main.tscn` 存在，就会执行 `--headless --quit-after 5` 并检查退出码。因此本任务的「失败」表现为：`ui/main.tscn` 不存在时冒烟被跳过（不算通过验证）。
+场景冒烟在任务 1 的 `tools/test.sh` 里已经就位：只要 `src/ui/main.tscn` 存在，就会执行 `--headless --quit-after 5` 并检查退出码。因此本任务的「失败」表现为：`src/ui/main.tscn` 不存在时冒烟被跳过（不算通过验证）。
 
 先确认当前状态：
 
 ```bash
 cd /e/Hali
-ls ui/main.tscn 2>&1 || echo "主场景尚不存在（预期）"
+ls src/ui/main.tscn 2>&1 || echo "主场景尚不存在（预期）"
 grep -n "run/main_scene" project.godot || echo "project.godot 尚未指定主场景（预期）"
 ```
 
@@ -4452,7 +4452,7 @@ func _on_start_pressed() -> void:
 		log_view.text = "创建失败：\n%s" % "\n".join(result.errors)
 		return
 	world = WorldState.create(choices["era_id"], result.player, rng.seed_value, registry)
-	engine = TurnEngine.new(world, ScriptedGameMaster.new(RngService.new(world.game_seed + 1)), rng)
+	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
 	creation_box.visible = false
 	play_box.visible = true
 	_append("【原著优先级别已启用】本世界以《哈利·波特》原著七部小说为正典。")
@@ -4528,7 +4528,7 @@ func _on_load() -> void:
 		return
 	world = result["world"]
 	rng = RngService.new(world.game_seed)
-	engine = TurnEngine.new(world, ScriptedGameMaster.new(RngService.new(world.game_seed + 1)), rng)
+	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
 	creation_box.visible = false
 	play_box.visible = true
 	_append("读档成功：%s" % str(result["path"]))
@@ -4549,7 +4549,7 @@ func _on_audit() -> void:
 修改 `project.godot`，在 `[application]` 段加入：
 
 ```ini
-run/main_scene="res://ui/main.tscn"
+run/main_scene="res://src/ui/main.tscn"
 ```
 
 - [ ] **Step 5: 运行场景冒烟**
@@ -4581,9 +4581,9 @@ cd /e/Hali
 7. 关掉程序重开，点「读档」→ 世界恢复。
 8. 连续行动直到回合数到 15 → 出现【剧情快照】与【人设OOC自检报告】，且此时继续输入行动会被拒绝，提示先确认自检；输入「确认自检」后可继续。
 
-- [ ] **Step 7: 写运行说明**
+- [ ] **Step 7: 收尾 README.md**
 
-创建 `README.md`：
+收尾 `README.md`（不要整篇覆盖，保留进度表、HANDOFF/台账链接、目录约定、设计不变量）：
 
 ```markdown
 # 哈利·波特·魔法纪元
@@ -4634,7 +4634,7 @@ Windows 上 `bash` 来自 Git Bash。若引擎不在仓库根目录，用 `GODOT
 
 ```bash
 cd /e/Hali
-git add src/ui/main.tscn src/ui/main.gd project.godot README.md
+git add src/ui/main.tscn src/ui/main.gd src/ui/main.gd.uid project.godot README.md
 git commit -m "feat(ui): 主界面、创建流程与运行说明"
 ```
 
