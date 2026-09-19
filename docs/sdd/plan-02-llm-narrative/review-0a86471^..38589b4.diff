@@ -1,0 +1,210 @@
+== Tasks 6-7 ==
+38589b4 feat(gm): OpGuard 净化与钳制
+0a86471 feat(rules): StateOps.train_skill + 施法 RNG 加盐（§8#33）
+
+== diff ==
+diff --git a/src/gm/op_guard.gd b/src/gm/op_guard.gd
+new file mode 100644
+index 0000000..cd2d9a8
+--- /dev/null
++++ b/src/gm/op_guard.gd
+@@ -0,0 +1,79 @@
++class_name OpGuard
++extends RefCounted
++
++const MAX_OPS := 20
++const MAX_MONEY_GAIN := 1000
++const MAX_RELATION_DELTA := 20
++const TRAIN_BASE_GAIN := 4
++
++class Result:
++	var ops: Array = []
++	var warnings: PackedStringArray = PackedStringArray()
++
++static func sanitize(world: WorldState, raw_ops: Array) -> Array:
++	return sanitize_detailed(world, raw_ops).ops
++
++static func sanitize_detailed(world: WorldState, raw_ops: Array) -> Result:
++	var out := Result.new()
++	var money_gain := 0
++	for raw in raw_ops:
++		if out.ops.size() >= MAX_OPS:
++			out.warnings.append("ops 数量超过上限 %d，已截断" % MAX_OPS)
++			break
++		if typeof(raw) != TYPE_DICTIONARY:
++			out.warnings.append("忽略非字典 op")
++			continue
++		var op := str(raw.get("op", ""))
++		match op:
++			"gain_skill":
++				var skill_id := str(raw.get("skill_id", ""))
++				if world.registry.has("skills", skill_id):
++					out.ops.append({"op": "train_skill", "skill_id": skill_id, "base_gain": TRAIN_BASE_GAIN})
++				else:
++					out.warnings.append("忽略未知技能: %s" % skill_id)
++			"add_money":
++				var knuts := int(raw.get("knuts", 0))
++				if knuts > 0:
++					var room := MAX_MONEY_GAIN - money_gain
++					if room <= 0:
++						out.warnings.append("本回合金钱收益已达上限")
++						continue
++					if knuts > room:
++						knuts = room
++						out.warnings.append("金钱收益已钳到上限 %d" % MAX_MONEY_GAIN)
++					money_gain += knuts
++				out.ops.append({"op": "add_money", "knuts": knuts})
++			"set_magic_tier":
++				var tier := clampi(int(raw.get("tier", world.player.magic_tier)), world.player.magic_tier - 1, world.player.magic_tier + 1)
++				tier = clampi(tier, 0, MagicLevel.LABELS.size() - 1)
++				out.ops.append({"op": "set_magic_tier", "tier": tier})
++			"relation_delta":
++				var npc_id := str(raw.get("npc_id", ""))
++				if npc_id.is_empty():
++					out.warnings.append("忽略缺 npc_id 的 relation_delta")
++					continue
++				out.ops.append({
++					"op": "relation_delta", "npc_id": npc_id,
++					"trust": clampi(int(raw.get("trust", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
++					"interest": clampi(int(raw.get("interest", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
++					"hostility": clampi(int(raw.get("hostility", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
++				})
++			"set_flag", "set_player_flag":
++				var key := str(raw.get("key", ""))
++				if key.is_empty() or key.begins_with("_"):
++					out.warnings.append("拒绝保留/空 flag key: %s" % key)
++					continue
++				out.ops.append({"op": op, "key": key, "value": raw.get("value", true)})
++			"know_fact":
++				var fact_id := str(raw.get("fact_id", ""))
++				var source := str(raw.get("source", ""))
++				if fact_id.is_empty() or source.is_empty() or source == "system":
++					out.warnings.append("拒绝非法 know_fact")
++					continue
++				out.ops.append({"op": "know_fact", "fact_id": fact_id, "source": source})
++			"cast_spell", "learn_spell", "set_location", "set_job":
++				out.ops.append(raw)
++			_:
++				out.warnings.append("未知 op 交给 StateOps 判定: %s" % op)
++				out.ops.append(raw)
++	return out
+diff --git a/src/gm/op_guard.gd.uid b/src/gm/op_guard.gd.uid
+new file mode 100644
+index 0000000..5746cc1
+--- /dev/null
++++ b/src/gm/op_guard.gd.uid
+@@ -0,0 +1 @@
++uid://ddt16hqfnyo5k
+diff --git a/src/rules/state_ops.gd b/src/rules/state_ops.gd
+index 9449792..8d1b204 100644
+--- a/src/rules/state_ops.gd
++++ b/src/rules/state_ops.gd
+@@ -22,6 +22,13 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
+ 					errors.append("未知技能: %s" % skill_id)
+ 				else:
+ 					world.player.add_skill(skill_id, int(raw.get("amount", 0)))
++			"train_skill":
++				var train_skill_id := str(raw.get("skill_id", ""))
++				if not world.registry.has("skills", train_skill_id):
++					errors.append("未知技能: %s" % train_skill_id)
++				else:
++					var train_gain := Progression.gain(world, train_skill_id, int(raw.get("base_gain", 4)))
++					world.player.add_skill(train_skill_id, train_gain)
+ 			"learn_spell":
+ 				var spell_id := str(raw.get("spell_id", ""))
+ 				if not world.registry.has("spells", spell_id):
+@@ -81,6 +88,9 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
+ 				errors.append("未知操作: %s" % op)
+ 	return errors
+ 
+-# cast_spell 需要一个随机源；由世界种子与当前回合推导，保证可复现。
++# cast_spell 需要一个随机源；由世界种子、回合与调用序号共同推导，保证可复现且同回合内不重复。
++# 计数器入 world.flags（持久化），OpGuard 禁止 LLM 写以 "_" 开头的 flag key。
+ static func world_gm_rng(world: WorldState) -> RngService:
+-	return RngService.new(world.game_seed + world.clock.turn * 15485863)
++	var counter := int(world.flags.get("_gm_rng_counter", 0))
++	world.flags["_gm_rng_counter"] = counter + 1
++	return RngService.new(world.game_seed + world.clock.turn * 15485863 + counter * 2654435761)
+diff --git a/tests/gm_test.gd b/tests/gm_test.gd
+index e9fba47..eaf5706 100644
+--- a/tests/gm_test.gd
++++ b/tests/gm_test.gd
+@@ -184,4 +184,17 @@ func run() -> int:
+ 	engine8.submit("我要去上课")
+ 	a.is_true(w8.rng_state.size() > 0, "回合引擎把随机流状态写回世界")
+ 
++	# ---- train_skill：反刷记账在 StateOps 内，GM 不再直改 world ----
++	var wt := make_world()
++	var before_skill := wt.player.skill("potions")
++	StateOps.apply(wt, [{"op": "train_skill", "skill_id": "potions", "base_gain": 4}])
++	var first_gain := wt.player.skill("potions") - before_skill
++	a.eq(first_gain, 4, "首次训练满额（经 StateOps）")
++	StateOps.apply(wt, [{"op": "train_skill", "skill_id": "potions", "base_gain": 4}])
++	var second_gain := wt.player.skill("potions") - before_skill - first_gain
++	a.is_true(second_gain < first_gain, "同地点重复训练收益下降")
++	a.is_true(wt.flags.has("recent_training"), "反刷记账写入 world.flags")
++	var bad_train := StateOps.apply(wt, [{"op": "train_skill", "skill_id": "不存在", "base_gain": 4}])
++	a.eq(bad_train.size(), 1, "未知技能报错")
++
+ 	return a.report("gm")
+diff --git a/tests/llm_test.gd b/tests/llm_test.gd
+index 8c9de4d..c250201 100644
+--- a/tests/llm_test.gd
++++ b/tests/llm_test.gd
+@@ -70,4 +70,37 @@ func run() -> int:
+ 	var bad_tags := GmResponseParser.parse('{"narration":"x","ops":[],"tags":{}}')
+ 	a.is_false(bad_tags.ok, "tags 非数组失败")
+ 
++	# ---- OpGuard ----
++	var gw := Registry.load_default()
++	var gp := PlayerState.new_default()
++	gp.location_id = "hogwarts"
++	var gworld := WorldState.create("modern", gp, 1, gw)
++	var gres := OpGuard.sanitize_detailed(gworld, [
++		{"op": "gain_skill", "skill_id": "potions", "amount": 99},
++		{"op": "add_money", "knuts": 999999},
++		{"op": "relation_delta", "npc_id": "npc_a", "trust": 999, "hostility": -999},
++		{"op": "set_magic_tier", "tier": 9},
++		{"op": "set_flag", "key": "_gm_rng_counter", "value": 0},
++		{"op": "know_fact", "fact_id": "f1", "source": "system"},
++		{"op": "cast_spell", "spell_id": "lumos", "conditions": {}},
++	])
++	a.eq(gres.ops[0]["op"], "train_skill", "gain_skill 被改写为 train_skill")
++	a.eq(gres.ops[0]["base_gain"], 4, "忽略 LLM 的 amount")
++	a.eq(gres.ops[1]["knuts"], OpGuard.MAX_MONEY_GAIN, "add_money 钳到上限")
++	a.eq(gres.ops[2]["trust"], OpGuard.MAX_RELATION_DELTA, "relation_delta 正向上限")
++	a.eq(gres.ops[2]["hostility"], -OpGuard.MAX_RELATION_DELTA, "relation_delta 负向下限")
++	a.is_true(absi(int(gres.ops[3]["tier"]) - gp.magic_tier) <= 1, "set_magic_tier 只允许 ±1")
++	a.eq(gres.ops.size(), 5, "拒绝保留 flag 与 system 来源后剩 5 个 op")
++	var has_reserved := false
++	for o in gres.ops:
++		if str(o.get("op", "")) == "set_flag" and str(o.get("key", "")).begins_with("_"):
++			has_reserved = true
++	a.is_false(has_reserved, "下划线 flag 被拒")
++	a.is_false(gres.ops.has({"op": "know_fact", "fact_id": "f1", "source": "system"}), "system 来源被拒")
++	a.is_true(gres.warnings.size() >= 3, "产生警告")
++	var many: Array = []
++	for i in 50:
++		many.append({"op": "set_job", "job": "x"})
++	a.eq(OpGuard.sanitize(gworld, many).size(), OpGuard.MAX_OPS, "ops 数量截断")
++
+ 	return a.report("llm")
+diff --git a/tests/spell_test.gd b/tests/spell_test.gd
+index d2b2945..66f9d19 100644
+--- a/tests/spell_test.gd
++++ b/tests/spell_test.gd
+@@ -142,6 +142,14 @@ func run() -> int:
+ 	a.is_true(any_success, "50 次里应有成功")
+ 	a.is_true(any_failure, "50 次里应有失败")
+ 
++	# ---- §8#33：同一回合内多次 cast_spell 必须用不同随机种子（避免同 roll） ----
++	var wsame := make_world(reg, MagicLevel.Tier.ADULT)
++	var roll1 := StateOps.world_gm_rng(wsame).stream_float("spell_roll")
++	var roll2 := StateOps.world_gm_rng(wsame).stream_float("spell_roll")
++	var roll3 := StateOps.world_gm_rng(wsame).stream_float("spell_roll")
++	a.is_true(roll1 != roll2 and roll2 != roll3, "同回合多次施法掷骰不同（§8#33）")
++	a.eq(int(wsame.flags.get("_gm_rng_counter", 0)), 3, "RNG 计数器随调用递增并持久化")
++
+ 	return a.report("spell")
+ 
+ func forbidden_count(reg: Registry) -> int:

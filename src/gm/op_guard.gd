@@ -10,6 +10,12 @@ class Result:
 	var ops: Array = []
 	var warnings: PackedStringArray = PackedStringArray()
 
+# LLM 输出不可信：字段类型错时返回 fallback，绝不在 int() 处崩。
+static func _to_int(value, fallback: int = 0) -> int:
+	if typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT:
+		return int(value)
+	return fallback
+
 static func sanitize(world: WorldState, raw_ops: Array) -> Array:
 	return sanitize_detailed(world, raw_ops).ops
 
@@ -32,7 +38,9 @@ static func sanitize_detailed(world: WorldState, raw_ops: Array) -> Result:
 				else:
 					out.warnings.append("忽略未知技能: %s" % skill_id)
 			"add_money":
-				var knuts := int(raw.get("knuts", 0))
+				var knuts := _to_int(raw.get("knuts", 0))
+				if knuts < 0:
+					out.warnings.append("支出未经校验（%d 纳特）" % knuts)
 				if knuts > 0:
 					var room := MAX_MONEY_GAIN - money_gain
 					if room <= 0:
@@ -44,7 +52,7 @@ static func sanitize_detailed(world: WorldState, raw_ops: Array) -> Result:
 					money_gain += knuts
 				out.ops.append({"op": "add_money", "knuts": knuts})
 			"set_magic_tier":
-				var tier := clampi(int(raw.get("tier", world.player.magic_tier)), world.player.magic_tier - 1, world.player.magic_tier + 1)
+				var tier := clampi(_to_int(raw.get("tier", world.player.magic_tier)), world.player.magic_tier - 1, world.player.magic_tier + 1)
 				tier = clampi(tier, 0, MagicLevel.LABELS.size() - 1)
 				out.ops.append({"op": "set_magic_tier", "tier": tier})
 			"relation_delta":
@@ -54,9 +62,9 @@ static func sanitize_detailed(world: WorldState, raw_ops: Array) -> Result:
 					continue
 				out.ops.append({
 					"op": "relation_delta", "npc_id": npc_id,
-					"trust": clampi(int(raw.get("trust", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
-					"interest": clampi(int(raw.get("interest", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
-					"hostility": clampi(int(raw.get("hostility", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
+					"trust": clampi(_to_int(raw.get("trust", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
+					"interest": clampi(_to_int(raw.get("interest", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
+					"hostility": clampi(_to_int(raw.get("hostility", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
 				})
 			"set_flag", "set_player_flag":
 				var key := str(raw.get("key", ""))

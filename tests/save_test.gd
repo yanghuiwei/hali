@@ -159,4 +159,10 @@ func run() -> int:
 	a.eq(r_copy.narration, r_orig.narration, "读档后重建引擎续跑：叙事一致")
 	a.eq(w3r.to_dict(), w3.to_dict(), "读档后重建引擎续跑：世界状态一致")
 
+	# §11：RNG 计数器必须随存档往返（决定同回合施法掷骰）
+	var wc := make_world()
+	wc.flags["_gm_rng_counter"] = 7
+	var restored_c: WorldState = SaveCodec.decode(SaveCodec.encode(wc), reg)["world"]
+	a.eq(int(restored_c.flags.get("_gm_rng_counter", 0)), 7, "RNG 计数器存读档往返")
+
 	return a.report("save")

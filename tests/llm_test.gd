@@ -102,5 +102,8 @@ func run() -> int:
 	for i in 50:
 		many.append({"op": "set_job", "job": "x"})
 	a.eq(OpGuard.sanitize(gworld, many).size(), OpGuard.MAX_OPS, "ops 数量截断")
+	var weird := OpGuard.sanitize_detailed(gworld, [{"op": "add_money", "knuts": {}}, {"op": "relation_delta", "npc_id": "n", "trust": "x"}])
+	a.eq(weird.ops[0]["knuts"], 0, "畸形 knuts 视为 0，不崩")
+	a.eq(weird.ops[1]["trust"], 0, "畸形 trust 视为 0，不崩")
 
 	return a.report("llm")

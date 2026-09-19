@@ -218,7 +218,7 @@ UI 禁用输入 + 「世界正在回应…」
 | `gain_skill` | 由 `OpGuard` **改写为 `train_skill{skill_id, base_gain:4}`**（忽略 LLM 的 `amount`）；`StateOps.train_skill` 内调 `Progression.gain()` 计算并记账，保留第七十章反刷 |
 | `add_money` | 单回合累计正收益上限 **1000 纳特**（超出钳到上限）；负值（支出）不设上限但记警告 |
 | `cast_spell` | 原样透传，交由 `SpellResolver`（守卫/代价/失败率不受 LLM 影响） |
-| `set_magic_tier` | 只允许相对当前 **±1**，且不得越过 `[0, LABELS.size()-1]`；更大变化丢弃并警告 |
+| `set_magic_tier` | 超出当前 ±1 即**钳到 ±1**，并受 `[0, LABELS.size()-1]` 约束（不丢弃，钳后仍交给 `StateOps`） |
 | `relation_delta` | `trust/interest/hostility` 各自钳到 **±20** |
 | `know_fact` | 保留；`source` 为空或 `system` 时丢弃（与 `StateOps` 一致，提前拦） |
 | `set_flag`/`set_player_flag` | key 非空；key 以 `_` 开头保留给引擎，LLM 不得写，丢弃并警告 |
