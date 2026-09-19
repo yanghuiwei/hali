@@ -3994,13 +3994,28 @@ func run() -> int:
 
 	var rng_a := RngService.new(w2.game_seed)
 	rng_a.load_state(w2.rng_state)
+	var expected_draws: Array = []
 	for i in 20:
-		rng_a.stream_float("continue")
+		expected_draws.append(rng_a.stream_float("continue"))
 
 	var rng_b := RngService.new(restored2.game_seed)
 	rng_b.load_state(restored2.rng_state)
 	for i in 20:
-		a.near(rng_b.stream_float("continue"), rng_a.stream_float("continue"), 0.0000001, "读档后第 %d 次随机数一致" % i)
+		a.near(rng_b.stream_float("continue"), float(expected_draws[i]), 0.0000001, "读档后第 %d 次随机数一致" % i)
+
+	# ---- 存档后重建引擎继续提交，必须与原时间线逐字一致（HANDOFF §8#34 端到端；Task 10 强制补充） ----
+	var w3 := make_world()
+	var rng3 := RngService.new(w3.game_seed)
+	var engine3 := TurnEngine.new(w3, ScriptedGameMaster.new(rng3), rng3)
+	engine3.submit("我要去上课")
+	var checkpoint := SaveCodec.encode(w3)
+	var w3r: WorldState = SaveCodec.decode(checkpoint, reg)["world"]
+	var r_orig := engine3.submit("我要去对角巷打工赚钱")
+	var rng3r := RngService.new(w3r.game_seed)
+	var engine3r := TurnEngine.new(w3r, ScriptedGameMaster.new(rng3r), rng3r)
+	var r_copy := engine3r.submit("我要去对角巷打工赚钱")
+	a.eq(r_copy.narration, r_orig.narration, "读档后重建引擎续跑：叙事一致")
+	a.eq(w3r.to_dict(), w3.to_dict(), "读档后重建引擎续跑：世界状态一致")
 
 	return a.report("save")
 ```
@@ -4032,7 +4047,7 @@ static func checksum(payload: String) -> String:
 	return payload.sha256_text()
 
 static func encode(world: WorldState) -> String:
-	var payload := JSON.stringify(world.to_dict())
+	var payload := JSON.stringify(world.to_dict(), "", true, true)
 	var lines: Array[String] = []
 	lines.append("%s v%d" % [HEADER, SAVE_VERSION])
 	lines.append("checksum: %s" % checksum(payload))

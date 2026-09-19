@@ -14,6 +14,7 @@ const SUITES: Array[String] = [
 	"res://tests/gm_test.gd",
 	"res://tests/panel_test.gd",
 	"res://tests/selfcheck_test.gd",
+	"res://tests/save_test.gd",
 ]
 
 func _initialize() -> void:
