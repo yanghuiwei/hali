@@ -1,0 +1,170 @@
+== 范围 70ad341..ecf523c（修复） ==
+ecf523c fix(ui): 创建/读档错误写入可见标签 + 创建界面直接读档（Task 11 审查 Important 1/2）
+
+== diff ==
+diff --git a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+index c06fe3d..a57d1d5 100644
+--- a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
++++ b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+@@ -4297,6 +4297,7 @@ var name_edit: LineEdit = null
+ var goal_edit: LineEdit = null
+ var age_spin: SpinBox = null
+ var personality_edit: LineEdit = null
++var creation_error: Label = null
+ 
+ func _ready() -> void:
+ 	registry = Registry.load_default()
+@@ -4368,6 +4369,11 @@ func _show_creation() -> void:
+ 	title.text = "【选择你的起点】（第七十五章）"
+ 	creation_box.add_child(title)
+ 
++	creation_error = Label.new()
++	creation_error.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
++	creation_error.custom_minimum_size = Vector2(0, 48)
++	creation_box.add_child(creation_error)
++
+ 	_add_dropdown(creation_box, "era_id", "时代", "eras")
+ 	_add_dropdown(creation_box, "bloodline_id", "血统/出身", "bloodlines")
+ 	_add_dropdown(creation_box, "birth_identity_id", "出生身份", "birth_identities")
+@@ -4423,6 +4429,12 @@ func _show_creation() -> void:
+ 	start.pressed.connect(_on_start_pressed)
+ 	creation_box.add_child(start)
+ 
++	# 重启后允许直接读档，不必先创建角色（否则「先创建再点读档」会覆盖刚创建的世界）
++	var load_btn := Button.new()
++	load_btn.text = "读取存档"
++	load_btn.pressed.connect(_on_load)
++	creation_box.add_child(load_btn)
++
+ func _selected(key: String) -> String:
+ 	var option: OptionButton = dropdowns[key]
+ 	return str(option.get_item_metadata(option.selected))
+@@ -4449,7 +4461,7 @@ func _on_start_pressed() -> void:
+ 	rng = RngService.new(SEED_SALT + Time.get_ticks_msec() % 100000)
+ 	var result := CharacterCreation.create(choices, registry, rng)
+ 	if result.errors.size() > 0:
+-		log_view.text = "创建失败：\n%s" % "\n".join(result.errors)
++		_show_creation_error("创建失败：\n%s" % "\n".join(result.errors))
+ 		return
+ 	world = WorldState.create(choices["era_id"], result.player, rng.seed_value, registry)
+ 	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
+@@ -4474,6 +4486,14 @@ var _turn_count := 0
+ func _append(text: String) -> void:
+ 	log_view.append_text(text + "\n")
+ 
++# 创建/读档失败时，creation_box 可能仍在前台：错误必须写进可见的 creation_error，而不是隐藏的 log_view。
++func _show_creation_error(message: String) -> void:
++	if creation_error != null:
++		creation_error.text = message
++	push_warning(message)
++	if log_view != null:
++		log_view.append_text(message + "\n")
++
+ func _on_command_submitted(text: String) -> void:
+ 	if world == null:
+ 		return
+@@ -4524,13 +4544,20 @@ func _on_save() -> void:
+ func _on_load() -> void:
+ 	var result := SaveStore.load_slot(SAVE_SLOT, registry)
+ 	if not bool(result["ok"]):
+-		_append("读档失败：%s" % str(result["error"]))
++		var msg := "读档失败：%s" % str(result["error"])
++		if creation_box != null and creation_box.visible:
++			_show_creation_error(msg)
++		else:
++			_append(msg)
+ 		return
+ 	world = result["world"]
+ 	rng = RngService.new(world.game_seed)
+ 	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
+ 	creation_box.visible = false
+ 	play_box.visible = true
++	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
++	if creation_error != null:
++		creation_error.text = ""
+ 	_append("读档成功：%s" % str(result["path"]))
+ 	_append(PanelFormatter.player_panel(world))
+ 
+diff --git a/src/ui/main.gd b/src/ui/main.gd
+index a7f067d..dc5c139 100644
+--- a/src/ui/main.gd
++++ b/src/ui/main.gd
+@@ -19,6 +19,7 @@ var name_edit: LineEdit = null
+ var goal_edit: LineEdit = null
+ var age_spin: SpinBox = null
+ var personality_edit: LineEdit = null
++var creation_error: Label = null
+ 
+ func _ready() -> void:
+ 	registry = Registry.load_default()
+@@ -90,6 +91,11 @@ func _show_creation() -> void:
+ 	title.text = "【选择你的起点】（第七十五章）"
+ 	creation_box.add_child(title)
+ 
++	creation_error = Label.new()
++	creation_error.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
++	creation_error.custom_minimum_size = Vector2(0, 48)
++	creation_box.add_child(creation_error)
++
+ 	_add_dropdown(creation_box, "era_id", "时代", "eras")
+ 	_add_dropdown(creation_box, "bloodline_id", "血统/出身", "bloodlines")
+ 	_add_dropdown(creation_box, "birth_identity_id", "出生身份", "birth_identities")
+@@ -145,6 +151,12 @@ func _show_creation() -> void:
+ 	start.pressed.connect(_on_start_pressed)
+ 	creation_box.add_child(start)
+ 
++	# 重启后允许直接读档，不必先创建角色（否则「先创建再点读档」会覆盖刚创建的世界）
++	var load_btn := Button.new()
++	load_btn.text = "读取存档"
++	load_btn.pressed.connect(_on_load)
++	creation_box.add_child(load_btn)
++
+ func _selected(key: String) -> String:
+ 	var option: OptionButton = dropdowns[key]
+ 	return str(option.get_item_metadata(option.selected))
+@@ -171,7 +183,7 @@ func _on_start_pressed() -> void:
+ 	rng = RngService.new(SEED_SALT + Time.get_ticks_msec() % 100000)
+ 	var result := CharacterCreation.create(choices, registry, rng)
+ 	if result.errors.size() > 0:
+-		log_view.text = "创建失败：\n%s" % "\n".join(result.errors)
++		_show_creation_error("创建失败：\n%s" % "\n".join(result.errors))
+ 		return
+ 	world = WorldState.create(choices["era_id"], result.player, rng.seed_value, registry)
+ 	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
+@@ -196,6 +208,14 @@ var _turn_count := 0
+ func _append(text: String) -> void:
+ 	log_view.append_text(text + "\n")
+ 
++# 创建/读档失败时，creation_box 可能仍在前台：错误必须写进可见的 creation_error，而不是隐藏的 log_view。
++func _show_creation_error(message: String) -> void:
++	if creation_error != null:
++		creation_error.text = message
++	push_warning(message)
++	if log_view != null:
++		log_view.append_text(message + "\n")
++
+ func _on_command_submitted(text: String) -> void:
+ 	if world == null:
+ 		return
+@@ -246,13 +266,20 @@ func _on_save() -> void:
+ func _on_load() -> void:
+ 	var result := SaveStore.load_slot(SAVE_SLOT, registry)
+ 	if not bool(result["ok"]):
+-		_append("读档失败：%s" % str(result["error"]))
++		var msg := "读档失败：%s" % str(result["error"])
++		if creation_box != null and creation_box.visible:
++			_show_creation_error(msg)
++		else:
++			_append(msg)
+ 		return
+ 	world = result["world"]
+ 	rng = RngService.new(world.game_seed)
+ 	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
+ 	creation_box.visible = false
+ 	play_box.visible = true
++	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
++	if creation_error != null:
++		creation_error.text = ""
+ 	_append("读档成功：%s" % str(result["path"]))
+ 	_append(PanelFormatter.player_panel(world))
+ 

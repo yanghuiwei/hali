@@ -1,13 +1,13 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-18（Task 10 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 10 交付时为 `4729352`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
+> 最后更新：2026-09-18（**计划 01 全部 11 个任务完成时**）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 11 交付时为 `ecf523c`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
 
 ---
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–10 并通过独立审查（Task 4/5/6/7/10 含修复轮；Task 8 的 3 条 Important 均为计划级/架构级，已登记 §8 待后续裁定）。** 下一步是 Task 11「主界面与运行说明」（Task 10 已落地第七十一章存档编解码与存槽）。
+**计划 01「核心模拟地基」（共 11 个任务）已全部完成（Task 1–11）并通过独立审查（Task 4/5/6/7/10/11 含修复轮；Task 8 的 3 条 Important 为计划级，已登记 §8）。** 窗口程序可运行：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。下一步是**计划 02「LLM 叙事引擎」**，或先完成 §8 的人类裁定与计划 Step 6 的人工 GUI 验收。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -22,7 +22,7 @@
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
 | `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一祖先 |
-| 当前 HEAD | `plan-01-core-foundation` 顶端 `4729352`（Task 10），下次从 `git log` 看即可 |
+| 当前 HEAD | `plan-01-core-foundation` 顶端 `ecf523c`（Task 11），下次从 `git log` 看即可 |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
@@ -60,7 +60,7 @@ GODOT=godot bash tools/test.sh
 Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 ```
 
-脚本行为（`tools/test.sh`）：`1/3` 先 `--headless --import` 生成 `.godot` 缓存（`class_name` 全局类依赖它，冷机器首次必须做）→ `2/3` 跑单元测试 → `3/3` 主场景冒烟（`ui/main.tscn` 在任务 11 之前不存在，会打印"跳过"且不算失败）。
+脚本行为（`tools/test.sh`）：`1/3` 先 `--headless --import` 生成 `.godot` 缓存（`class_name` 全局类依赖它，冷机器首次必须做）→ `2/3` 跑单元测试 → `3/3` 主场景冒烟（`src/ui/main.tscn` 已存在，会真正执行 `--headless --quit-after 5`；若缺失会打印"跳过"且不算失败）。
 
 **退出码语义**：`0` 全绿｜`1` 有失败（单测或冒烟）｜`2` 找不到 Godot 可执行文件。
 
@@ -87,11 +87,13 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
 == 3/3 主场景冒烟 ==
-（跳过：ui/main.tscn 尚未创建，任务 11 将启用）
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+main scene ready, godot=4.7.2-stable (official)
 全部通过。
 ```
 
-游戏窗口目前还起不来（主场景在任务 11 才建立）。要临时看引擎是否可用：`./Godot_v4.7.2-stable_win64.exe --path .`（会打开空工程编辑器）。
+窗口程序已可用：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。
 
 ---
 
@@ -109,7 +111,7 @@ src/rules/               # magic_level(已完成) · character_creation · spell
                          # · state_ops · self_check
 src/gm/                  # game_master(接口) · scripted_game_master(离线确定性替身，计划 02 换 LLM)
 src/persist/             # save_codec · save_store（已完成，第七十一章）
-src/ui/                  # panel_formatter(已完成) · main.tscn · main.gd（后两者任务 11）
+src/ui/                  # main.tscn · main.gd（窗口程序）· panel_formatter（面板）
 tests/                   # run_tests.gd(运行器) · assert.gd(零依赖断言库) · *_test.gd(每任务一套件)
 docs/superpowers/plans/  # 实现计划
 docs/sdd/                # 过程台账/简报/报告/审查包（第 7 节）
@@ -154,7 +156,7 @@ taskkill //PID <PID> //F
 | 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ✅ 完成（审查 Approved with findings；3 Important 计划级，已登记 §8） | `432adc8` |
 | 9 | 状态面板格式化 + 强制自检 | ✅ 完成（审查 Approved with findings；0 Critical / 0 Important / 6 Minor，已登记 §8） | `d9135ab` |
 | 10 | 存档与读档 | ✅ 完成（审查 Approved with findings；2 Important 已两轮修复 + scoped 复审通过；残余 Minor 登记 §8） | `dbd93d2` + `09661d0` + `4729352` |
-| 11 | 主界面与运行说明 | ⬜ 下一步 | — |
+| 11 | 主界面与运行说明 | ✅ 完成（审查 Approved with findings；2 Important 已修复 + scoped 复审通过；人工 GUI 验收待人类） | `70ad341` + `ecf523c` |
 
 逐事件台账（含每次审查的原始结论、发现的严重度、控制器补跑证据）：
 **`docs/sdd/plan-01-core-foundation/progress.md`** ← 接手前先通读。
@@ -181,18 +183,23 @@ taskkill //PID <PID> //F
   (2) 端到端测试现真能判别 §8#34（改为消费 `work` 流的「打工→打工」；反证删 `turn_engine.gd:46` → `[save]` 变红）。
   计划内两处缺陷也已修正：`JSON.stringify` 开 `full_precision`、随机流对比块 off-by-20。
 - Task 10 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-10-review.md`（+ `task-10-rereview.md` / `task-10-rereview2.md`）
+- **Task 11**：`src/ui/main.tscn` + `src/ui/main.gd`（创建界面 + 主循环：命令输入 → 叙事/事件/面板/存档/自检按钮）+ `project.godot` 主场景 + `tools/test.sh` 冒烟路径 + `README.md` 收尾。审查 **Approved with findings**（Critical=0 / **Important=2** / Minor=5）；修复轮 + scoped 复审 **通过**：
+  (1) 创建失败错误改写到可见的 `creation_error`（原本写进隐藏的 `log_view`）；
+  (2) 创建界面新增「读取存档」按钮（原本读档入口只在隐藏的 `play_box`，重启后不可达）。
+  预检还裁定：路径统一为 `src/ui/`（计划 `ui/` vs `src/ui/` 矛盾会导致冒烟永远跳过 + 主场景指向不存在场景）、GM 与 `TurnEngine` 共享同一 `RngService`（保 §8#34）。
+- Task 11 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-11-review.md`（+ `task-11-rereview.md`）
 
 ---
 
-## 6. 下一步怎么执行（Task 11）
+## 6. 计划 01 已完成，后续怎么做
 
-> ✅ 第 8 节第 27 条闸门（`energy_loop_count`/`time_rewind_count` 生命周期）已由 Human 裁定并落地（per-turn / 终身一次性，`a0bc1d3`）。
-> Task 10 已完成（第七十一章存档编解码与存槽 + 端到端续跑），下一步是 **Task 11「主界面与运行说明」**（计划的最后一个任务）。
+> ✅ 计划 01（共 11 个任务）已全部完成，`bash tools/test.sh` 全绿（13 套件 + 主场景冒烟）。窗口程序可直接运行。
 
-1. 先读计划里 `### Task 11: 主界面与运行说明`（约第 4155 行起，含完整代码块、`ui/main.tscn` 与 `project.godot` 改动）。
-   **注意计划内命名不一致**：正文有 `ui/main.tscn` 与 `src/ui/main.tscn` 两种写法，`tools/test.sh` 的冒烟检查路径要以此为准，开工前先核对。
-   Task 11 是窗口接线，必须把 Task 10 的 `SaveStore`/`SaveCodec` 接进「存档/恢复存档」流程；恢复时按 `ok` 判断并在 `ok=false` 时展示错误，**不得在 `ok` 为真但 `world==null` 时空引用**（Task 10 已把该情形改为 `ok=false`，但调用方仍需防御）。
-2. 按 superpowers 的 **subagent-driven-development** 流程推进：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录。
+1. **人工 GUI 验收（必做一次）**：`./Godot_v4.7.2-stable_win64_console.exe --path .`，按计划 Step 6 的 8 项清单逐项确认
+   （创建界面 7 个下拉框 / 哑炮角色 / 练魔药收益递减 / 打工加钱 / 魔法·关系·势力面板 / 存档·读档 / 重启后创建界面直接读档 / 第 15 回合自检挂起与「确认自检」）。headless 冒烟只验证「场景与脚本能加载、UI 能构建」。
+2. **§8 的人类裁定**：哑炮失败率、`ScriptedGameMaster` 直改世界、`game_seed` int64、嵌套存档校验、测试加固批次等。
+3. **计划 02「LLM 叙事引擎」**：用 `LlmGameMaster` 实现同一个 `GameMaster` 接口，不动 `TurnEngine`/`StateOps`/`WorldState`。
+4. 继续用 **subagent-driven-development**：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录；子代理与主会话同模型（`deepseek/deepseek-flash`）；提交前必须绿灯；审查者只读。
 3. **子代理必须使用与主会话相同的大模型**（本机为 `deepseek/deepseek-flash`）：`pi -p --provider deepseek --model deepseek-flash ...`，不要用 harness 默认模型。
 4. **提交前必须有绿灯**：`bash tools/test.sh` 输出 + 原始文本留存到报告里。Task 3 的流程教训（实现者没跑 Step 5、没写报告，控制器事后补跑）已在台账登记为 P1 流程发现，Task 4 起未重演。
 5. 实现者的报告必须在 commit 之后**立刻**写盘：Task 1 的实现者曾在提交后超时，报告永久缺失。
@@ -209,7 +216,7 @@ taskkill //PID <PID> //F
 
 ---
 
-## 8. 待人类裁定项（不阻塞 Task 11）
+## 8. 待人类裁定项（计划 01 已完成；以下为后续批次）
 
 前 3 条是计划预检遗留，其后是逐任务审查产出。**第 1 条（Task 8 故意留 `SelfCheck` 最小桩）已由 Task 9 用完整实现替换而关闭**；**第 2 条（魔杖价矛盾）已在 Task 4 开工前按正典裁定并落地**。其余项均为计划级/文档级，或要到 Task 10–11 才触发。
 
@@ -282,6 +289,14 @@ taskkill //PID <PID> //F
 49. **（Task 10 Minor）** `SaveStore.save` 用 `FileAccess.WRITE` 直接覆盖，无 temp+rename（写盘中断会留下半截槽，旧档已毁；校验和只能拦住载入）；`list_slots` 对名为 `.json` 的文件会产空槽名，`.JSON` 大小写不识别。
 50. **（Task 10 Minor，已改进）** `SaveCodec.encode` 已开 `JSON.stringify(..., true, true)` 的 `full_precision`，但仍**不保证** double 精确往返（实测 `secrecy_integrity` 差 1 ULP）；§8#19 的 `game_seed` int64 未处理。
 
+### Task 11 审查新增（计划 01 收尾；均为 UI/测试强度，非阻塞）
+
+51. **（Task 11 Minor，UI 焦点）** 从创建界面点「读取存档」成功后未 `command_edit.grab_focus()`（`_on_start_pressed` 有），焦点可能停在已隐藏的按钮上。建议顺手补一行。
+52. **（Task 11 Minor，UI 仪轨）** `_on_audit` 按钮先打印报告再立即 `acknowledge_audit()`，弱化「必须读完再确认」的仪式感（引擎侧第 72 章不变量仍成立）；若要保留，改为提示输入「确认自检」。
+53. **（Task 11 Minor，假绿风险）** `tools/test.sh` 冒烟只看 `$?`，不 `grep "main scene ready"`；若 Godot 在脚本加载失败时返回 0，冒烟可能假绿。建议加 `grep -q`。
+54. **（Task 11 Minor）** `main.gd` 的 `_turn_count` 是死变量（只增不读，且 `blocked` 提交也自增）。
+55. **（Task 11，人工验收缺口）** 计划 Step 6 的 8 项 GUI 验收 headless 无法自动执行（点击创建、下拉/SpinBox、存档/读档按钮、重启读档、第 15 回合挂起与「确认自检」）；两轮审查均只做了静态论证 + 场景可加载冒烟。**留待人类实际跑一遍**。
+
 ---
 
 ## 9. 环境与卫生
@@ -290,7 +305,7 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `4729352` / `dbd93d2` / `d9135ab` / `432adc8` / `eccc871`
+  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `ecf523c` / `70ad341` / `dbd93d2` / `d9135ab` / `432adc8` / `eccc871`
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致

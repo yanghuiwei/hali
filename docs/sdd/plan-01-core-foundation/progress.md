@@ -327,3 +327,47 @@ Task 10: 移交人类/后续批次的 Minor（与 HANDOFF §8 合并）——
   3. §8#19（`game_seed` int64 >2^53 经 JSON 丢失）本轮未修（计划范围仅 persist 层；`SaveCodec` 已开 `full_precision`，但不覆盖 int64）。
   4. `SaveStore.save` 直接覆盖写、无 temp+rename；`list_slots` 对 `.json`/`.JSON` 边界。
 Task 10: 交付点 —— 分支 `plan-01-core-foundation` 顶端（`4729352` + 本次文档收尾提交）。工作区干净。
+
+---
+
+## Task 11（主界面与运行说明 · 计划 01 收尾）
+
+Task 11: 开工前预检发现计划内部矛盾并裁定（写入 `task-11-brief.md`）：
+  1. **路径统一**：`Files` 写 `src/ui/main.tscn`，但 Step 1/4/5 写 `ui/main.tscn`；`tools/test.sh` 冒烟检查 `$ROOT/ui/main.tscn`（不存在 → 永远跳过 = 假绿），`project.godot` 又无 `run/main_scene`。
+     统一为 `src/ui/main.tscn` + `src/ui/main.gd`，`project.godot` 设 `run/main_scene="res://src/ui/main.tscn"`，`tools/test.sh` 改检查 `$ROOT/src/ui/main.tscn`（5 处计划原文同步）。
+  2. **共享 RNG**：计划 `_on_start_pressed`/`_on_load` 给 GM 新建了另一个 RNG，而 `TurnEngine.submit` 只把 `rng.state_dict()` 入档 → 读档后叙事随机流不恢复（§8#34 回归）。改为 `ScriptedGameMaster.new(rng)` 与引擎共享同一实例。
+  3. `.uid`：提交含 `src/ui/main.gd.uid`。
+  4. README 增量收尾（保留进度表/链接/约定/不变量），不用计划短版整篇覆盖。
+Task 11: 派发 worker subagent（deepseek-flash）。worker 提交 `70ad341 feat(ui): 主界面、创建流程与运行说明`（7 files, +296/−18），
+  并立即写盘 `task-11-report.md`。交付 `src/ui/main.tscn`、`src/ui/main.gd`（+`.uid`）、`project.godot`、`tools/test.sh`、`README.md`、计划同步。
+Task 11: Step 5 gate —— worker 自跑 `bash tools/test.sh`：先确认修改前冒烟因路径不符被跳过（假绿），修后冒烟真正执行：
+  `main scene ready, godot=4.7.2-stable (official)`，13 套件失败=0，`全部通过。`，EXIT=0；controller 独立复跑确认。
+Task 11: 第一轮审查（reviewer subagent，只读）→ **Approved with findings**：Critical=0 / **Important=2** / Minor=5，记录 `task-11-review.md`。
+  4 条强制裁定全部落实、`main.gd`/`main.tscn` 与计划逐字节一致、冒烟真执行、共享 RNG 静态论证保住 §8#34。
+  但发现两个真实 UI 缺陷（均逐字照抄计划所致）：
+  - Important #1：创建失败错误写进隐藏的 `log_view`（`play_box` 隐藏）→ 点「开始人生」看似无反应；该分支可达（哑炮血统/资质冲突等）。
+  - Important #2：「读档」按钮只在 `play_box`（启动隐藏）→ 重启后无法直接读档，与计划 Step 6 第 7 条冲突。
+Task 11: 修复轮（controller）提交 `ecf523c`：新增可见的 `creation_error` Label + `_show_creation_error()`；
+  `creation_box` 增「读取存档」按钮直连 `_on_load`；`_on_load` 失败按前台盒子路由、成功刷新 `status_label` 并清空错误；计划同步。
+  controller 复跑全绿（含 `main scene ready`，EXIT=0）。
+Task 11: 修复轮 scoped 复审（reviewer，只读）→ **通过**（Important #1/#2 均 ADDRESSED，无新缺陷），记录 `task-11-rereview.md`。
+  复审顺带确认：`_on_load` 成功刷新 `status_label` 同时修掉首轮 Minor「读档后回合数不刷新」。
+Task 11: 移交/残余 Minor（不阻塞计划 01 收尾）——
+  1. 从创建界面读档成功后未 `command_edit.grab_focus()`（焦点可能停在已隐藏按钮）。
+  2. `_on_audit` 一键先打印报告再立即 `acknowledge_audit()`，弱化「必须读完再确认」的仪式感（引擎侧第 72 章不变量仍成立）。
+  3. `tools/test.sh` 冒烟只看退出码，不 `grep "main scene ready"`（脚本加载失败但退出码 0 时可能假绿）。
+  4. `_turn_count` 死变量（只增不读，且 blocked 提交也自增）。
+  5. **人工 GUI 验收（计划 Step 6 的 8 项）本机 headless 无法自动执行，待人类**：点击创建、下拉/SpinBox 交互、存档/读档按钮、重启读档、第 15 回合自检挂起与「确认自检」解禁。
+Task 11: 交付点 —— 分支 `plan-01-core-foundation` 顶端（`ecf523c` + 本次文档收尾提交）。工作区干净。
+
+---
+
+## 计划 01「核心模拟地基」完成
+
+- Task 1–11 全部完成并通过独立审查（Task 4/5/6/7/10/11 含修复轮；Task 8 的 3 条 Important 为计划级，登记 §8）。
+- 最终自动化验收：`bash tools/test.sh` → 13 个套件全 `失败=0`、`总计失败=0，失败套件=0`、主场景冒烟真实执行并打印
+  `main scene ready, godot=4.7.2-stable (official)`、`全部通过。`、EXIT=0。
+- 交付物：`data/*.json` 内容表 → `CharacterCreation` → `WorldState.tick()` 月度演化 → `TurnEngine`+`ScriptedGameMaster` 行动裁决
+  → `PanelFormatter` 四面板 + `SelfCheck` 第七十二章自检 → `SaveCodec`/`SaveStore` 存读档 → `src/ui/main.tscn` 可运行窗口。
+- 待人类：计划 Step 6 的人工 GUI 验收（8 项）；§8 登记的若干计划级/架构级项（哑炮失败率、ScriptedGameMaster 直改世界、
+  `game_seed` int64、嵌套存档校验等）留待计划 02 或收尾批次。
