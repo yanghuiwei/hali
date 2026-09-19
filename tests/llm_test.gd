@@ -106,4 +106,33 @@ func run() -> int:
 	a.eq(weird.ops[0]["knuts"], 0, "畸形 knuts 视为 0，不崩")
 	a.eq(weird.ops[1]["trust"], 0, "畸形 trust 视为 0，不崩")
 
+	# ---- LlmGameMaster ----
+	var mworld := Registry.load_default()
+	var mp := PlayerState.new_default()
+	mp.name_text = "李雷"
+	mp.location_id = "hogwarts"
+	var lw := WorldState.create("modern", mp, 3, mworld)
+	var provider := MockLlmProvider.new()
+	provider.queue = [
+		"不是 JSON",
+		'{"narration":"你在城堡里练了一晚魔药。","ops":[{"op":"gain_skill","skill_id":"potions","amount":99}],"tags":["train"]}',
+	]
+	var scripted := ScriptedGameMaster.new(RngService.new(3))
+	var gm := LlmGameMaster.new(provider, scripted)
+	var res: GameMaster.GmResult = await gm.act(lw, "我要练习魔药学")
+	a.eq(res.narration, "你在城堡里练了一晚魔药。", "第二次尝试拿到叙事")
+	a.eq(res.deltas[0]["op"], "train_skill", "ops 经 OpGuard 净化")
+	a.eq(res.tags, PackedStringArray(["train"]), "tags 透传")
+	# 全部失败 → 降级 Scripted
+	var bad := MockLlmProvider.new()
+	bad.queue = ["x", "y"]
+	bad.errors = ["net", "net"]
+	var gm2 := LlmGameMaster.new(bad, ScriptedGameMaster.new(RngService.new(3)))
+	var res2: GameMaster.GmResult = await gm2.act(lw, "我要去对角巷打工赚钱")
+	a.is_true(res2.narration.contains("本地规则结算"), "降级提示出现")
+	# 无 provider → 降级
+	var gm3 := LlmGameMaster.new(null, ScriptedGameMaster.new(RngService.new(3)))
+	var res3: GameMaster.GmResult = await gm3.act(lw, "我要去上课")
+	a.is_true(res3.narration.length() > 0, "无 provider 也有叙事")
+
 	return a.report("llm")
