@@ -135,4 +135,30 @@ func run() -> int:
 	var res3: GameMaster.GmResult = await gm3.act(lw, "我要去上课")
 	a.is_true(res3.narration.length() > 0, "无 provider 也有叙事")
 
+	# ---- TurnEngine.submit_async 端到端（mock GM，不联网） ----
+	var ereg := Registry.load_default()
+	var ep := PlayerState.new_default()
+	ep.name_text = "韩梅梅"
+	ep.location_id = "hogwarts"
+	var ew := WorldState.create("modern", ep, 5, ereg)
+	var rng := RngService.new(5)
+	var eprovider := MockLlmProvider.new()
+	eprovider.queue = [
+		'{"narration":"你练成了。","ops":[{"op":"gain_skill","skill_id":"potions","amount":99}],"tags":["train"]}',
+		'{"narration":"又练了一月。","ops":[],"tags":["train"]}',
+	]
+	var egm := LlmGameMaster.new(eprovider, ScriptedGameMaster.new(rng))
+	var engine := TurnEngine.new(ew, egm, rng)
+	var before_turn := ew.clock.turn
+	var out: Dictionary = await engine.submit_async("我要练习魔药学")
+	a.eq(str(out["narration"]), "你练成了。", "异步提交返回叙事")
+	a.eq(ew.clock.turn, before_turn + 1, "推进一回合")
+	a.is_true(ew.player.skill("potions") > 0, "ops 经 StateOps 生效")
+	# 死亡玩家 blocked 且不推进
+	ew.player.alive = false
+	var t2 := ew.clock.turn
+	var out2: Dictionary = await engine.submit_async("我要起床")
+	a.is_true(bool(out2["blocked"]), "死者 blocked")
+	a.eq(ew.clock.turn, t2, "blocked 不推进回合")
+
 	return a.report("llm")
