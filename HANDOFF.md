@@ -1,13 +1,13 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-18（Task 9 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 9 交付时为 `d9135ab`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
+> 最后更新：2026-09-18（Task 10 完成时）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 10 交付时为 `4729352`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
 
 ---
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–9 并通过独立审查（Task 4/5/6/7 含修复轮；Task 8 的 3 条 Important 均为计划级/架构级，已登记 §8 待后续裁定）。** 下一步是 Task 10「存档与读档」（Task 9 已用完整实现替换 Task 8 的 `SelfCheck` 最小桩，并落地第六十二至六十五章面板）。
+**计划 01「核心模拟地基」（共 11 个任务）已完成 Task 1–10 并通过独立审查（Task 4/5/6/7/10 含修复轮；Task 8 的 3 条 Important 均为计划级/架构级，已登记 §8 待后续裁定）。** 下一步是 Task 11「主界面与运行说明」（Task 10 已落地第七十一章存档编解码与存槽）。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -22,7 +22,7 @@
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`plan-01-core-foundation`** ← 必须用这个 |
 | `main` | 已被 PR #1 合并到 `eccc871`，**已包含 Task 1–3 代码**；`plan-01-core-foundation` 现与 main 同一祖先 |
-| 当前 HEAD | `plan-01-core-foundation` 顶端 `d9135ab`（Task 9），下次从 `git log` 看即可 |
+| 当前 HEAD | `plan-01-core-foundation` 顶端 `4729352`（Task 10），下次从 `git log` 看即可 |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
@@ -83,6 +83,7 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 [gm] 断言=38 失败=0
 [panel] 断言=65 失败=0
 [selfcheck] 断言=26 失败=0
+[save] 断言=81 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
 == 3/3 主场景冒烟 ==
@@ -107,7 +108,7 @@ src/model/               # money · player_state · world_state（均已完成�
 src/rules/               # magic_level(已完成) · character_creation · spell_resolver · progression
                          # · state_ops · self_check
 src/gm/                  # game_master(接口) · scripted_game_master(离线确定性替身，计划 02 换 LLM)
-src/persist/             # save_codec · save_store
+src/persist/             # save_codec · save_store（已完成，第七十一章）
 src/ui/                  # panel_formatter(已完成) · main.tscn · main.gd（后两者任务 11）
 tests/                   # run_tests.gd(运行器) · assert.gd(零依赖断言库) · *_test.gd(每任务一套件)
 docs/superpowers/plans/  # 实现计划
@@ -152,8 +153,8 @@ taskkill //PID <PID> //F
 | 7 | 魔咒解析器与反漏洞守卫 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f323b55` + `3499881` + `d52ebda` |
 | 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ✅ 完成（审查 Approved with findings；3 Important 计划级，已登记 §8） | `432adc8` |
 | 9 | 状态面板格式化 + 强制自检 | ✅ 完成（审查 Approved with findings；0 Critical / 0 Important / 6 Minor，已登记 §8） | `d9135ab` |
-| 10 | 存档与读档 | ⬜ 下一步 | — |
-| 11 | 主界面与运行说明 | ⬜ | — |
+| 10 | 存档与读档 | ✅ 完成（审查 Approved with findings；2 Important 已两轮修复 + scoped 复审通过；残余 Minor 登记 §8） | `dbd93d2` + `09661d0` + `4729352` |
+| 11 | 主界面与运行说明 | ⬜ 下一步 | — |
 
 逐事件台账（含每次审查的原始结论、发现的严重度、控制器补跑证据）：
 **`docs/sdd/plan-01-core-foundation/progress.md`** ← 接手前先通读。
@@ -175,16 +176,22 @@ taskkill //PID <PID> //F
 - Task 8 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-8-review.md`
 - **Task 9**：`PanelFormatter`（第六十二至六十五章文本面板：人生状态 / 魔法能力 / 社会关系 / 势力）+ 完整 `SelfCheck`（第七十二章：`snapshot` 七项 + `ooc_report` 四项 + `report`）替换 Task 8 最小桩，新增 `src/ui/` 目录。审查 **Approved with findings**（Critical=0 / Important=0 / Minor=6）。开工中裁定计划内部矛盾（`player_panel` 不输出姓名 vs 测试断言 `contains("张三")`），作最小修正新增 `【姓名】` 行并同步计划；审查批准该偏离为唯一正确且无夹带。
 - Task 9 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-9-review.md`
+- **Task 10**：`SaveCodec`（`《…完整人生存档》` 头 + SHA-256 校验和 + `payload:` 标记 + 版本/结构校验 + `full_precision` JSON）+ `SaveStore`（槽路径净化、保存/读取/列举/删除）。审查 **Approved with findings**（Critical=0 / **Important=2** / Minor=4）；两轮修复 + 两次 scoped 复审 **通过**：
+  (1) `decode` 对「校验和正确但结构畸形」的载荷现 `ok=false`（顶层类型校验 + `from_dict` 后 null 兜底）；
+  (2) 端到端测试现真能判别 §8#34（改为消费 `work` 流的「打工→打工」；反证删 `turn_engine.gd:46` → `[save]` 变红）。
+  计划内两处缺陷也已修正：`JSON.stringify` 开 `full_precision`、随机流对比块 off-by-20。
+- Task 10 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-10-review.md`（+ `task-10-rereview.md` / `task-10-rereview2.md`）
 
 ---
 
-## 6. 下一步怎么执行（Task 10）
+## 6. 下一步怎么执行（Task 11）
 
 > ✅ 第 8 节第 27 条闸门（`energy_loop_count`/`time_rewind_count` 生命周期）已由 Human 裁定并落地（per-turn / 终身一次性，`a0bc1d3`）。
-> Task 9 已完成（第六十二至六十五章面板 + 第七十二章完整自检），下一步是 **Task 10「存档与读档」**。
+> Task 10 已完成（第七十一章存档编解码与存槽 + 端到端续跑），下一步是 **Task 11「主界面与运行说明」**（计划的最后一个任务）。
 
-1. 先读计划里 `### Task 10: 存档与读档`（约第 3881 行起，含完整代码块与预期输出）。
-   **Task 10 必须同时收口几条存档级 Important/Minor**（见 §8）：#9（`from_dict` 对显式 null/非容器字段的健壮性）、#17/#34（叙事 RNG 未入档，读档后随机流重放）、#19（`game_seed` 裸 int 经 JSON 精度丢失）、#20（`tick → to_dict → JSON → from_dict → tick` 端到端续跑对比缺失）、#26（载入路径不重跑 `validate_choices`）。
+1. 先读计划里 `### Task 11: 主界面与运行说明`（约第 4155 行起，含完整代码块、`ui/main.tscn` 与 `project.godot` 改动）。
+   **注意计划内命名不一致**：正文有 `ui/main.tscn` 与 `src/ui/main.tscn` 两种写法，`tools/test.sh` 的冒烟检查路径要以此为准，开工前先核对。
+   Task 11 是窗口接线，必须把 Task 10 的 `SaveStore`/`SaveCodec` 接进「存档/恢复存档」流程；恢复时按 `ok` 判断并在 `ok=false` 时展示错误，**不得在 `ok` 为真但 `world==null` 时空引用**（Task 10 已把该情形改为 `ok=false`，但调用方仍需防御）。
 2. 按 superpowers 的 **subagent-driven-development** 流程推进：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录。
 3. **子代理必须使用与主会话相同的大模型**（本机为 `deepseek/deepseek-flash`）：`pi -p --provider deepseek --model deepseek-flash ...`，不要用 harness 默认模型。
 4. **提交前必须有绿灯**：`bash tools/test.sh` 输出 + 原始文本留存到报告里。Task 3 的流程教训（实现者没跑 Step 5、没写报告，控制器事后补跑）已在台账登记为 P1 流程发现，Task 4 起未重演。
@@ -202,7 +209,7 @@ taskkill //PID <PID> //F
 
 ---
 
-## 8. 待人类裁定项（不阻塞 Task 10）
+## 8. 待人类裁定项（不阻塞 Task 11）
 
 前 3 条是计划预检遗留，其后是逐任务审查产出。**第 1 条（Task 8 故意留 `SelfCheck` 最小桩）已由 Task 9 用完整实现替换而关闭**；**第 2 条（魔杖价矛盾）已在 Task 4 开工前按正典裁定并落地**。其余项均为计划级/文档级，或要到 Task 10–11 才触发。
 
@@ -214,7 +221,7 @@ taskkill //PID <PID> //F
 6. **大师级失败率上界 0.02** 对正典「低于2%」是开/闭区间歧义，测试用 `<=` 掩盖了它。
 7. **（Task 9 已落地，扩展）`power_panel` 标签映射** 把 **7 个标签**映射到 **4 个 `world_vars`**：法律执行→`war_pressure`、傲罗/稳定度→`ministry_stability`、威森加摩/腐败度→`corruption`、国际→`muggle_relations`（与「麻瓜关系」重复）。纯显示问题，确认可接受，或后续补独立的 `international_relations` 等键。
 8. **是否先补 Task 3 的测试强度缺口**（审查 Minor）：`magic_level_test` 的 clamp 上下界两条断言实际空转（0.9075 < 0.95、0.01 > 0.005），`BANDS` 只精确断言 5/10 档、`LABELS` 只断言 3/10，`money_test` 的负值只测了 `total_knuts()`。选择：立即补，或作为计划级补测留到后续任务批量处理（注意同型缺口会复制到 Task 5/7/9）。
-9. **（Task 4 审查 Important，范围外）** `PlayerState.from_dict` / `WorldState.from_dict` 收到显式 `null`/非容器字段时，可能因类型化赋值运行期报错（仅畸形/手改存档触发，正常 `to_dict→JSON→from_dict` 不触发）。建议 Task 10 加 `typeof` 回退，或明确「存档只由 `to_dict()` 产出」。
+9. **（Task 4 Important，范围外）~~已由 Task 10 局部收口~~**：Task 10 在 `SaveCodec.decode` 加 `_validate_payload`（顶层容器/标量类型校验）+ `from_dict` 后 `world/player/clock` 非 null 兜底，使「null 型毒对象」不再返回 `ok=true`。**残余**：容器类型正确但内层值类型错（如 `player.magic:{"known_spells":123}`、`rng_state:{"streams":123}`）仍可能静默降级或在 `from_dict` 内报错后返回 `ok=false`（伴随 stderr 噪音）。彻底修法：嵌套白名单校验，或不依赖类型化赋值错误。见 §8#47。
 10. **（Task 4 Minor）** `JsonUtil.normalize` 未覆盖非有限 float、≥2^53 的整数值 float、Dictionary 键类型；当前游戏数值不触发，建议在计划/注释写明这三条限制。
 11. **（Task 4 Minor）** 计划 Interfaces 段（约 1000–1020 行）缺 `era_start_year`、`PlayerState.new_default()`、`normalize -> Variant`，与 Step 代码不一致（纯文档级）。
 12. **（Task 4 Minor）** `custom` 时代 `start_year:null` 静默回退 1991、月份固定 9；`WorldState.create()` 无处接收玩家指定年份，与 `data/eras.json` 中 custom「由玩家指定年份」语义不符。
@@ -225,10 +232,10 @@ taskkill //PID <PID> //F
 ### Task 5 审查新增（均不阻塞 Task 6）
 
 16. **（Task 5 Important，计划级）** `data/rumors.json` 的 `weight` 字段声明了但 `tick()` 用 `stream_pick` 均匀抽取，稀有度旋钮失效；二选一：实现加权抽取，或删字段并在契约中说明稀有度由 `major_gate` 负责。建议排入「内容/平衡」任务。
-17. **（Task 5 Important，计划级）** `WorldState.rng_state` 是死字段（`to_dict/from_dict` 读写但无人写入），`RngService.state_dict()/load_state()` 在 `src` 中零调用；当前 `tick()` 用 `game_seed + turn*prime` 派生子 RNG，存档本就不需要持久化流状态，故字段冗余。接线前必须定夺：删除字段并把计划改述为「派生式确定性」，或接入长驻 `RngService`。
+17. **（Task 5 Important，计划级）~~部分收口~~**：Task 8 已让 `TurnEngine.submit` 写 `world.rng_state = rng.state_dict()`（GM 与引擎共享同一 `RngService`），Task 10 的端到端测试已证实「读档 → 重建引擎 → 继续提交」与原时间线一致（`09861d0` 反证：删那一行 → `[save]` 变红）。**残余决策**：是「引擎持有唯一 RNG 并注入 GM」的正式化（Task 11 接线时必须保持共享引用），还是「派生式确定性」并删 `rng_state`。
 18. **（Task 5 Minor）** `RngService` 无 schema 版本号，旧扁平 schema 静默不恢复；`String::hash()` 为 32 位有碰撞风险；同月两次 pick 可命中同一条 rumor；`history` 无上限、`log` 三种 schema；`age_months` 无条件推进、与 `clock` 各自计时；信息保护断言仍恒真（`ministry_access` 全仓无人授予）。
-19. **（Task 5 Minor，新增 N5）** `WorldState.game_seed` 仍是裸 int，>2^53 经 JSON 往返丢失（与 `RngService` 已字符串化不对称），会让读档后世界演化静默分叉；须与存档系统任务同批解决。
-20. **（Task 5 Minor，测试缺口）** 仍无 `tick → to_dict → JSON → from_dict → tick` 的 `WorldState` 级存档续跑对比测试；建议与存档系统任务同批补齐（可同时兜住 17/19）。
+19. **（Task 5 Minor，新增 N5）** `WorldState.game_seed` 仍是裸 int，>2^53 经 JSON 往返丢失（与 `RngService` 已字符串化不对称），会让读档后世界演化静默分叉。**Task 10 未修**（计划范围仅 persist 层；`SaveCodec` 已开 `full_precision`，但不覆盖 int64）。建议随存档格式 v2 一并字符串化。
+20. **（Task 5 Minor，测试缺口）~~已收口（Task 10）~~**：`tests/save_test.gd` 已有「存 2 回合 → encode → decode → 重建 TurnEngine → 继续 submit」的端到端对比（叙事 + 全量 `to_dict`），以及「已推进的 work 流经 JSON 往返一致」的断言；反证删 `turn_engine.gd:46` 会变红。残余：`tick` 级双世界同轨对比仍可加强（当前由引擎级覆盖）。
 
 ### Task 6 审查新增（均不阻塞 Task 7）
 
@@ -237,7 +244,7 @@ taskkill //PID <PID> //F
 23. **（Task 6 Minor）** `p.flags["prejudice_level"]` 把 float 写进 bool 语义的 `flags`；建议提为 `PlayerState` 数值字段，`flags` 只留 bool。
 24. **（Task 6 Minor）** `create()` 的 `no_magic`/`p.job=""` 与 `new_default()`/squib `default_flags` 重复（`no_magic` 断言部分空转）；`aptitude.grants` 循环因全表 `grants=[]` 恒空转。
 25. **（Task 6 Minor）** `assign_house` 双向 `contains` 子串过宽（单字关键词可放大得分），且性格关键词无数量上限。
-26. **（Task 6 Minor，须登记）** 存档载入路径（`PlayerState.from_dict` / `WorldState.from_dict`）**不重跑 `validate_choices`**，「无天赋的特殊资质」等非法组合可经手改存档进入状态；建议随存档任务补一次载入校验。
+26. **（Task 6 Minor，须登记）** 存档载入路径（`PlayerState.from_dict` / `WorldState.from_dict`）**不重跑 `validate_choices`**，「无天赋的特殊资质」等非法组合可经手改存档进入状态。**Task 10 未处理**（仅做了结构/类型层防御，未做内容层校验）；建议随存档格式 v2 或 Task 11 载入流程补一次校验。
 
 ### Task 7 审查新增
 
@@ -268,6 +275,13 @@ taskkill //PID <PID> //F
 45. **（Task 9 Minor，§8#9 同类）** `var rel: Dictionary = p.relations[npc_id]`、`var family: Dictionary = flags.get("family", {})`、`float(world_vars[key])` 在畸形/手改状态下可能运行期报错；建议加 `typeof` 回退，或明确「状态只由 `to_dict()` 产出」。
 46. **（Task 9 Minor）** `SelfCheck.ooc_report` 的 `timeline_detail` 在「年份早于锚点」与「canon 事实超前」同时成立时被后者覆盖，只报最后一条异常原因（不影响 yes/no 判定）。
 
+### Task 10 审查新增（均不阻塞 Task 11，但需登记）
+
+47. **（Task 10 Minor，嵌套校验缺失）** `SaveCodec._validate_payload` 只做**顶层**类型检查；容器类型正确但内层值类型错时，`PlayerState.from_dict`/`WorldState.from_dict` 会报错并使子对象为 null（现已被 `decode` 的 null 兜底转为 `ok=false`），或在无类型化赋值的路径静默降级（如 `player.magic:{"known_spells":123}`、`rng_state:{"streams":123}` 到使用点才报错）。建议改为嵌套白名单校验，或不依赖赋值错误。
+48. **（Task 10 Minor，日志噪音）** 被守卫拒绝的畸形载荷仍向 stderr 打印 `SCRIPT ERROR`（功能契约已满足：`ok=false`、进程不中断）；根因是 `from_dict` 在守卫前已执行。
+49. **（Task 10 Minor）** `SaveStore.save` 用 `FileAccess.WRITE` 直接覆盖，无 temp+rename（写盘中断会留下半截槽，旧档已毁；校验和只能拦住载入）；`list_slots` 对名为 `.json` 的文件会产空槽名，`.JSON` 大小写不识别。
+50. **（Task 10 Minor，已改进）** `SaveCodec.encode` 已开 `JSON.stringify(..., true, true)` 的 `full_precision`，但仍**不保证** double 精确往返（实测 `secrecy_integrity` 差 1 ULP）；§8#19 的 `game_seed` int64 未处理。
+
 ---
 
 ## 9. 环境与卫生
@@ -276,7 +290,7 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `432adc8` / `79d15aa` / `153487c` / `eccc871`
+  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `4729352` / `dbd93d2` / `d9135ab` / `432adc8` / `eccc871`
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致

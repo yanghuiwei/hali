@@ -281,3 +281,49 @@ Task 9: 移交后续/人类批次的 Minor（与 HANDOFF §8 合并）——
      `float(world_vars[key])` 在畸形/手改状态下可能运行期报错。
   6. （Minor）`timeline_detail` 在「年份早于锚点」与「canon 事实超前」同时成立时，只报最后一条异常原因（不影响 yes/no 判定）。
 Task 9: 交付点 —— 分支 `plan-01-core-foundation` 顶端（Task 9 提交 `d9135ab` + 本次文档收尾提交）。工作区干净。
+
+---
+
+## Task 10（存档与读档 · 第七十一章）
+
+Task 10: 开工前两条强制裁定（写入 `task-10-brief.md`）：
+  1. 计划 Step 6 的 `git add` 漏列新脚本的 `*.gd.uid` → 显式补入 `save_codec.gd.uid` / `save_store.gd.uid` / `save_test.gd.uid`；
+  2. HANDOFF §6/§8#34 要求补 `submit → encode → decode → 重建引擎 → submit` 端到端对比 → 作为强制追加块写入测试。
+Task 10: 派发 worker subagent（deepseek-flash）。worker 提交 `dbd93d2 feat(persist): 第七十一章存档编解码与存槽`
+  （8 files, +235/−3），并立即写盘 `task-10-report.md`。交付 `src/persist/save_codec.gd`、`src/persist/save_store.gd`、
+  `tests/save_test.gd`（各含 .uid）、`tests/run_tests.gd`（追加 save 套件）。
+Task 10: Step 5 gate —— worker 自跑 `bash tools/test.sh`：先红（`SaveCodec` 未定义）后绿（`[save] 47/0`，EXIT=0）；
+  途中暴露**两处计划缺陷**并做最小修正（均已同步计划）：
+  (a) `JSON.stringify` 默认精度截断使 `w3r.to_dict() == w3.to_dict()` 必红 → 加 `full_precision=true`（只改数值格式，不改结构）；
+  (b) 随机流对比块 off-by-20（`rng_a` 先无记录抽 20 次，再比较 `rng_a[20+i]` vs `rng_b[i]`）→ 改为先存 `expected_draws` 再比较。
+Task 10: controller 独立复跑确认全绿（`[save] 47/0`，EXIT=0）。
+Task 10: 第一轮审查（reviewer subagent，只读，deepseek-flash）→ **Approved with findings**：Critical=0 / **Important=2** / Minor=4。
+  记录 `task-10-review.md`。reviewer 逐字节核验三个成品与计划一致、两处偏离最小且无夹带、`SaveStore` 无路径遍历。
+  - Important #1：校验和正确但字段结构畸形的载荷（`player:null`/`clock:123`/`world_vars:[]` 等）会令 `WorldState.from_dict`
+    运行期报错，`decode` 返回 `{"ok":true,"error":"","world":null}`，违反计划 Interfaces 的「所有失败路径 ok=false 且 world=null，绝不崩溃」，
+    `load_slot` 透传 `ok=true` 会给 Task 11 的恢复 UI 埋空引用崩溃。
+  - Important #2：强制端到端块与随机流对比块**空转**——首动作「上课」不消费引擎 RNG，检查点 `rng_state` 只有空转 `world` 流；
+    清空 `rng_state` 后断言仍全绿（reviewer 以 `work→work`/`social→social` 反证）。
+Task 10: 修复轮 1（controller）提交 `09661d0`：
+  (a) `SaveCodec` 新增 `_validate_payload()`，在校验和通过后、`from_dict` 前做顶层类型检查；
+  (b) 测试新增 7 组「校验和正确 + 畸形容器」负例；
+  (c) 两处随机断言改为「打工→打工」（消费 `work` 流）+ 新增「存档携带已推进的 work 流」探针。
+  反证：删 `_validate_payload` → `[save] 失败=7`；删 `turn_engine.gd:46` 的 `world.rng_state = rng.state_dict()` → `[save] 失败=3`（探针+叙事+世界状态）。
+Task 10: 修复轮 1 scoped 复审（reviewer，只读）→ **通过**（Important #1/#2 均 ADDRESSED），残余 `task-10-rereview.md`：
+  - 残余 Important（未豁免）：`save_version` 为 `null`/`[]`/`{}` 时 `int()` 在 `_validate_payload` **之前**执行并报错，`decode` 返回空字典 `{}`；
+  - 残余 Important（嵌套）：`player:{"personality":123}` / `clock:{"year":[]}` 产生「毒对象」（`ok=true` 但 `world.player/clock=null`）。
+Task 10: 修复轮 2（controller）提交 `4729352`：
+  (a) `_validate_payload()` 前移到 `int(save_version)` 之前；
+  (b) `from_dict` 之后新增 `world == null or world.player == null or world.clock == null` 失败兜底；
+  (c) 畸形载荷列表扩到 11 组（含 `save_version:null/[]` 与两组嵌套畸形），断言加 `res.has("ok")` 以捕获空字典。
+  反证：把校验顺序改回 `int()` 在前 → 畸形载荷 #7/#8 变红（`[save] 失败=4`）。
+Task 10: 修复轮 2 scoped 复审（reviewer，只读）→ **通过**（save_version 逃逸 ADDRESSED、毒对象兜底 ADDRESSED、无新缺陷），
+  记录 `task-10-rereview2.md`。残余（Minor）：嵌套**值**类型错仍静默降级（如 `player.magic:{"known_spells":123}`、`rng_state:{"streams":123}`）；
+  被守卫拒绝的畸形载荷仍向 stderr 打印 `SCRIPT ERROR`；「版本不符+字段畸形」时错误文案优先级变化。均为既存、非本轮回归。
+Task 10: 最终全绿：`[save] 断言=81 失败=0`、`总计失败=0，失败套件=0`、`ALL TESTS PASSED`、`全部通过。`、EXIT=0。
+Task 10: 移交人类/后续批次的 Minor（与 HANDOFF §8 合并）——
+  1. 嵌套白名单校验缺失：容器类型正确但内层值类型错时静默降级或在使用点才报错；建议在 `from_dict` 内逐字段类型化，或前置嵌套校验（不依赖赋值错误）。
+  2. 被守卫拒绝的畸形载荷仍留 `SCRIPT ERROR` 日志噪音（功能契约满足）。
+  3. §8#19（`game_seed` int64 >2^53 经 JSON 丢失）本轮未修（计划范围仅 persist 层；`SaveCodec` 已开 `full_precision`，但不覆盖 int64）。
+  4. `SaveStore.save` 直接覆盖写、无 temp+rename；`list_slots` 对 `.json`/`.JSON` 边界。
+Task 10: 交付点 —— 分支 `plan-01-core-foundation` 顶端（`4729352` + 本次文档收尾提交）。工作区干净。

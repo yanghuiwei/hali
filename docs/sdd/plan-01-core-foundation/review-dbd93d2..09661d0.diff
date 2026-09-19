@@ -1,0 +1,226 @@
+== 提交列表（Task 10 全量） ==
+09661d0 fix(persist): decode 拒绝校验和正确的畸形载荷 + 随机流测试改为可判别（Task 10 审查 Important 1/2）
+dbd93d2 feat(persist): 第七十一章存档编解码与存槽
+
+== 修复提交 diff（dbd93d2..09661d0） ==
+diff --git a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+index 804ac48..a1a6a41 100644
+--- a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
++++ b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+@@ -3968,6 +3968,23 @@ func run() -> int:
+ 	a.eq(SaveCodec.checksum("abc"), SaveCodec.checksum("abc"), "校验和稳定")
+ 	a.ne(SaveCodec.checksum("abc"), SaveCodec.checksum("abd"), "内容变化校验和变化")
+ 
++	# ---- 校验和正确但字段结构畸形：必须 ok=false 且 world=null（decode 契约，绝不崩溃） ----
++	var malformed_payloads := [
++		'{"save_version":1,"player":null}',
++		'{"save_version":1,"clock":123}',
++		'{"save_version":1,"world_vars":[]}',
++		'{"save_version":1,"npcs":123}',
++		'{"save_version":1,"history":{}}',
++		'{"save_version":1,"flags":[]}',
++		'{"save_version":1,"rng_state":[]}',
++	]
++	for i in malformed_payloads.size():
++		var payload: String = malformed_payloads[i]
++		var crafted := "%s v1\nchecksum: %s\npayload:\n%s" % [SaveCodec.HEADER, SaveCodec.checksum(payload), payload]
++		var res := SaveCodec.decode(crafted, reg)
++		a.is_false(bool(res["ok"]), "畸形载荷 #%d 必须被拒绝" % i)
++		a.is_true(res["world"] == null, "畸形载荷 #%d 不得返回半成品世界" % i)
++
+ 	# ---- 读写槽（真实 IO，测试目录独立，避免污染正式存档） ----
+ 	var test_dir := "user://test_saves"
+ 	for slot in SaveStore.list_slots(test_dir):
+@@ -3987,27 +4004,38 @@ func run() -> int:
+ 	var w2 := make_world()
+ 	var rng := RngService.new(w2.game_seed)
+ 	var engine := TurnEngine.new(w2, ScriptedGameMaster.new(rng), rng)
+-	engine.submit("我要去上课")
+-	engine.submit("我要练习魔药学")
++	# 两次都走「打工」：该分支消费引擎 RNG 的 work 流，使存档里带的是「已推进」的流状态，而不是空转的 world 流
++	engine.submit("我要去对角巷打工赚钱")
++	engine.submit("我要去对角巷打工赚钱")
+ 	var snapshot_text := SaveCodec.encode(w2)
+ 	var restored2: WorldState = SaveCodec.decode(snapshot_text, reg)["world"]
+ 
++	# 存档必须携带「已推进」的 work 流，否则本块与端到端块都会空转
++	var probe := RngService.new(w2.game_seed)
++	probe.stream_int("work", 0, 20)
++	probe.stream_int("work", 0, 20)
++	var expected_third := probe.stream_int("work", 0, 20)
++	var restored_probe := RngService.new(w2.game_seed)
++	restored_probe.load_state(w2.rng_state)
++	a.eq(restored_probe.stream_int("work", 0, 20), expected_third, "存档携带已推进的 work 流（下一次抽数等于第 3 次）")
++
+ 	var rng_a := RngService.new(w2.game_seed)
+ 	rng_a.load_state(w2.rng_state)
+ 	var expected_draws: Array = []
+ 	for i in 20:
+-		expected_draws.append(rng_a.stream_float("continue"))
++		expected_draws.append(rng_a.stream_int("work", 0, 20))
+ 
+ 	var rng_b := RngService.new(restored2.game_seed)
+ 	rng_b.load_state(restored2.rng_state)
+ 	for i in 20:
+-		a.near(rng_b.stream_float("continue"), float(expected_draws[i]), 0.0000001, "读档后第 %d 次随机数一致" % i)
++		a.eq(rng_b.stream_int("work", 0, 20), int(expected_draws[i]), "读档后第 %d 次 work 随机数一致" % i)
+ 
+ 	# ---- 存档后重建引擎继续提交，必须与原时间线逐字一致（HANDOFF §8#34 端到端；Task 10 强制补充） ----
+ 	var w3 := make_world()
+ 	var rng3 := RngService.new(w3.game_seed)
+ 	var engine3 := TurnEngine.new(w3, ScriptedGameMaster.new(rng3), rng3)
+-	engine3.submit("我要去上课")
++	# 第一击就消费 work 流，检查点才能携带已推进的随机状态；若 rng_state 未被持久化，重建引擎会重放第一次抽数
++	engine3.submit("我要去对角巷打工赚钱")
+ 	var checkpoint := SaveCodec.encode(w3)
+ 	var w3r: WorldState = SaveCodec.decode(checkpoint, reg)["world"]
+ 	var r_orig := engine3.submit("我要去对角巷打工赚钱")
+@@ -4046,6 +4074,26 @@ const MARKER_PAYLOAD := "payload:"
+ static func checksum(payload: String) -> String:
+ 	return payload.sha256_text()
+ 
++# 载荷字段的结构校验：校验和只能证明内容未被改动，不能证明结构合法。
++# 若直接把畸形字段交给 WorldState.from_dict，会在类型化赋值处运行期报错；
++# 而 decode 的契约是「所有失败路径都返回 ok=false 且 world=null，绝不崩溃」，
++# 因此在校验和通过后、from_dict 之前先做一次顶层类型检查（嵌套字段仍由 to_dict 生产者保证）。
++static func _validate_payload(parsed: Dictionary) -> String:
++	var dict_fields := ["clock", "player", "npcs", "factions", "locations", "world_vars", "flags", "rng_state"]
++	for field in dict_fields:
++		if parsed.has(field) and typeof(parsed[field]) != TYPE_DICTIONARY:
++			return "存档载荷字段类型错误：%s 应为对象" % field
++	var array_fields := ["history", "pending", "log"]
++	for field in array_fields:
++		if parsed.has(field) and typeof(parsed[field]) != TYPE_ARRAY:
++			return "存档载荷字段类型错误：%s 应为数组" % field
++	for field in ["save_version", "game_seed", "era_start_year"]:
++		if parsed.has(field) and typeof(parsed[field]) != TYPE_FLOAT and typeof(parsed[field]) != TYPE_INT:
++			return "存档载荷字段类型错误：%s 应为数字" % field
++	if parsed.has("era_id") and typeof(parsed["era_id"]) != TYPE_STRING:
++		return "存档载荷字段类型错误：era_id 应为字符串"
++	return ""
++
+ static func encode(world: WorldState) -> String:
+ 	var payload := JSON.stringify(world.to_dict(), "", true, true)
+ 	var lines: Array[String] = []
+@@ -4089,6 +4137,9 @@ static func decode(text: String, registry: Registry) -> Dictionary:
+ 	var version := int((parsed as Dictionary).get("save_version", -1))
+ 	if version != SAVE_VERSION:
+ 		return fail.call("存档版本不符：载荷版本 %d" % version)
++	var malformed := _validate_payload(parsed as Dictionary)
++	if not malformed.is_empty():
++		return fail.call(malformed)
+ 
+ 	return {"ok": true, "error": "", "world": WorldState.from_dict(parsed, registry)}
+ ```
+diff --git a/src/persist/save_codec.gd b/src/persist/save_codec.gd
+index 70f3118..ca713fc 100644
+--- a/src/persist/save_codec.gd
++++ b/src/persist/save_codec.gd
+@@ -8,6 +8,26 @@ const MARKER_PAYLOAD := "payload:"
+ static func checksum(payload: String) -> String:
+ 	return payload.sha256_text()
+ 
++# 载荷字段的结构校验：校验和只能证明内容未被改动，不能证明结构合法。
++# 若直接把畸形字段交给 WorldState.from_dict，会在类型化赋值处运行期报错；
++# 而 decode 的契约是「所有失败路径都返回 ok=false 且 world=null，绝不崩溃」，
++# 因此在校验和通过后、from_dict 之前先做一次顶层类型检查（嵌套字段仍由 to_dict 生产者保证）。
++static func _validate_payload(parsed: Dictionary) -> String:
++	var dict_fields := ["clock", "player", "npcs", "factions", "locations", "world_vars", "flags", "rng_state"]
++	for field in dict_fields:
++		if parsed.has(field) and typeof(parsed[field]) != TYPE_DICTIONARY:
++			return "存档载荷字段类型错误：%s 应为对象" % field
++	var array_fields := ["history", "pending", "log"]
++	for field in array_fields:
++		if parsed.has(field) and typeof(parsed[field]) != TYPE_ARRAY:
++			return "存档载荷字段类型错误：%s 应为数组" % field
++	for field in ["save_version", "game_seed", "era_start_year"]:
++		if parsed.has(field) and typeof(parsed[field]) != TYPE_FLOAT and typeof(parsed[field]) != TYPE_INT:
++			return "存档载荷字段类型错误：%s 应为数字" % field
++	if parsed.has("era_id") and typeof(parsed["era_id"]) != TYPE_STRING:
++		return "存档载荷字段类型错误：era_id 应为字符串"
++	return ""
++
+ static func encode(world: WorldState) -> String:
+ 	var payload := JSON.stringify(world.to_dict(), "", true, true)
+ 	var lines: Array[String] = []
+@@ -51,5 +71,8 @@ static func decode(text: String, registry: Registry) -> Dictionary:
+ 	var version := int((parsed as Dictionary).get("save_version", -1))
+ 	if version != SAVE_VERSION:
+ 		return fail.call("存档版本不符：载荷版本 %d" % version)
++	var malformed := _validate_payload(parsed as Dictionary)
++	if not malformed.is_empty():
++		return fail.call(malformed)
+ 
+ 	return {"ok": true, "error": "", "world": WorldState.from_dict(parsed, registry)}
+diff --git a/tests/save_test.gd b/tests/save_test.gd
+index cd12d44..91fd742 100644
+--- a/tests/save_test.gd
++++ b/tests/save_test.gd
+@@ -59,6 +59,23 @@ func run() -> int:
+ 	a.eq(SaveCodec.checksum("abc"), SaveCodec.checksum("abc"), "校验和稳定")
+ 	a.ne(SaveCodec.checksum("abc"), SaveCodec.checksum("abd"), "内容变化校验和变化")
+ 
++	# ---- 校验和正确但字段结构畸形：必须 ok=false 且 world=null（decode 契约，绝不崩溃） ----
++	var malformed_payloads := [
++		'{"save_version":1,"player":null}',
++		'{"save_version":1,"clock":123}',
++		'{"save_version":1,"world_vars":[]}',
++		'{"save_version":1,"npcs":123}',
++		'{"save_version":1,"history":{}}',
++		'{"save_version":1,"flags":[]}',
++		'{"save_version":1,"rng_state":[]}',
++	]
++	for i in malformed_payloads.size():
++		var payload: String = malformed_payloads[i]
++		var crafted := "%s v1\nchecksum: %s\npayload:\n%s" % [SaveCodec.HEADER, SaveCodec.checksum(payload), payload]
++		var res := SaveCodec.decode(crafted, reg)
++		a.is_false(bool(res["ok"]), "畸形载荷 #%d 必须被拒绝" % i)
++		a.is_true(res["world"] == null, "畸形载荷 #%d 不得返回半成品世界" % i)
++
+ 	# ---- 读写槽（真实 IO，测试目录独立，避免污染正式存档） ----
+ 	var test_dir := "user://test_saves"
+ 	for slot in SaveStore.list_slots(test_dir):
+@@ -78,27 +95,38 @@ func run() -> int:
+ 	var w2 := make_world()
+ 	var rng := RngService.new(w2.game_seed)
+ 	var engine := TurnEngine.new(w2, ScriptedGameMaster.new(rng), rng)
+-	engine.submit("我要去上课")
+-	engine.submit("我要练习魔药学")
++	# 两次都走「打工」：该分支消费引擎 RNG 的 work 流，使存档里带的是「已推进」的流状态，而不是空转的 world 流
++	engine.submit("我要去对角巷打工赚钱")
++	engine.submit("我要去对角巷打工赚钱")
+ 	var snapshot_text := SaveCodec.encode(w2)
+ 	var restored2: WorldState = SaveCodec.decode(snapshot_text, reg)["world"]
+ 
++	# 存档必须携带「已推进」的 work 流，否则本块与端到端块都会空转
++	var probe := RngService.new(w2.game_seed)
++	probe.stream_int("work", 0, 20)
++	probe.stream_int("work", 0, 20)
++	var expected_third := probe.stream_int("work", 0, 20)
++	var restored_probe := RngService.new(w2.game_seed)
++	restored_probe.load_state(w2.rng_state)
++	a.eq(restored_probe.stream_int("work", 0, 20), expected_third, "存档携带已推进的 work 流（下一次抽数等于第 3 次）")
++
+ 	var rng_a := RngService.new(w2.game_seed)
+ 	rng_a.load_state(w2.rng_state)
+ 	var expected_draws: Array = []
+ 	for i in 20:
+-		expected_draws.append(rng_a.stream_float("continue"))
++		expected_draws.append(rng_a.stream_int("work", 0, 20))
+ 
+ 	var rng_b := RngService.new(restored2.game_seed)
+ 	rng_b.load_state(restored2.rng_state)
+ 	for i in 20:
+-		a.near(rng_b.stream_float("continue"), float(expected_draws[i]), 0.0000001, "读档后第 %d 次随机数一致" % i)
++		a.eq(rng_b.stream_int("work", 0, 20), int(expected_draws[i]), "读档后第 %d 次 work 随机数一致" % i)
+ 
+ 	# ---- 存档后重建引擎继续提交，必须与原时间线逐字一致（HANDOFF §8#34 端到端；Task 10 强制补充） ----
+ 	var w3 := make_world()
+ 	var rng3 := RngService.new(w3.game_seed)
+ 	var engine3 := TurnEngine.new(w3, ScriptedGameMaster.new(rng3), rng3)
+-	engine3.submit("我要去上课")
++	# 第一击就消费 work 流，检查点才能携带已推进的随机状态；若 rng_state 未被持久化，重建引擎会重放第一次抽数
++	engine3.submit("我要去对角巷打工赚钱")
+ 	var checkpoint := SaveCodec.encode(w3)
+ 	var w3r: WorldState = SaveCodec.decode(checkpoint, reg)["world"]
+ 	var r_orig := engine3.submit("我要去对角巷打工赚钱")

@@ -1,0 +1,106 @@
+== 范围 dbd93d2..4729352（修复轮全部） ==
+4729352 fix(persist): save_version 校验前移 + from_dict 毒对象兜底（Task 10 复审残余 Important）
+09661d0 fix(persist): decode 拒绝校验和正确的畸形载荷 + 随机流测试改为可判别（Task 10 审查 Important 1/2）
+
+== 本次增量 09661d0..4729352 ==
+diff --git a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+index a1a6a41..f994eb9 100644
+--- a/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
++++ b/docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md
+@@ -3977,13 +3977,18 @@ func run() -> int:
+ 		'{"save_version":1,"history":{}}',
+ 		'{"save_version":1,"flags":[]}',
+ 		'{"save_version":1,"rng_state":[]}',
++		'{"save_version":null}',
++		'{"save_version":[]}',
++		'{"save_version":1,"player":{"personality":123}}',
++		'{"save_version":1,"clock":{"year":[]}}',
+ 	]
+ 	for i in malformed_payloads.size():
+ 		var payload: String = malformed_payloads[i]
+ 		var crafted := "%s v1\nchecksum: %s\npayload:\n%s" % [SaveCodec.HEADER, SaveCodec.checksum(payload), payload]
+ 		var res := SaveCodec.decode(crafted, reg)
+-		a.is_false(bool(res["ok"]), "畸形载荷 #%d 必须被拒绝" % i)
+-		a.is_true(res["world"] == null, "畸形载荷 #%d 不得返回半成品世界" % i)
++		a.is_true(res.has("ok"), "畸形载荷 #%d 必须返回结构化结果（不能是空字典）" % i)
++		a.is_false(bool(res.get("ok", true)), "畸形载荷 #%d 必须被拒绝" % i)
++		a.is_true(res.get("world", null) == null, "畸形载荷 #%d 不得返回半成品世界" % i)
+ 
+ 	# ---- 读写槽（真实 IO，测试目录独立，避免污染正式存档） ----
+ 	var test_dir := "user://test_saves"
+@@ -4134,14 +4139,20 @@ static func decode(text: String, registry: Registry) -> Dictionary:
+ 	if typeof(parsed) != TYPE_DICTIONARY:
+ 		return fail.call("存档校验失败：载荷不是合法 JSON")
+ 
+-	var version := int((parsed as Dictionary).get("save_version", -1))
+-	if version != SAVE_VERSION:
+-		return fail.call("存档版本不符：载荷版本 %d" % version)
++	# 先做结构校验，再读取 save_version：否则 {"save_version":null} 会在 int() 处运行期报错，
++	# 使 decode 无法走 fail 路径（返回类型退化），违反「所有失败路径 ok=false」契约。
+ 	var malformed := _validate_payload(parsed as Dictionary)
+ 	if not malformed.is_empty():
+ 		return fail.call(malformed)
++	var version := int((parsed as Dictionary).get("save_version", -1))
++	if version != SAVE_VERSION:
++		return fail.call("存档版本不符：载荷版本 %d" % version)
+ 
+-	return {"ok": true, "error": "", "world": WorldState.from_dict(parsed, registry)}
++	# from_dict 内部依赖类型化赋值，嵌套畸形会让子对象为 null（毒对象）；此处兜底为失败。
++	var world := WorldState.from_dict(parsed, registry)
++	if world == null or world.player == null or world.clock == null:
++		return fail.call("存档载荷结构不完整：无法重建完整的世界状态")
++	return {"ok": true, "error": "", "world": world}
+ ```
+ 
+ - [ ] **Step 4: 实现 `SaveStore`**
+diff --git a/src/persist/save_codec.gd b/src/persist/save_codec.gd
+index ca713fc..9c89f85 100644
+--- a/src/persist/save_codec.gd
++++ b/src/persist/save_codec.gd
+@@ -68,11 +68,17 @@ static func decode(text: String, registry: Registry) -> Dictionary:
+ 	if typeof(parsed) != TYPE_DICTIONARY:
+ 		return fail.call("存档校验失败：载荷不是合法 JSON")
+ 
+-	var version := int((parsed as Dictionary).get("save_version", -1))
+-	if version != SAVE_VERSION:
+-		return fail.call("存档版本不符：载荷版本 %d" % version)
++	# 先做结构校验，再读取 save_version：否则 {"save_version":null} 会在 int() 处运行期报错，
++	# 使 decode 无法走 fail 路径（返回类型退化），违反「所有失败路径 ok=false」契约。
+ 	var malformed := _validate_payload(parsed as Dictionary)
+ 	if not malformed.is_empty():
+ 		return fail.call(malformed)
++	var version := int((parsed as Dictionary).get("save_version", -1))
++	if version != SAVE_VERSION:
++		return fail.call("存档版本不符：载荷版本 %d" % version)
+ 
+-	return {"ok": true, "error": "", "world": WorldState.from_dict(parsed, registry)}
++	# from_dict 内部依赖类型化赋值，嵌套畸形会让子对象为 null（毒对象）；此处兜底为失败。
++	var world := WorldState.from_dict(parsed, registry)
++	if world == null or world.player == null or world.clock == null:
++		return fail.call("存档载荷结构不完整：无法重建完整的世界状态")
++	return {"ok": true, "error": "", "world": world}
+diff --git a/tests/save_test.gd b/tests/save_test.gd
+index 91fd742..3af9cb4 100644
+--- a/tests/save_test.gd
++++ b/tests/save_test.gd
+@@ -68,13 +68,18 @@ func run() -> int:
+ 		'{"save_version":1,"history":{}}',
+ 		'{"save_version":1,"flags":[]}',
+ 		'{"save_version":1,"rng_state":[]}',
++		'{"save_version":null}',
++		'{"save_version":[]}',
++		'{"save_version":1,"player":{"personality":123}}',
++		'{"save_version":1,"clock":{"year":[]}}',
+ 	]
+ 	for i in malformed_payloads.size():
+ 		var payload: String = malformed_payloads[i]
+ 		var crafted := "%s v1\nchecksum: %s\npayload:\n%s" % [SaveCodec.HEADER, SaveCodec.checksum(payload), payload]
+ 		var res := SaveCodec.decode(crafted, reg)
+-		a.is_false(bool(res["ok"]), "畸形载荷 #%d 必须被拒绝" % i)
+-		a.is_true(res["world"] == null, "畸形载荷 #%d 不得返回半成品世界" % i)
++		a.is_true(res.has("ok"), "畸形载荷 #%d 必须返回结构化结果（不能是空字典）" % i)
++		a.is_false(bool(res.get("ok", true)), "畸形载荷 #%d 必须被拒绝" % i)
++		a.is_true(res.get("world", null) == null, "畸形载荷 #%d 不得返回半成品世界" % i)
+ 
+ 	# ---- 读写槽（真实 IO，测试目录独立，避免污染正式存档） ----
+ 	var test_dir := "user://test_saves"
