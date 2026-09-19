@@ -1,0 +1,414 @@
+== 提交 ==
+e094a52 test+fix(hardening): StateOps 输入硬化、测试强度补强、运行器静默假绿哨兵、UI 焦点收尾
+
+== 统计 ==
+ src/rules/state_ops.gd    | 41 ++++++++++++++++++++++++++++------------
+ src/ui/main.gd            |  4 +---
+ tests/assert.gd           |  4 ++++
+ tests/gm_test.gd          | 48 +++++++++++++++++++++++++++++++++++++++++++++--
+ tests/magic_level_test.gd | 18 ++++++++++++++++++
+ tests/money_test.gd       |  6 ++++++
+ tests/panel_test.gd       | 16 ++++++++++++++++
+ tests/run_tests.gd        | 12 +++++++++++-
+ tests/save_test.gd        | 18 ++++++++++++++++++
+ tests/selfcheck_test.gd   | 17 +++++++++++++++++
+ tools/test.sh             | 11 +++++++++--
+ 11 files changed, 175 insertions(+), 20 deletions(-)
+
+== diff ==
+diff --git a/src/rules/state_ops.gd b/src/rules/state_ops.gd
+index 3884fb3..9449792 100644
+--- a/src/rules/state_ops.gd
++++ b/src/rules/state_ops.gd
+@@ -11,8 +11,11 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
+ 		var op := str(raw.get("op", ""))
+ 		match op:
+ 			"add_money":
+-				var m := world.player.money().add(Money.from_knuts(int(raw.get("knuts", 0))))
+-				world.player.set_money(m)
++				var knuts = raw.get("knuts", 0)
++				if typeof(knuts) != TYPE_INT and typeof(knuts) != TYPE_FLOAT:
++					errors.append("add_money 的 knuts 必须是数字: %s" % str(knuts))
++				else:
++					world.player.set_money(world.player.money().add(Money.from_knuts(int(knuts))))
+ 			"gain_skill":
+ 				var skill_id := str(raw.get("skill_id", ""))
+ 				if not world.registry.has("skills", skill_id):
+@@ -26,17 +29,28 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
+ 				else:
+ 					world.player.learn_spell(spell_id)
+ 			"set_flag":
+-				world.flags[str(raw.get("key", ""))] = raw.get("value", true)
++				var flag_key := str(raw.get("key", ""))
++				if flag_key.is_empty():
++					errors.append("set_flag 缺少 key")
++				else:
++					world.flags[flag_key] = raw.get("value", true)
+ 			"set_player_flag":
+-				world.player.flags[str(raw.get("key", ""))] = raw.get("value", true)
++				var pflag_key := str(raw.get("key", ""))
++				if pflag_key.is_empty():
++					errors.append("set_player_flag 缺少 key")
++				else:
++					world.player.flags[pflag_key] = raw.get("value", true)
+ 			"know_fact":
++				var fact_id := str(raw.get("fact_id", ""))
+ 				var source := str(raw.get("source", ""))
+-				if source.is_empty():
+-					errors.append("know_fact 缺少来源: %s" % str(raw.get("fact_id", "")))
++				if fact_id.is_empty():
++					errors.append("know_fact 缺少 fact_id")
++				elif source.is_empty():
++					errors.append("know_fact 缺少来源: %s" % fact_id)
+ 				elif source == "system":
+ 					errors.append("禁止系统直接告知真相（第四十三章/第五十七章）")
+ 				else:
+-					world.player.known_facts[str(raw.get("fact_id", ""))] = source
++					world.player.known_facts[fact_id] = source
+ 			"set_location":
+ 				var location_id := str(raw.get("location_id", ""))
+ 				if not world.registry.has("locations", location_id):
+@@ -47,11 +61,14 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
+ 				world.player.job = str(raw.get("job", ""))
+ 			"relation_delta":
+ 				var npc_id := str(raw.get("npc_id", ""))
+-				var rel: Dictionary = world.player.relations.get(npc_id, {"trust": 0, "interest": 0, "hostility": 0})
+-				rel["trust"] = int(rel.get("trust", 0)) + int(raw.get("trust", 0))
+-				rel["hostility"] = int(rel.get("hostility", 0)) + int(raw.get("hostility", 0))
+-				rel["interest"] = int(rel.get("interest", 0)) + int(raw.get("interest", 0))
+-				world.player.relations[npc_id] = rel
++				if npc_id.is_empty():
++					errors.append("relation_delta 缺少 npc_id")
++				else:
++					var rel: Dictionary = world.player.relations.get(npc_id, {"trust": 0, "interest": 0, "hostility": 0})
++					rel["trust"] = int(rel.get("trust", 0)) + int(raw.get("trust", 0))
++					rel["hostility"] = int(rel.get("hostility", 0)) + int(raw.get("hostility", 0))
++					rel["interest"] = int(rel.get("interest", 0)) + int(raw.get("interest", 0))
++					world.player.relations[npc_id] = rel
+ 			"set_magic_tier":
+ 				world.player.magic_tier = clampi(int(raw.get("tier", world.player.magic_tier)), 0, MagicLevel.LABELS.size() - 1)
+ 			"cast_spell":
+diff --git a/src/ui/main.gd b/src/ui/main.gd
+index dc5c139..043d0fd 100644
+--- a/src/ui/main.gd
++++ b/src/ui/main.gd
+@@ -203,8 +203,6 @@ func _personality_words() -> Array:
+ 			words.append(word)
+ 	return words
+ 
+-var _turn_count := 0
+-
+ func _append(text: String) -> void:
+ 	log_view.append_text(text + "\n")
+ 
+@@ -227,7 +225,6 @@ func _on_command_submitted(text: String) -> void:
+ 		command_edit.text = ""
+ 		return
+ 	var result := engine.submit(text)
+-	_turn_count += 1
+ 	_append(">>> %s" % text)
+ 	_append(str(result["narration"]))
+ 	var events: Array = result["events"]
+@@ -282,6 +279,7 @@ func _on_load() -> void:
+ 		creation_error.text = ""
+ 	_append("读档成功：%s" % str(result["path"]))
+ 	_append(PanelFormatter.player_panel(world))
++	command_edit.grab_focus()
+ 
+ func _on_audit() -> void:
+ 	if world == null:
+diff --git a/tests/assert.gd b/tests/assert.gd
+index 3fe3618..dc05474 100644
+--- a/tests/assert.gd
++++ b/tests/assert.gd
+@@ -1,6 +1,9 @@
+ class_name TestAssert
+ extends RefCounted
+ 
++# 全局计数：report() 每被调用一次 +1。运行器用它检测“套件中途报错、没走到 report”的静默假绿。
++static var report_calls: int = 0
++
+ var checks: int = 0
+ var failures: PackedStringArray = PackedStringArray()
+ 
+@@ -44,6 +47,7 @@ func fail(msg: String) -> void:
+ 	failures.append(msg)
+ 
+ func report(suite: String) -> int:
++	report_calls += 1
+ 	for f in failures:
+ 		printerr("[%s] %s" % [suite, f])
+ 	print("[%s] 断言=%d 失败=%d" % [suite, checks, failures.size()])
+diff --git a/tests/gm_test.gd b/tests/gm_test.gd
+index cbd47f9..2cea222 100644
+--- a/tests/gm_test.gd
++++ b/tests/gm_test.gd
+@@ -37,8 +37,46 @@ func run() -> int:
+ 		{"op": "set_location", "location_id": "不存在的地点"},
+ 	])
+ 	a.eq(errs2.size(), 2, "非法魔咒与地点都报错")
++	a.is_true(" | ".join(errs2).contains("未知魔咒"), "错误信息指出未知魔咒")
++	a.is_true(" | ".join(errs2).contains("未知地点"), "错误信息指出未知地点")
+ 	a.is_false(w.player.knows_spell("不存在的魔咒"), "非法魔咒未写入")
+ 
++	# know_fact 负例：空 fact_id / 空来源 / system 来源都不得写入
++	var errs3 := StateOps.apply(w, [
++		{"op": "know_fact", "fact_id": "", "source": "传闻"},
++		{"op": "know_fact", "fact_id": "r2", "source": ""},
++		{"op": "know_fact", "fact_id": "r3", "source": "system"},
++	])
++	a.eq(errs3.size(), 3, "know_fact 三种非法输入各报一个错")
++	a.is_false(w.player.known_facts.has("r2"), "空来源未写入")
++	a.is_false(w.player.known_facts.has("r3"), "system 来源未写入")
++
++	# 输入硬化：空 key / 非数字 add_money / 空 npc_id / 非字典条都记错误且不写入
++	var errs4 := StateOps.apply(w, [
++		{"op": "set_flag", "key": "", "value": true},
++		{"op": "set_player_flag", "key": "", "value": true},
++		{"op": "add_money", "knuts": "很多"},
++		{"op": "relation_delta", "npc_id": "", "trust": 5},
++		42,
++	])
++	a.eq(errs4.size(), 5, "非法输入与非法条目都记错误")
++	a.is_false(w.flags.has(""), "空 flag key 未写入")
++
++	# 合法集合：set_flag / set_player_flag / set_magic_tier / relation_delta
++	var errs5 := StateOps.apply(w, [
++		{"op": "set_flag", "key": "met_dumbledore", "value": true},
++		{"op": "set_player_flag", "key": "owl", "value": true},
++		{"op": "set_magic_tier", "tier": 5},
++		{"op": "relation_delta", "npc_id": "npc_x", "trust": 3, "interest": 2, "hostility": -1},
++	])
++	a.eq(errs5.size(), 0, "合法集合无错误")
++	a.is_true(bool(w.flags.get("met_dumbledore", false)), "set_flag 生效")
++	a.is_true(bool(w.player.flags.get("owl", false)), "set_player_flag 生效")
++	a.eq(w.player.magic_tier, 5, "set_magic_tier 生效")
++	a.eq(int(w.player.relations["npc_x"]["trust"]), 3, "relation_delta trust 生效")
++	a.eq(int(w.player.relations["npc_x"]["interest"]), 2, "relation_delta interest 生效")
++	a.eq(int(w.player.relations["npc_x"]["hostility"]), -1, "relation_delta 允许负敌意增量")
++
+ 	# know_fact 必须带来源（第四十三章：信息分来源可信度）
+ 	StateOps.apply(w, [{"op": "know_fact", "fact_id": "r1", "source": "破釜酒吧传闻"}])
+ 	a.eq(w.player.known_facts["r1"], "破釜酒吧传闻", "记录信息来源")
+@@ -52,6 +90,7 @@ func run() -> int:
+ 	w2.flags["energy_loop_count"] = 3
+ 	StateOps.apply(w2, [{"op": "cast_spell", "spell_id": "lumos", "conditions": {}}])
+ 	a.is_true(str(w2.flags.get("last_cast_narration", "")).contains("上限"), "达到上限后施法被拦截")
++	a.eq(int(w2.flags.get("energy_loop_count", 0)), 3, "被拦截后叠加计数不再增长")
+ 
+ 	# ---- Progression：第七十章反刷 ----
+ 	var w3 := make_world()
+@@ -82,6 +121,8 @@ func run() -> int:
+ 	var work := gm.act(w4, "我去对角巷打工赚钱")
+ 	a.is_true(work.deltas.size() > 0, "打工产生增量")
+ 	a.is_true(work.tags.has("work"), "打上 work 标签")
++	StateOps.apply(w4, work.deltas)
++	a.is_true(w4.player.money_knuts > money_before, "打工后财富增加")
+ 	var unknown := gm.act(w4, "我对着墙思考宇宙的尽头")
+ 	a.is_true(unknown.narration.length() > 0, "未知行动也要有叙事，而不是崩溃")
+ 	a.is_true(unknown.tags.has("idle"), "未知行动归为 idle")
+@@ -89,7 +130,7 @@ func run() -> int:
+ 	# 施法意图必须能被识别并走 SpellResolver
+ 	var cast_result := gm.act(w4, "我念出 照明咒")
+ 	a.is_true(cast_result.tags.has("cast"), "识别施法意图")
+-	a.is_true(cast_result.narration.contains("照明咒") or cast_result.narration.length() > 0, "施法旁白")
++	a.is_true(cast_result.narration.contains("照明咒"), "施法旁白含咒语名")
+ 
+ 	# ---- TurnEngine：世界不会停下来等玩家（第四十七章） ----
+ 	var w5 := make_world()
+@@ -100,7 +141,8 @@ func run() -> int:
+ 	a.has_key(r, "narration", "返回叙事")
+ 	a.has_key(r, "events", "返回本月事件")
+ 	a.eq(w5.clock.turn, before_turn + 1, "每次提交推进一个回合")
+-	a.is_true(w5.clock.year >= before_year, "时间向前")
++	a.eq(w5.clock.year, before_year, "9→10 月不跨年")
++	a.eq(w5.clock.month, 10, "回合推进使月份前进（9→10）")
+ 
+ 	# ---- 第七十二章：第 15 回合强制自检，并且必须等待玩家确认 ----
+ 	var w6 := make_world()
+@@ -114,8 +156,10 @@ func run() -> int:
+ 	a.is_true(audit_seen.contains("人设OOC自检报告"), "第 15 回合输出 OOC 自检报告")
+ 	a.is_true(bool(w6.flags.get("awaiting_audit_ack", false)), "自检后挂起，等待指令")
+ 
++	var turn_before_block := w6.clock.turn
+ 	var blocked_res := engine6.submit("我要继续上课")
+ 	a.is_true(bool(blocked_res.get("blocked", false)), "未确认自检前拒绝继续剧情")
++	a.eq(w6.clock.turn, turn_before_block, "被拒提交不推进回合")
+ 	a.is_true(str(blocked_res["narration"]).contains("自检"), "提示先确认自检")
+ 	engine6.acknowledge_audit()
+ 	a.is_false(bool(w6.flags.get("awaiting_audit_ack", false)), "确认后解除挂起")
+diff --git a/tests/magic_level_test.gd b/tests/magic_level_test.gd
+index 568c868..01b8cd4 100644
+--- a/tests/magic_level_test.gd
++++ b/tests/magic_level_test.gd
+@@ -20,6 +20,21 @@ func run() -> int:
+ 	a.eq(MagicLevel.BANDS[MagicLevel.Tier.NEWT], Vector2(0.05, 0.15), "N.E.W.T 5-15%")
+ 	a.eq(MagicLevel.BANDS[MagicLevel.Tier.ADULT], Vector2(0.02, 0.05), "熟练成年 2-5%")
+ 	a.is_true(MagicLevel.BANDS[MagicLevel.Tier.MASTER].y <= 0.02, "大师级低于 2%")
++
++	# §8#8：全部十档 BANDS / LABELS 精确核对，避免只检查 5/10、只查 3/10
++	a.eq(MagicLevel.BANDS[MagicLevel.Tier.SQUIB], Vector2(1.00, 1.00), "哑炮 100%")
++	a.eq(MagicLevel.BANDS[MagicLevel.Tier.MASTER], Vector2(0.005, 0.02), "大师级 0.5-2%")
++	a.eq(MagicLevel.BANDS[MagicLevel.Tier.LEGEND], Vector2(0.005, 0.015), "传奇级 0.5-1.5%")
++	a.eq(MagicLevel.BANDS[MagicLevel.Tier.MYTH], Vector2(0.005, 0.01), "神话级 0.5-1%")
++	a.eq(MagicLevel.BANDS[MagicLevel.Tier.EXPERT], Vector2(0.02, 0.05), "专家级 2-5%")
++	for i in MagicLevel.LABELS.size():
++		a.eq(MagicLevel.index_of_label(MagicLevel.LABELS[i]), i, "标签 %d 可反查" % i)
++	a.near(MagicLevel.base_rate(MagicLevel.Tier.MASTER), 0.0125, 0.0001, "大师级中点")
++
++	# §8#8：clamp 上下界需要用“真越界”输入，原 0.9075<0.95、0.01>0.005 是空转
++	var max_mods := {"combat_stress": 1.0, "injury": 1.0, "emotion": 1.0, "wand_mismatch": 1.0, "unfamiliar_spell": 1.0, "dark_magic_interference": 1.0}
++	a.near(MagicLevel.effective_rate(MagicLevel.Tier.PRE_SCHOOL, max_mods), 0.95, 0.0001, "高失败率被钳到 0.95")
++	a.near(MagicLevel.effective_rate(MagicLevel.Tier.MYTH, {}, -1.0), 0.005, 0.0001, "低失败率被钳到 0.005")
+ 	a.eq(MagicLevel.effective_rate(MagicLevel.Tier.SQUIB, {}), 0.95, "哑炮无法施法，钳制上界")
+ 
+ 	# 无环境因素时等于区间中点
+@@ -37,6 +52,9 @@ func run() -> int:
+ 	# 资质偏移（data/aptitudes.json 的 failure_delta）
+ 	a.near(MagicLevel.effective_rate(MagicLevel.Tier.FIRST_YEAR, {}, -0.10), 0.30, 0.0001, "优秀资质降低失败率")
+ 
++	# 哑炮：当前实现早退返回 0.95（与 BANDS[0]=1.00 矛盾，HANDOFF §8#4 待裁定）；此处锁定现状防漂移
++	a.eq(MagicLevel.effective_rate(MagicLevel.Tier.SQUIB, {"combat_stress": 1.0}, -0.10), 0.95, "哑炮早退返回 0.95（现状，待裁定）")
++
+ 	# 未知修正键必须被忽略而不是崩
+ 	a.near(MagicLevel.effective_rate(MagicLevel.Tier.FIRST_YEAR, {"不存在的因素": 5.0}), 0.40, 0.0001, "未知修正键被忽略")
+ 
+diff --git a/tests/money_test.gd b/tests/money_test.gd
+index 2ce109c..e08e3ac 100644
+--- a/tests/money_test.gd
++++ b/tests/money_test.gd
+@@ -27,6 +27,12 @@ func run() -> int:
+ 	a.eq(plus.total_knuts(), 150, "add 返回新对象")
+ 	a.eq(plus.subtract(Money.from_knuts(200)).total_knuts(), -50, "允许负债（第十九章：家族破产）")
+ 
++	# 负值分段/格式的现状（HANDOFF §8#5 待人类裁定）；锁定现状以便裁定落地时能察觉回归
++	var debt := Money.from_knuts(-50)
++	a.eq(debt.parts(), [0, -2, -16], "负值分段（现状）")
++	a.eq(debt.formatted(), "0加隆 -2西可 -16纳特", "负值格式（现状，待裁定）")
++	a.eq(Money.from_dict(debt.to_dict()).total_knuts(), -50, "负值往返一致")
++
+ 	# 往返
+ 	var d := Money.from_knuts(493 * 3 + 17 * 2 + 5).to_dict()
+ 	a.eq(d, {"galleons": 3, "sickles": 2, "knuts": 5}, "to_dict 归一")
+diff --git a/tests/panel_test.gd b/tests/panel_test.gd
+index 24e032f..199b38f 100644
+--- a/tests/panel_test.gd
++++ b/tests/panel_test.gd
+@@ -85,4 +85,20 @@ func run() -> int:
+ 	a.is_true(block.contains("经济"), "事件块含分类")
+ 	a.is_true(block.contains("魔药材料涨价了"), "事件块含文本")
+ 
++	# 空/边界分支
++	a.eq(PanelFormatter.events_block([]), "本月没有特别的消息。", "空事件块")
++	var empty_p := PlayerState.new_default()
++	var w_empty := WorldState.create("modern", empty_p, 1, reg)
++	a.is_true(PanelFormatter.status_line(w_empty).contains("未知"), "未知地点回退为未知")
++	a.is_true(PanelFormatter.relation_panel(w_empty).contains("暂无关键人物"), "空关系面板")
++	a.is_true(PanelFormatter.player_panel(w_empty).contains("未知"), "空政治倾向回退为未知")
++	# 非哑炮但无魔杖 → 未拥有
++	var no_wand := PlayerState.new_default()
++	no_wand.name_text = "王五"
++	no_wand.magic_tier = MagicLevel.Tier.FIRST_YEAR
++	no_wand.wand = {}
++	var w_nw := WorldState.create("modern", no_wand, 1, reg)
++	a.is_true(PanelFormatter.magic_panel(w_nw).contains("未拥有"), "无魔杖的巫师显示未拥有")
++	a.is_true(PanelFormatter.magic_panel(w_nw).contains("未成形"), "无守护神显示未成形")
++
+ 	return a.report("panel")
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index ba1f365..d2bc589 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -55,4 +55,14 @@ func _run_suite(path: String) -> Variant:
+ 		printerr("套件无法实例化（语法错误？）: ", path)
+ 		return null
+ 	var suite = script.new()
+-	return int(suite.run())
++	var reports_before := TestAssert.report_calls
++	var result = suite.run()
++	# 运行期错误会让 suite.run() 提前中止（typed int 函数返回 0），单看返回值无法区分 0 失败与根本没跑完。
++	# 用 report() 调用计数做哨兵：没调用 report 就说明套件中途报错。
++	if TestAssert.report_calls == reports_before:
++		printerr("套件未正常结束（未调用 report，运行期错误？）: ", path)
++		return null
++	if typeof(result) != TYPE_INT:
++		printerr("套件未返回整数结果（运行期错误？）: ", path)
++		return null
++	return int(result)
+diff --git a/tests/save_test.gd b/tests/save_test.gd
+index 3af9cb4..50e9542 100644
+--- a/tests/save_test.gd
++++ b/tests/save_test.gd
+@@ -96,6 +96,24 @@ func run() -> int:
+ 	a.is_true(SaveStore.delete_slot("slot1", test_dir), "删除成功")
+ 	a.eq(SaveStore.list_slots(test_dir).size(), 0, "删除后为空")
+ 
++	# 槽路径净化：不得逃逸 base_dir
++	for raw_slot in ["../evil", "a/b\\c:d", "  ", ".."]:
++		var p := SaveStore.slot_path(str(raw_slot), "user://test_saves")
++		a.is_true(p.begins_with("user://test_saves/"), "槽路径不逃逸: %s" % str(raw_slot))
++		a.is_false(p.contains("../"), "槽路径不含 ../: %s" % str(raw_slot))
++	a.is_true(SaveStore.slot_path("", "user://test_saves").ends_with("slot.json"), "空槽名回退 slot")
++	# 缺失目录 / 缺失槽
++	a.eq(SaveStore.list_slots("user://no_such_dir_xyz").size(), 0, "缺失目录列为空")
++	a.is_false(SaveStore.delete_slot("不存在槽", test_dir), "删除缺失槽返回 false")
++	# 校验和负例
++	a.eq(SaveCodec.checksum("").length(), 64, "空串校验和长度 64")
++	a.is_false(bool(SaveCodec.decode(text.replace("checksum: ", "checksum: zz"), reg)["ok"]), "非十六进制校验和被拒")
++	# 覆盖保存
++	var overwrite := SaveStore.save("slot1", w, test_dir)
++	a.is_true(bool(overwrite["ok"]), "覆盖保存成功")
++	a.eq(SaveStore.list_slots(test_dir).size(), 1, "覆盖后仍只有一个槽")
++	SaveStore.delete_slot("slot1", test_dir)
++
+ 	# ---- 存读档后世界必须继续一致演化（随机流状态被持久化） ----
+ 	var w2 := make_world()
+ 	var rng := RngService.new(w2.game_seed)
+diff --git a/tests/selfcheck_test.gd b/tests/selfcheck_test.gd
+index 62d979f..ff04f3a 100644
+--- a/tests/selfcheck_test.gd
++++ b/tests/selfcheck_test.gd
+@@ -66,4 +66,21 @@ func run() -> int:
+ 	var full := SelfCheck.report(w)
+ 	a.is_true(full.contains("【剧情快照】") and full.contains("【人设OOC自检报告】"), "report 含两段")
+ 
++	# 负回合 + 空世界占位 + 空来源泄露 + canon 锚点超前
++	a.is_false(SelfCheck.is_audit_turn(-15), "负回合不自检")
++	var w_empty := make_world(reg)
++	w_empty.npcs.clear()
++	w_empty.pending.clear()
++	w_empty.history.clear()
++	var snap_empty := SelfCheck.snapshot(w_empty)
++	a.is_true(snap_empty.contains("（尚未建立关键 NPC 关系网络）"), "空 NPC 占位")
++	a.is_true(snap_empty.contains("（无）"), "空进行中事件占位")
++	a.is_true(snap_empty.contains("（尚无）"), "空历史占位")
++	var w_leak := make_world(reg)
++	w_leak.player.known_facts["x"] = ""
++	a.is_true(SelfCheck.ooc_report(w_leak).contains("玩家信息被提前泄露：异常"), "空来源也算泄露")
++	var w_future := make_world(reg)
++	w_future.history.append({"kind": "canon", "text": "未来事件", "year": 2999, "turn": 0})
++	a.is_true(SelfCheck.ooc_report(w_future).contains("历史时间线错误：异常"), "canon 事实超前被抓到")
++
+ 	return a.report("selfcheck")
+diff --git a/tools/test.sh b/tools/test.sh
+index c3c0abe..597e973 100644
+--- a/tools/test.sh
++++ b/tools/test.sh
+@@ -22,8 +22,15 @@ unit=$?
+ 
+ echo "== 3/3 主场景冒烟 =="
+ if [ -f "$ROOT/src/ui/main.tscn" ]; then
+-	"$GODOT" --headless --path . --quit-after 5
+-	smoke=$?
++	smoke_log="$(mktemp)"
++	"$GODOT" --headless --path . --quit-after 5 2>&1 | tee "$smoke_log"
++	smoke=${PIPESTATUS[0]}
++	# 只看退出码不够：脚本加载失败但引擎返回 0 时会假绿，必须确认场景真的 _ready 了
++	if ! grep -q "main scene ready" "$smoke_log"; then
++		echo "主场景冒烟未出现 'main scene ready'（脚本可能未加载）" >&2
++		smoke=1
++	fi
++	rm -f "$smoke_log"
+ else
+ 	echo "（跳过：src/ui/main.tscn 尚未创建，任务 11 将启用）"
+ 	smoke=0

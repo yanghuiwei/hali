@@ -23,6 +23,7 @@ unit=$?
 echo "== 3/3 主场景冒烟 =="
 if [ -f "$ROOT/src/ui/main.tscn" ]; then
 	smoke_log="$(mktemp)"
+	trap 'rm -f "$smoke_log"' EXIT
 	"$GODOT" --headless --path . --quit-after 5 2>&1 | tee "$smoke_log"
 	smoke=${PIPESTATUS[0]}
 	# 只看退出码不够：脚本加载失败但引擎返回 0 时会假绿，必须确认场景真的 _ready 了

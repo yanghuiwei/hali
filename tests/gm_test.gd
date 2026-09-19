@@ -52,6 +52,7 @@ func run() -> int:
 	a.is_false(w.player.known_facts.has("r3"), "system 来源未写入")
 
 	# 输入硬化：空 key / 非数字 add_money / 空 npc_id / 非字典条都记错误且不写入
+	var money_before_bad := w.player.money_knuts
 	var errs4 := StateOps.apply(w, [
 		{"op": "set_flag", "key": "", "value": true},
 		{"op": "set_player_flag", "key": "", "value": true},
@@ -61,6 +62,9 @@ func run() -> int:
 	])
 	a.eq(errs4.size(), 5, "非法输入与非法条目都记错误")
 	a.is_false(w.flags.has(""), "空 flag key 未写入")
+	a.is_false(w.player.flags.has(""), "空 player flag key 未写入")
+	a.eq(w.player.money_knuts, money_before_bad, "非法 add_money 不改动财富")
+	a.is_false(w.player.relations.has(""), "空 npc_id 未写入")
 
 	# 合法集合：set_flag / set_player_flag / set_magic_tier / relation_delta
 	var errs5 := StateOps.apply(w, [
