@@ -1,5 +1,7 @@
 extends SceneTree
 
+const SUITE_TIMEOUT_SEC := 300.0
+
 # 每个任务把自己的套件追加到这里。路径必须真实存在，缺失即失败。
 const SUITES: Array[String] = [
 	"res://tests/harness_test.gd",
@@ -19,12 +21,16 @@ const SUITES: Array[String] = [
 ]
 
 func _initialize() -> void:
+	# 看门狗：async 化后，若某个套件的协程永不恢复，_initialize 会永久挂起（await 卡死）。
+	# SceneTreeTimer 独立于 await 持续推进，保证任何情况下最终都能 quit()——Task 1 的硬要求。
+	create_timer(SUITE_TIMEOUT_SEC).timeout.connect(func() -> void:
+		printerr("测试总超时（%.0f 秒），强制退出" % SUITE_TIMEOUT_SEC)
+		quit(1))
 	var total_failures := 0
 	var failed_suites := 0
 	for path in SUITES:
 		# 有风险的调用（读文件、load、new、run）全部收在 _run_suite 里：
-		# 套件抛出的运行期错误只中止那个函数，_initialize 仍会走到末尾的打印与 quit()，
-		# 保证任何情况下都以 quit(...) 结束，不会挂住进程。
+		# 套件抛出的运行期错误只中止那个函数，_initialize 仍会走到末尾的打印与 quit()。
 		var result: Variant = await _run_suite(path)
 		if result == null:
 			total_failures += 1

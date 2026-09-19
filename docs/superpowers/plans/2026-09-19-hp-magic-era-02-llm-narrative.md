@@ -83,7 +83,27 @@ bash tools/test.sh
 
 - [ ] **Step 3: 运行器 async 化**
 
-修改 `tests/run_tests.gd`：把 `_initialize` 的 `var result: Variant = _run_suite(path)` 改为 `var result: Variant = await _run_suite(path)`；把 `_run_suite` 的 `var result = suite.run()` 改为 `var result = await suite.run()`，其余（`report_calls` 哨兵、`quit()`）保持不变。完整 `_run_suite` 目标形态：
+修改 `tests/run_tests.gd`：把 `_initialize` 的 `var result: Variant = _run_suite(path)` 改为 `var result: Variant = await _run_suite(path)`；把 `_run_suite` 的 `var result = suite.run()` 改为 `var result = await suite.run()`，其余（`report_calls` 哨兵、`quit()`）保持不变。**另加全局看门狗**：async 化后若某套件协程永不恢复，`await` 会永久挂起，`quit()` 保证会失效——用一个独立于 await 的 `SceneTreeTimer` 兜底。完整目标形态：
+
+```gdscript
+extends SceneTree
+
+const SUITE_TIMEOUT_SEC := 300.0
+
+func _initialize() -> void:
+	# 看门狗：async 化后，若某个套件的协程永不恢复，_initialize 会永久挂起（await 卡死）。
+	# SceneTreeTimer 独立于 await 持续推进，保证任何情况下最终都能 quit()——Task 1 的硬要求。
+	create_timer(SUITE_TIMEOUT_SEC).timeout.connect(func() -> void:
+		printerr("测试总超时（%.0f 秒），强制退出" % SUITE_TIMEOUT_SEC)
+		quit(1))
+	var total_failures := 0
+	var failed_suites := 0
+	for path in SUITES:
+		var result: Variant = await _run_suite(path)
+		# ...（既有计数与末尾 quit 逻辑不变）...
+```
+
+完整 `_run_suite` 目标形态：
 
 ```gdscript
 # 返回套件失败数；套件缺失 / 无法加载 / 无法实例化 / 中途报错时返回 null。

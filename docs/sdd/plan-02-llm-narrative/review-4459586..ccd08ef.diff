@@ -1,0 +1,70 @@
+== 提交 ==
+ccd08ef test(async): 运行器支持协程套件 + 异步探针
+
+== 统计 ==
+ tests/async_probe_test.gd     | 17 +++++++++++++++++
+ tests/async_probe_test.gd.uid |  1 +
+ tests/run_tests.gd            |  5 +++--
+ 3 files changed, 21 insertions(+), 2 deletions(-)
+
+== diff ==
+diff --git a/tests/async_probe_test.gd b/tests/async_probe_test.gd
+new file mode 100644
+index 0000000..648f3a1
+--- /dev/null
++++ b/tests/async_probe_test.gd
+@@ -0,0 +1,17 @@
++class_name AsyncProbeTest
++extends RefCounted
++
++static func async_double(x: int) -> int:
++	await Engine.get_main_loop().process_frame
++	return x * 2
++
++static func sync_seven() -> int:
++	return 7
++
++func run() -> int:
++	var a := TestAssert.new()
++	var v = await async_double(21)
++	a.eq(v, 42, "await 协程返回最终值")
++	var sync_val = await sync_seven()
++	a.eq(sync_val, 7, "await 普通函数返回值直接返回")
++	return a.report("async_probe")
+diff --git a/tests/async_probe_test.gd.uid b/tests/async_probe_test.gd.uid
+new file mode 100644
+index 0000000..01b9046
+--- /dev/null
++++ b/tests/async_probe_test.gd.uid
+@@ -0,0 +1 @@
++uid://dhv413gv5p2dr
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index d2bc589..5ef1649 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -15,6 +15,7 @@ const SUITES: Array[String] = [
+ 	"res://tests/panel_test.gd",
+ 	"res://tests/selfcheck_test.gd",
+ 	"res://tests/save_test.gd",
++	"res://tests/async_probe_test.gd",
+ ]
+ 
+ func _initialize() -> void:
+@@ -24,7 +25,7 @@ func _initialize() -> void:
+ 		# 有风险的调用（读文件、load、new、run）全部收在 _run_suite 里：
+ 		# 套件抛出的运行期错误只中止那个函数，_initialize 仍会走到末尾的打印与 quit()，
+ 		# 保证任何情况下都以 quit(...) 结束，不会挂住进程。
+-		var result: Variant = _run_suite(path)
++		var result: Variant = await _run_suite(path)
+ 		if result == null:
+ 			total_failures += 1
+ 			failed_suites += 1
+@@ -56,7 +57,7 @@ func _run_suite(path: String) -> Variant:
+ 		return null
+ 	var suite = script.new()
+ 	var reports_before := TestAssert.report_calls
+-	var result = suite.run()
++	var result = await suite.run()
+ 	# 运行期错误会让 suite.run() 提前中止（typed int 函数返回 0），单看返回值无法区分 0 失败与根本没跑完。
+ 	# 用 report() 调用计数做哨兵：没调用 report 就说明套件中途报错。
+ 	if TestAssert.report_calls == reports_before:
