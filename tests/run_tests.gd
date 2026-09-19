@@ -15,6 +15,7 @@ const SUITES: Array[String] = [
 	"res://tests/panel_test.gd",
 	"res://tests/selfcheck_test.gd",
 	"res://tests/save_test.gd",
+	"res://tests/async_probe_test.gd",
 ]
 
 func _initialize() -> void:
@@ -24,7 +25,7 @@ func _initialize() -> void:
 		# 有风险的调用（读文件、load、new、run）全部收在 _run_suite 里：
 		# 套件抛出的运行期错误只中止那个函数，_initialize 仍会走到末尾的打印与 quit()，
 		# 保证任何情况下都以 quit(...) 结束，不会挂住进程。
-		var result: Variant = _run_suite(path)
+		var result: Variant = await _run_suite(path)
 		if result == null:
 			total_failures += 1
 			failed_suites += 1
@@ -56,7 +57,7 @@ func _run_suite(path: String) -> Variant:
 		return null
 	var suite = script.new()
 	var reports_before := TestAssert.report_calls
-	var result = suite.run()
+	var result = await suite.run()
 	# 运行期错误会让 suite.run() 提前中止（typed int 函数返回 0），单看返回值无法区分 0 失败与根本没跑完。
 	# 用 report() 调用计数做哨兵：没调用 report 就说明套件中途报错。
 	if TestAssert.report_calls == reports_before:
