@@ -9,8 +9,12 @@ const SYSTEM_PERSONA := "你是《哈利·波特·魔法纪元》的世界模拟
 static func build(world: WorldState, action_text: String) -> LlmProvider.LlmRequest:
 	var req := LlmProvider.LlmRequest.new()
 	req.system_prompt = system_prompt(world)
-	req.user_prompt = "【当前状态】\n%s\n\n【玩家行动】\n<玩家行动>%s</玩家行动>" % [JSON.stringify(state_digest(world)), action_text]
+	req.user_prompt = "【当前状态】\n%s\n\n【玩家行动】\n<玩家行动>%s</玩家行动>" % [JSON.stringify(state_digest(world)), _sanitize_input(action_text)]
 	return req
+
+static func _sanitize_input(text: String) -> String:
+	# 剥离定界符，防止玩家输入提前闭合 <玩家行动> 造成提示注入
+	return text.replace("<玩家行动>", "").replace("</玩家行动>", "")
 
 static func build_repair(world: WorldState, action_text: String, parse_error: String) -> LlmProvider.LlmRequest:
 	var req := build(world, action_text)

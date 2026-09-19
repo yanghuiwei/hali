@@ -22,7 +22,11 @@ static func parse(text: String) -> Result:
 		out.error = "响应不是合法 JSON 对象"
 		return out
 	var d: Dictionary = parsed
-	var narration := str(d.get("narration", "")).strip_edges()
+	var raw_narration = d.get("narration", "")
+	if typeof(raw_narration) != TYPE_STRING:
+		out.error = "narration 不是字符串"
+		return out
+	var narration := str(raw_narration).strip_edges()
 	if narration.is_empty():
 		out.error = "缺少 narration"
 		return out
@@ -34,11 +38,13 @@ static func parse(text: String) -> Result:
 		return out
 	out.ops = (raw_ops as Array).duplicate(true)
 	var raw_tags = d.get("tags", [])
-	if typeof(raw_tags) == TYPE_ARRAY:
-		for t in (raw_tags as Array):
-			var tag := str(t)
-			if TAG_WHITELIST.has(tag):
-				out.tags.append(tag)
+	if typeof(raw_tags) != TYPE_ARRAY:
+		out.error = "tags 不是数组"
+		return out
+	for t in (raw_tags as Array):
+		var tag := str(t)
+		if TAG_WHITELIST.has(tag):
+			out.tags.append(tag)
 	out.narration = narration
 	out.ok = true
 	return out

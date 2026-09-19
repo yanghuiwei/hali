@@ -64,6 +64,10 @@ func run() -> int:
 	var long_text := "{\"narration\":\"%s\",\"ops\":[],\"tags\":[]}" % "长".repeat(5000)
 	var long_res := GmResponseParser.parse(long_text)
 	a.is_true(long_res.ok, "超长叙事仍可解析")
-	a.eq(long_res.narration.length(), GmResponseParser.MAX_NARRATION, "超长叙事被截断")
+	a.eq(long_res.narration.length(), 4000, "超长叙事被截断到字面量 4000（不依赖常量自指）")
+	var bad_narr := GmResponseParser.parse('{"narration":123,"ops":[]}')
+	a.is_false(bad_narr.ok, "narration 非字符串失败")
+	var bad_tags := GmResponseParser.parse('{"narration":"x","ops":[],"tags":{}}')
+	a.is_false(bad_tags.ok, "tags 非数组失败")
 
 	return a.report("llm")
