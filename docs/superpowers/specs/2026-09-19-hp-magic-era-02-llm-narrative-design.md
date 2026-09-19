@@ -88,6 +88,7 @@ class GmResult:
 	var narration: String = ""
 	var deltas: Array = []
 	var tags: PackedStringArray = PackedStringArray()
+	var warnings: PackedStringArray = PackedStringArray()   # 计划 02 新增：OpGuard 的钳制/拒绝警告
 	var audit_required: bool = false
 
 # 实现可以是同步函数，也可以是含 await 的协程；调用方统一写 `await gm.act(...)`。
@@ -209,7 +210,7 @@ UI 禁用输入 + 「世界正在回应…」
 
 ## 8. 防作弊：`OpGuard` 净化/钳制
 
-在 `StateOps.apply` 之前运行，输入 LLM 的原始 ops，输出净化后的 ops，并收集 `warnings: PackedStringArray`（并入 `op_errors` 供 UI 展示）。规则：
+在 `StateOps.apply` 之前运行，输入 LLM 的原始 ops，输出净化后的 ops，并收集 `warnings: PackedStringArray`。`TurnEngine` 把这些 warnings 追加进返回字典的 `op_errors`（`GmResult.warnings`），供 UI 展示。规则：
 
 | op | 规则 |
 | --- | --- |
