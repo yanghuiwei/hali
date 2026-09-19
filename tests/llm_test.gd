@@ -161,4 +161,25 @@ func run() -> int:
 	a.is_true(bool(out2["blocked"]), "死者 blocked")
 	a.eq(ew.clock.turn, t2, "blocked 不推进回合")
 
+	# ---- OpenAiCompatProvider 纯函数 ----
+	var p := OpenAiCompatProvider.new(null, "https://api.example.com/v1", "test-model", "sk-secret")
+	a.eq(p._chat_url(), "https://api.example.com/v1/chat/completions", "URL 拼接")
+	var lreq := LlmProvider.LlmRequest.new()
+	lreq.system_prompt = "sys"
+	lreq.user_prompt = "usr"
+	var body = JSON.parse_string(p._build_body(lreq))
+	a.eq(str(body["model"]), "test-model", "body 含 model")
+	a.eq(str(body["messages"][0]["role"]), "system", "body 含 system 消息")
+	a.eq(str(body["response_format"]["type"]), "json_object", "json_mode 生效")
+	var headers := p._build_headers()
+	a.is_true(" | ".join(headers).contains("Bearer sk-secret"), "Authorization 头")
+	var resp := OpenAiCompatProvider._parse_http(200, '{"choices":[{"message":{"content":"hi"}}]}')
+	a.is_true(resp.ok, "2xx 解析成功")
+	a.eq(resp.text, "hi", "取出 content")
+	var err_resp := OpenAiCompatProvider._parse_http(500, "server error")
+	a.is_false(err_resp.ok, "非 2xx 失败")
+	a.is_true(err_resp.error.contains("500"), "错误含状态码")
+	var bad_body := OpenAiCompatProvider._parse_http(200, "not json")
+	a.is_false(bad_body.ok, "非 JSON 失败")
+
 	return a.report("llm")
