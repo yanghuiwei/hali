@@ -142,6 +142,14 @@ func run() -> int:
 	a.is_true(any_success, "50 次里应有成功")
 	a.is_true(any_failure, "50 次里应有失败")
 
+	# ---- §8#33：同一回合内多次 cast_spell 必须用不同随机种子（避免同 roll） ----
+	var wsame := make_world(reg, MagicLevel.Tier.ADULT)
+	var roll1 := StateOps.world_gm_rng(wsame).stream_float("spell_roll")
+	var roll2 := StateOps.world_gm_rng(wsame).stream_float("spell_roll")
+	var roll3 := StateOps.world_gm_rng(wsame).stream_float("spell_roll")
+	a.is_true(roll1 != roll2 and roll2 != roll3, "同回合多次施法掷骰不同（§8#33）")
+	a.eq(int(wsame.flags.get("_gm_rng_counter", 0)), 3, "RNG 计数器随调用递增并持久化")
+
 	return a.report("spell")
 
 func forbidden_count(reg: Registry) -> int:

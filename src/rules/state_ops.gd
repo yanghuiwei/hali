@@ -22,6 +22,13 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
 					errors.append("未知技能: %s" % skill_id)
 				else:
 					world.player.add_skill(skill_id, int(raw.get("amount", 0)))
+			"train_skill":
+				var train_skill_id := str(raw.get("skill_id", ""))
+				if not world.registry.has("skills", train_skill_id):
+					errors.append("未知技能: %s" % train_skill_id)
+				else:
+					var train_gain := Progression.gain(world, train_skill_id, int(raw.get("base_gain", 4)))
+					world.player.add_skill(train_skill_id, train_gain)
 			"learn_spell":
 				var spell_id := str(raw.get("spell_id", ""))
 				if not world.registry.has("spells", spell_id):
@@ -81,6 +88,9 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
 				errors.append("未知操作: %s" % op)
 	return errors
 
-# cast_spell 需要一个随机源；由世界种子与当前回合推导，保证可复现。
+# cast_spell 需要一个随机源；由世界种子、回合与调用序号共同推导，保证可复现且同回合内不重复。
+# 计数器入 world.flags（持久化），OpGuard 禁止 LLM 写以 "_" 开头的 flag key。
 static func world_gm_rng(world: WorldState) -> RngService:
-	return RngService.new(world.game_seed + world.clock.turn * 15485863)
+	var counter := int(world.flags.get("_gm_rng_counter", 0))
+	world.flags["_gm_rng_counter"] = counter + 1
+	return RngService.new(world.game_seed + world.clock.turn * 15485863 + counter * 2654435761)

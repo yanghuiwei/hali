@@ -184,4 +184,17 @@ func run() -> int:
 	engine8.submit("我要去上课")
 	a.is_true(w8.rng_state.size() > 0, "回合引擎把随机流状态写回世界")
 
+	# ---- train_skill：反刷记账在 StateOps 内，GM 不再直改 world ----
+	var wt := make_world()
+	var before_skill := wt.player.skill("potions")
+	StateOps.apply(wt, [{"op": "train_skill", "skill_id": "potions", "base_gain": 4}])
+	var first_gain := wt.player.skill("potions") - before_skill
+	a.eq(first_gain, 4, "首次训练满额（经 StateOps）")
+	StateOps.apply(wt, [{"op": "train_skill", "skill_id": "potions", "base_gain": 4}])
+	var second_gain := wt.player.skill("potions") - before_skill - first_gain
+	a.is_true(second_gain < first_gain, "同地点重复训练收益下降")
+	a.is_true(wt.flags.has("recent_training"), "反刷记账写入 world.flags")
+	var bad_train := StateOps.apply(wt, [{"op": "train_skill", "skill_id": "不存在", "base_gain": 4}])
+	a.eq(bad_train.size(), 1, "未知技能报错")
+
 	return a.report("gm")
