@@ -145,7 +145,7 @@ func run() -> int:
 	var eprovider := MockLlmProvider.new()
 	eprovider.queue = [
 		'{"narration":"你练成了。","ops":[{"op":"gain_skill","skill_id":"potions","amount":99}],"tags":["train"]}',
-		'{"narration":"又练了一月。","ops":[],"tags":["train"]}',
+		'{"narration":"又练了一月。","ops":[{"op":"add_money","knuts":999999}],"tags":["work"]}',
 	]
 	var egm := LlmGameMaster.new(eprovider, ScriptedGameMaster.new(rng))
 	var engine := TurnEngine.new(ew, egm, rng)
@@ -154,6 +154,14 @@ func run() -> int:
 	a.eq(str(out["narration"]), "你练成了。", "异步提交返回叙事")
 	a.eq(ew.clock.turn, before_turn + 1, "推进一回合")
 	a.is_true(ew.player.skill("potions") > 0, "ops 经 StateOps 生效")
+	# F1：OpGuard warning 必须进 op_errors
+	var out_warn: Dictionary = await engine.submit_async("我去赚一笔")
+	a.is_true((out_warn["op_errors"] as PackedStringArray).size() > 0, "OpGuard warning 进入 op_errors")
+	# F5：同步 submit() 不能驱动 LlmGameMaster
+	var t_sync := ew.clock.turn
+	var out_sync: Dictionary = engine.submit("我要上课")
+	a.is_true(bool(out_sync["blocked"]), "submit() 拒绝异步 GM")
+	a.eq(ew.clock.turn, t_sync, "被拒的同步提交不推进回合")
 	# 死亡玩家 blocked 且不推进
 	ew.player.alive = false
 	var t2 := ew.clock.turn
@@ -181,5 +189,7 @@ func run() -> int:
 	a.is_true(err_resp.error.contains("500"), "错误含状态码")
 	var bad_body := OpenAiCompatProvider._parse_http(200, "not json")
 	a.is_false(bad_body.ok, "非 JSON 失败")
+	var bad_choice := OpenAiCompatProvider._parse_http(200, '{"choices":[123]}')
+	a.is_false(bad_choice.ok, "choices[0] 非对象失败，不崩")
 
 	return a.report("llm")

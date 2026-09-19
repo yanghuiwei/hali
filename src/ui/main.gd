@@ -20,6 +20,7 @@ var goal_edit: LineEdit = null
 var age_spin: SpinBox = null
 var personality_edit: LineEdit = null
 var creation_error: Label = null
+var button_row: HBoxContainer = null
 
 func _ready() -> void:
 	registry = Registry.load_default()
@@ -57,7 +58,7 @@ func _build_ui() -> void:
 	command_edit.text_submitted.connect(_on_command_submitted)
 	play_box.add_child(command_edit)
 
-	var button_row := HBoxContainer.new()
+	button_row = HBoxContainer.new()
 	play_box.add_child(button_row)
 	for pair in [["状态", "_on_status"], ["魔法", "_on_magic"], ["关系", "_on_relation"], ["势力", "_on_power"],
 			["存档", "_on_save"], ["读档", "_on_load"], ["自检", "_on_audit"]]:
@@ -207,7 +208,7 @@ func _build_gm() -> GameMaster:
 	var settings := LlmSettings.load_from()
 	if settings.is_configured():
 		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng))
-	status_label.text = "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
+	status_label.text += "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
 	return ScriptedGameMaster.new(rng)
 
 func _append(text: String) -> void:
@@ -232,6 +233,7 @@ func _on_command_submitted(text: String) -> void:
 		command_edit.text = ""
 		return
 	command_edit.editable = false
+	_set_buttons_enabled(false)
 	_append(">>> %s" % text)
 	_append("（世界正在回应…）")
 	var result: Dictionary = await engine.submit_async(text)
@@ -245,8 +247,17 @@ func _on_command_submitted(text: String) -> void:
 		_append(str(result["audit"]))
 		_append("（自检完毕。等待你的指令——输入“确认自检”继续。）")
 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
+	_set_buttons_enabled(true)
 	command_edit.editable = true
 	command_edit.text = ""
+
+# 等待 LLM 期间禁用整排按钮，防止“读档”等操作在 in-flight 回合中替换 world/engine。
+func _set_buttons_enabled(enabled: bool) -> void:
+	if button_row == null:
+		return
+	for child in button_row.get_children():
+		if child is Button:
+			(child as Button).disabled = not enabled
 
 func _on_status() -> void:
 	if world != null:

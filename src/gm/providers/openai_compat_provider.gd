@@ -53,7 +53,11 @@ static func _parse_http(status: int, body: String) -> LlmProvider.LlmResponse:
 	if typeof(choices) != TYPE_ARRAY or (choices as Array).is_empty():
 		r.error = "响应缺少 choices"
 		return r
-	var message = ((choices as Array)[0] as Dictionary).get("message", {})
+	var first = (choices as Array)[0]
+	if typeof(first) != TYPE_DICTIONARY:
+		r.error = "响应 choices[0] 不是对象"
+		return r
+	var message = (first as Dictionary).get("message", {})
 	if typeof(message) != TYPE_DICTIONARY:
 		r.error = "响应缺少 message"
 		return r
@@ -83,5 +87,8 @@ func complete(request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
 	var status := int(result[1])
 	var body := (result[3] as PackedByteArray).get_string_from_utf8()
 	var resp := _parse_http(status, body)
+	# 脱敏：错误串可能回显服务端 body，绝不能带出 api_key
+	if not resp.ok and not api_key.is_empty():
+		resp.error = resp.error.replace(api_key, "***")
 	resp.latency_ms = Time.get_ticks_msec() - started
 	return resp
