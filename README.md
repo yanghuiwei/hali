@@ -5,11 +5,12 @@
 以《哈利·波特》原著七部小说为正典：原著世界观、设定、人物、事件、时间线优先于一切自定义、随机推演与剧情扩展。玩家不是「大难不死的男孩」，只是这个魔法世界里出生的一个人。
 
 - 正典规格（唯一事实来源）：[`哈利·波特·魔法纪元.md`](哈利·波特·魔法纪元.md)
-- 实现计划：[`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`](docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md)
+- 实现计划：[`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`](docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md)；计划 02：[`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`](docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md)
+- 计划 02 设计（spec）：[`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`](docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md)
 - **换机器 / 交接 / 续做：先读 [`HANDOFF.md`](HANDOFF.md)**（分支、Godot 引擎获取、当前进度、待裁定项、踩过的坑）
-- 执行过程台账：[`docs/sdd/plan-01-core-foundation/progress.md`](docs/sdd/plan-01-core-foundation/progress.md)
+- 执行过程台账：[`docs/sdd/plan-01-core-foundation/progress.md`](docs/sdd/plan-01-core-foundation/progress.md) · [`docs/sdd/plan-02-llm-narrative/progress.md`](docs/sdd/plan-02-llm-narrative/progress.md)
 
-> 开发在分支 **`plan-01-core-foundation`** 上进行；`main` 虽已通过 PR #1 合并了 Task 1–3，但后续提交仍先落在执行分支，计划 01 收尾后再合并。
+> 计划 01 已合入 `main`。计划 02 在分支 **`plan-02-llm-narrative`** 上进行（从 `main` 拉出）。
 
 ## 当前进度
 
@@ -29,7 +30,11 @@
 | 10 | 存档与读档 | ✅ 完成 |
 | 11 | 主界面与运行说明 | ✅ 完成 |
 
-后续计划：02 LLM 叙事引擎；03 派系与政治经济；04 神奇生物生态与区域危险度；05 NPC 自主系统与信息可信度；06 多世代传承与世界记忆。
+后续计划：02 LLM 叙事引擎（进行中）；03 派系与政治经济；04 神奇生物生态与区域危险度；05 NPC 自主系统与信息可信度；06 多世代传承与世界记忆。
+
+### 计划 02 · LLM 叙事引擎（进行中）
+
+用 provider 无关、可离线测试的 `LlmGameMaster` 替换离线替身 `ScriptedGameMaster`：LLM 只产出叙事与 `ops`，一切世界变更仍由 `StateOps` 校验/钳制/审计（`OpGuard` 净化数值）。回合接口异步化（`TurnEngine.submit_async` + UI `await`），provider 未配置/超时/解析失败时降级回 `ScriptedGameMaster`。默认实现是 OpenAI 兼容 HTTP provider；`MockLlmProvider` 供离线测试。
 
 ## 运行
 
@@ -45,13 +50,23 @@ Windows 上 `bash` 来自 Git Bash。Godot 可执行文件不入库，请放在�
 
 引擎版本：Godot **4.7.2 stable**（GDScript，非 .NET 构建）。仅使用 GDScript，不引入第三方插件与外部素材。
 
+### LLM 配置（计划 02）
+
+默认走离线替身；要启用真实 LLM，把配置写到 `user://llm_settings.json`（在仓库之外，不入库）：
+
+```json
+{"provider":"openai_compat","base_url":"https://api.example.com/v1","model":"...","api_key":"...","temperature":0.8,"max_tokens":1024,"timeout_ms":30000}
+```
+
+`HALI_LLM_API_KEY` 环境变量可覆盖 `api_key`。未配置时窗口会用 `ScriptedGameMaster` 并在状态行提示。
+
 ## 目录约定
 
 - `data/*.json`：内容（时代、血统、出生身份、资质、学院、技能、魔杖、地点、传闻、魔咒）。改内容不需要改代码。
 - `src/model/`：数据模型（货币、玩家、世界、时钟）。
 - `src/rules/`：规则（魔法等级、角色创建、魔咒解析、成长、状态操作、自检）。
 - `src/core/`：内容注册表、确定性随机服务、回合引擎。
-- `src/gm/`：叙事接口。`ScriptedGameMaster` 是离线确定性替身；LLM 叙事（计划 02）实现同一个 `GameMaster` 接口。
+- `src/gm/`：叙事接口。`ScriptedGameMaster` 是离线确定性替身；`LlmGameMaster` 接 LLM（计划 02）。`src/gm/providers/` 放 `LlmProvider` 实现（`openai_compat`、`mock`）。
 - `src/persist/`：存档编解码与存槽。
 - `src/ui/`：Godot 主场景与主界面（`main.tscn` / `main.gd`）＋面板格式化（第六十二至六十五章文本面板）。
 - `tests/`：全部测试。新增套件必须把路径追加到 `tests/run_tests.gd` 的 `SUITES`。
@@ -70,3 +85,4 @@ Windows 上 `bash` 来自 Git Bash。Godot 可执行文件不入库，请放在�
 - 反漏洞：复制稀有资源、无限复活、时间回溯、低阶咒语叠加全部被守卫拦截。
 - 重复低难度动作收益递减；成长来自新环境、新问题。
 - 死亡真实且不可逆。世界信息不会免费泄露给玩家。
+- LLM 只产叙事与 `ops`，**绝不直接改 `world`**；一切变更经 `StateOps`（未知 op/id 拒绝、`OpGuard` 钳制数值）。

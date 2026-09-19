@@ -1,13 +1,13 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-18（**计划 01 全部 11 个任务完成时**）。交付点 = 分支 `plan-01-core-foundation` 顶端（Task 11 交付时为 `ecf523c`；每次交接文档自身提交都会把这个哈希往后推，所以以「分支顶端」为准）。
+> 最后更新：2026-09-19（**计划 01 已完成并合入 `main`；计划 02「LLM 叙事引擎」Task 1–11 完成、Task 12 文档收尾中**）。交付点 = 分支 `plan-02-llm-narrative` 顶端（以 `git log` 为准）。
 
 ---
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」（共 11 个任务）已全部完成（Task 1–11）并通过独立审查（Task 4/5/6/7/10/11 含修复轮；Task 8 的 3 条 Important 为计划级，已登记 §8）。** 另完成一轮**计划外收尾加固**（StateOps 输入硬化、测试强度补强、运行器静默假绿哨兵、UI 焦点，`e094a52` + `7d24783`）。窗口程序可运行：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。下一步是**计划 02「LLM 叙事引擎」**，或先完成 §8 的人类裁定与计划 Step 6 的人工 GUI 验收。
+**计划 01「核心模拟地基」已完成并合入 `main`（`026efe3`）。计划 02「LLM 叙事引擎」（共 12 个任务）Task 1–11 已完成**：`LlmProvider`/`MockLlmProvider`/`OpenAiCompatProvider`、`LlmSettings`、`GmResponseParser`、`PromptBuilder`、`OpGuard`、`LlmGameMaster`（重试+降级）、`TurnEngine.submit_async`、UI 异步接线；另有 `StateOps.train_skill` 与 §8#33 RNG 加盐。每步都经独立审查（含修复轮）。计划 02 计划：`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`；spec：`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`。下一步：计划 02 收尾（人工真机 LLM 联调）或计划 03。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -20,7 +20,7 @@
 | 项 | 值 |
 | --- | --- |
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
-| 执行分支 | `plan-01-core-foundation`（已与 `main` 同步；**计划 01 已并入 `main`**，后续计划建议从 `main` 拉新分支） |
+| 执行分支 | **`plan-02-llm-narrative`**（从 `main` 拉出；计划 01 已合入 `main` \(`026efe3`\)） |
 | `main` | 已包含**计划 01 全部**（Task 1–11 + 收尾加固），顶端 `026efe3`。注：远端 PR #2 曾误合并 Task 5 的旧 tip（`d4186c5`），已用 `026efe3` 合并修正（tree 与 `b196d26` 一致、无冲突）。 |
 | 当前 HEAD | `plan-01-core-foundation` == `main` == `026efe3` |
 
@@ -79,11 +79,14 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 [clock] 断言=47 失败=0
 [world_tick] 断言=104 失败=0
 [creation] 断言=176 失败=0
-[spell] 断言=223 失败=0
-[gm] 断言=38 失败=0
+[spell] 断言=229 失败=0
+[gm] 断言=63 失败=0
 [panel] 断言=65 失败=0
 [selfcheck] 断言=26 失败=0
-[save] 断言=81 失败=0
+[save] 断言=97 失败=0
+[async_probe] 断言=2 失败=0
+[prompt] 断言=13 失败=0
+[llm] 断言=65 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
 == 3/3 主场景冒烟 ==
@@ -109,7 +112,8 @@ src/core/                # registry(内容表) · game_clock · rng_service · j
 src/model/               # money · player_state · world_state（均已完成）
 src/rules/               # magic_level(已完成) · character_creation · spell_resolver · progression
                          # · state_ops · self_check
-src/gm/                  # game_master(接口) · scripted_game_master(离线确定性替身，计划 02 换 LLM)
+src/gm/                  # game_master(接口) · scripted_game_master(离线替身) · llm_game_master(计划 02) · op_guard · prompt_builder · gm_response_parser · llm_settings
+src/gm/providers/        # llm_provider(接口) · openai_compat_provider(HTTP) · mock_provider(测试)
 src/persist/             # save_codec · save_store（已完成，第七十一章）
 src/ui/                  # main.tscn · main.gd（窗口程序）· panel_formatter（面板）
 tests/                   # run_tests.gd(运行器) · assert.gd(零依赖断言库) · *_test.gd(每任务一套件)
@@ -222,7 +226,7 @@ taskkill //PID <PID> //F
 
 1. ~~**Task 8 故意留 `SelfCheck` 最小桩**~~ **已关闭（Task 9）**：完整 `SelfCheck`（`snapshot`/`ooc_report`/`report`）已替换最小桩（`d9135ab`），`gm_test` 仍绿。
 2. ~~**魔杖价自相矛盾**~~ **已裁定（Task 4）**：按正典 `哈利·波特·魔法纪元.md:223`「一根普通魔杖：7‑10加隆」，测试取价格下限 7 加隆（3451 纳特），期望 `"3加隆 0西可 0纳特"`；计划与测试两处已同步。裁定记录见 `docs/sdd/plan-01-core-foundation/task-4-review.md`。
-3. **Task 8 `ScriptedGameMaster` 直接调 `SpellResolver.cast()`**（直接改世界）而不是返回 `cast_spell` delta，与"GM 返回 delta、引擎负责应用"的契约不符 —— 确认是否接受（计划内已文档化）。
+3. **Task 8 `ScriptedGameMaster` 直接调 `SpellResolver.cast()`**（直接改世界）……**计划 02 已部分收口**：LLM 主路径（`LlmGameMaster` → `OpGuard` → `StateOps`）不再直改世界；**降级路径** `ScriptedGameMaster` 仍沿用旧实现（spec §14.1 已登记）。
 4. **哑炮失败率**：`BANDS[0] = (1.00, 1.00)` 但 `effective_rate(SQUIB)` 早退返回 `0.95`，等于哑炮有 5% 施法成功率，与正典「哑炮…无法施展咒语」的严格读法冲突（Task 7 判定直接走 `effective_rate`）。二选一：把 `BANDS[0]` 改成 `(0.95, 0.95)`，或让 `effective_rate` 对 SQUIB 返回 1.0 / 直接拒绝施法。另注 `base_rate(SQUIB)=1.0` 超出 `effective_rate` 文档化的 `[0.005, 0.95]` 值域，是潜在陷阱。
 5. **`Money` 负值显示未定义**：`Money.from_knuts(-50)` → `parts() = [0, -2, -16]`，`formatted() = "0加隆 -2西可 -16纳特"`。**Task 9 已落地面板（`player_panel`/`power_panel` 会输出该形态），但仍未定义**：债务场景会显示负值西可/纳特。需裁定债务格式（如「负债 X 加隆」）或在 `Money` 层定义。
 6. **大师级失败率上界 0.02** 对正典「低于2%」是开/闭区间歧义，测试用 `<=` 掩盖了它。
@@ -264,7 +268,7 @@ taskkill //PID <PID> //F
 
 ### Task 8 审查新增（均不阻塞 Task 9，但需登记）
 
-33. **（Task 8 Important，计划级）** `StateOps.world_gm_rng` 每次调用都新建 RNG（`game_seed + turn*15485863`）→ 同一回合内所有 `cast_spell` 掷出同一个 `spell_roll`、失败副作用也相同（重复施法与不同咒语结果完全相关）。建议改为引擎持有单一 RNG 并注入，或在派生种子里混入 op 序号/盐；属计划级，交计划 02 / Task 10。
+33. **（Task 8 Important）~~已收口（计划 02 Task 6）~~**：`StateOps.world_gm_rng` 现按调用序号加盐（`game_seed + turn*15485863 + counter*2654435761`，计数器 `_gm_rng_counter` 入 `world.flags` 并随存档往返），同回合多次施法掷不同 roll。
 34. **（Task 8 Important，计划级，与 §8#17 同源）** `TurnEngine.rng` 全文从不掷数，真正影响叙事的 `ScriptedGameMaster.rng`（work/social/spell_roll）**未入档**；`world.rng_state` 存的是一个空转 RNG。读档后叙事随机流从头开始（同一「打工」收益恒定、社交掷骰重放），破坏「存档往返一致」不变量。测试 `w8.rng_state.size() > 0` 对此零覆盖。**Task 10 必须补 `submit → to_dict → JSON → from_dict → 重建引擎 → submit` 的端到端对比**，并决定「引擎持有唯一 RNG 并注入 GM」还是「改述为派生式确定性并删除 `rng_state`」。
 35. **（Task 8 Important，架构，扩展 §8#3）** `ScriptedGameMaster.act` 直接改世界（`SpellResolver.cast` 写能量/时间/非法施法计数，`Progression.gain` 写 `recent_training`），绕过 `StateOps`（计划内已文档化）。审查新增三条后果：(a) 副作用不进 `deltas_applied`，与第七章「所有变更经 StateOps 便于审计」相悖；(b) 被守卫拦截的施法既无 `op_errors` 也无状态痕迹，调用方无法区分「拒绝」与「正常」；(c) `last_cast_success`/`last_cast_narration` 只有 StateOps 路径会写，生产路径恒为陈旧/未设。留待人类裁定。
 36. **（Task 8 Minor）** `TurnEngine.submit` 的 `deltas_applied` 实际是「请求的 delta」（被 StateOps 拒绝的 op 也在其中），字段名误导；建议改名或按 `op_errors` 过滤。
