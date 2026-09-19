@@ -68,11 +68,17 @@ static func decode(text: String, registry: Registry) -> Dictionary:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return fail.call("存档校验失败：载荷不是合法 JSON")
 
-	var version := int((parsed as Dictionary).get("save_version", -1))
-	if version != SAVE_VERSION:
-		return fail.call("存档版本不符：载荷版本 %d" % version)
+	# 先做结构校验，再读取 save_version：否则 {"save_version":null} 会在 int() 处运行期报错，
+	# 使 decode 无法走 fail 路径（返回类型退化），违反「所有失败路径 ok=false」契约。
 	var malformed := _validate_payload(parsed as Dictionary)
 	if not malformed.is_empty():
 		return fail.call(malformed)
+	var version := int((parsed as Dictionary).get("save_version", -1))
+	if version != SAVE_VERSION:
+		return fail.call("存档版本不符：载荷版本 %d" % version)
 
-	return {"ok": true, "error": "", "world": WorldState.from_dict(parsed, registry)}
+	# from_dict 内部依赖类型化赋值，嵌套畸形会让子对象为 null（毒对象）；此处兜底为失败。
+	var world := WorldState.from_dict(parsed, registry)
+	if world == null or world.player == null or world.clock == null:
+		return fail.call("存档载荷结构不完整：无法重建完整的世界状态")
+	return {"ok": true, "error": "", "world": world}

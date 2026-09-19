@@ -68,13 +68,18 @@ func run() -> int:
 		'{"save_version":1,"history":{}}',
 		'{"save_version":1,"flags":[]}',
 		'{"save_version":1,"rng_state":[]}',
+		'{"save_version":null}',
+		'{"save_version":[]}',
+		'{"save_version":1,"player":{"personality":123}}',
+		'{"save_version":1,"clock":{"year":[]}}',
 	]
 	for i in malformed_payloads.size():
 		var payload: String = malformed_payloads[i]
 		var crafted := "%s v1\nchecksum: %s\npayload:\n%s" % [SaveCodec.HEADER, SaveCodec.checksum(payload), payload]
 		var res := SaveCodec.decode(crafted, reg)
-		a.is_false(bool(res["ok"]), "畸形载荷 #%d 必须被拒绝" % i)
-		a.is_true(res["world"] == null, "畸形载荷 #%d 不得返回半成品世界" % i)
+		a.is_true(res.has("ok"), "畸形载荷 #%d 必须返回结构化结果（不能是空字典）" % i)
+		a.is_false(bool(res.get("ok", true)), "畸形载荷 #%d 必须被拒绝" % i)
+		a.is_true(res.get("world", null) == null, "畸形载荷 #%d 不得返回半成品世界" % i)
 
 	# ---- 读写槽（真实 IO，测试目录独立，避免污染正式存档） ----
 	var test_dir := "user://test_saves"
