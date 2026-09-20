@@ -494,7 +494,7 @@ func run() -> int:
 	a.is_true(WorldFactions.event_condition_met(angry, "oligarchy_pressure"), "寡头压力条件成立（pureblood_influence 分支）")
 	a.is_false(WorldFactions.event_condition_met(calm, "oligarchy_pressure"), "无寡头压力时不成立")
 	# 单独钉住 power_share 那条分支：必须把 pureblood_influence 压在 0.65 以下，否则 OR 的另一条会救场、
-	# 该分支即使被写成死阀值（如计划原稿的 0.40）也测不出来（破坏实验 E2 实证）。
+	# 该分支即使被写成死阈值（如计划原稿的 0.40）也测不出来（破坏实验 E2 实证）。
 	var olig := make_world("modern")
 	WorldFactions.initialize(olig)
 	olig.world_vars["pureblood_influence"] = 0.30
@@ -660,7 +660,14 @@ func run() -> int:
 	a.is_true(WorldFactions.reveal(rw, "death_eaters", "破釜酒吧传闻"), "合法来源可以揭示")
 	a.is_true(bool(WorldFactions.state_of(rw, "death_eaters")["revealed"]), "揭示后 revealed=true")
 	a.is_true(WorldFactions.visible_faction_ids(rw).has("death_eaters"), "揭示后进入可见列表")
-	a.is_true(rw.history.size() >= 1, "揭示写入 history（可追溯）")
+	var reveal_records := 0
+	var reveal_record_text := ""
+	for fact in rw.history:
+		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
+			reveal_records += 1
+			reveal_record_text = str((fact as Dictionary).get("text", ""))
+	a.eq(reveal_records, 1, "揭示写入恰好一条 kind=faction_revealed 的 history（不是「有任意 history」）")
+	a.is_true(not reveal_record_text.is_empty(), "揭示记录 text 非空")
 	a.is_false(WorldFactions.reveal(rw, "death_eaters", "破釜酒吧传闻"), "重复揭示返回 false（幂等）")
 	a.is_false(WorldFactions.visible_faction_ids(rw).has("order_of_phoenix"), "未揭示派系不在可见列表")
 
@@ -671,6 +678,19 @@ func run() -> int:
 			reveal_fact_text = str((fact as Dictionary).get("text", ""))
 	a.is_true(reveal_fact_text.contains("破釜酒吧传闻"), "揭示记录里带来源")
 	a.is_true(reveal_fact_text.contains("食死徒"), "揭示记录里带派系 label")
+
+	# M1（字段语义单一化，2026-09-20 控制器裁定）：揭示**不**改 last_change_turn（它的语义是「power 变更回合」）
+	# 用一个可辨识哨兵值钉住：若 reveal() 又把 clock.turn 写进去，0 vs 4242 必红。
+	WorldFactions.ensure_state(rw, "mysteries")["last_change_turn"] = 4242
+	a.is_true(WorldFactions.reveal(rw, "mysteries", "破釜酒吧传闻"), "M1 前置：揭示成功（mysteries 初始未揭示）")
+	a.eq(int(WorldFactions.state_of(rw, "mysteries")["last_change_turn"]), 4242,
+		"揭示不改变 last_change_turn（该字段只表达 power 变更回合）")
+
+	# M3（对外 API 的空守卫）：畸形世界（null registry/clock）调 reveal() 不得崩，返回 false
+	var reveal_naked := WorldState.new()
+	a.is_false(WorldFactions.reveal(reveal_naked, "death_eaters", "破釜酒吧传闻"), "裸世界（null registry/clock）reveal 返回 false，不崩")
+	a.is_false(WorldFactions.reveal(reveal_naked, "death_eaters", ""), "裸世界 + 空来源仍返回 false")
+	a.is_false(WorldFactions.reveal(null, "death_eaters", "破釜酒吧传闻"), "world=null 也返回 false")
 
 	# 传闻揭示：只有带 reveals_faction 的传闻才揭示
 	var secret_before := WorldFactions.visible_faction_ids(rw).size()
@@ -717,6 +737,9 @@ func run() -> int:
 	e2e_p.location_id = "knockturn_alley"
 	var e2e := WorldState.create("modern", e2e_p, 777, e2e_reg)
 	a.is_false(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E 前置：食死徒初始不可见")
+	# M5 前置：世界年份必须 ≥ 传闻的 min_year，否则候选集为空、夹具会静默空转（不报错地测不到东西）
+	a.is_true(e2e.clock.year >= int(only_rumor.get("min_year", 0)),
+		"E2E 前置：世界年份 %d ≥ 传闻 min_year %d" % [e2e.clock.year, int(only_rumor.get("min_year", 0))])
 	var e2e_events := e2e.tick()
 	var saw_rumor := false
 	for ev in e2e_events:

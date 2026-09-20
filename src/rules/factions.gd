@@ -380,7 +380,7 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
 		_:
 			return false
 
-# 选举本月政治事件：必须同时满足「tension 过隘」「条件成立」「重大事件配额可用」（第六十八章）。
+# 选举本月政治事件：必须同时满足「tension 过阈」「条件成立」「重大事件配额可用」（第六十八章）。
 # 注意：本函数有副作用（命中时写 history 并占用 last_major_turn 配额），不是纯查询；请勿用于预览/面板。
 static func pick_political_event(world: WorldState) -> Dictionary:
 	if tension_of(world) < TENSION_THRESHOLD:
@@ -414,6 +414,9 @@ static func pick_political_event(world: WorldState) -> Dictionary:
 # 揭示一个派系。约束：来源必须非空且不是 system（与 StateOps.know_fact 同源，第四十三/五十七章）。
 # 已揭示时返回 false（幂等），调用方可据此跳过重复叙事。
 static func reveal(world: WorldState, faction_id: String, source: String) -> bool:
+	# 对外 API（Task 7/8 的面板与提示词也会调）：畸形存档（null registry/clock）不得崩，与 initialize/evolve 同口径早退。
+	if world == null or world.registry == null or world.clock == null:
+		return false
 	var src := source.strip_edges()
 	if src.is_empty() or src == "system":
 		return false
@@ -423,7 +426,10 @@ static func reveal(world: WorldState, faction_id: String, source: String) -> boo
 	if st.is_empty() or bool(st.get("revealed", false)):
 		return false
 	st["revealed"] = true
-	st["last_change_turn"] = world.clock.turn
+	# ⚠️ **不写** `last_change_turn`：该字段的语义严格定义为「**power 变更回合**」（Task 4/5 的统一判定所写）。
+	# 揭示是另一种变化，由 `revealed` 布尔本身表达；若这里也写该字段，Task 5 的不变量
+	# 「`last_change_turn == clock.turn` ⟺ 量化持久值本回合变化」会在「被揭示但当月 power 恰好没变」时变红
+	# （Task 6 审查 Minor 1，2026-09-20 控制器裁定：字段语义单一化，不给揭示再记一个回合）。
 	world.add_fact("faction_revealed", "你得知了「%s」的存在（来源：%s）。" % [
 		str(entry_of(world, faction_id).get("label", faction_id)), src])
 	return true
