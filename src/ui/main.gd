@@ -28,6 +28,7 @@ var _debug_mirror: bool = false
 func _ready() -> void:
 	registry = Registry.load_default()
 	var errors := registry.validate()
+	errors.append_array(WorldFactions.validate_content(registry))
 	for e in errors:
 		push_warning("内容表问题：%s" % e)
 	print("main scene ready, godot=", Engine.get_version_info().string)

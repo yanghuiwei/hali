@@ -112,4 +112,8 @@ func run() -> int:
 	})
 	a.is_true(" | ".join(bad_power.validate()).contains("base_power 超值域"), "base_power 越界必须报错")
 
+	# registry 的表内枚举与 WorldFactions 常量必须一致（防两处定义漂移）
+	a.eq(insts, WorldFactions.INSTITUTIONS, "机构枚举两处一致")
+	a.eq(kinds, WorldFactions.KINDS, "kind 枚举两处一致")
+
 	return a.report("registry")

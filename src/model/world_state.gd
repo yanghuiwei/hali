@@ -33,6 +33,7 @@ static func create(era_id_: String, player_: PlayerState, seed_: int, registry_:
 	# JSON 解析出的整数值 float 必须归一，保证 create 与 from_dict 的内存类型一致（HANDOFF 第 4 节第 1 条）
 	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
 	w.player.age_months = maxi(w.player.age_months, 0)
+	WorldFactions.initialize(w)
 	return w
 
 func era() -> Dictionary:
@@ -184,4 +185,6 @@ static func from_dict(d: Dictionary, registry_: Registry) -> WorldState:
 	w.log = JsonUtil.normalize(d.get("log", []))
 	w.flags = JsonUtil.normalize(d.get("flags", {}))
 	w.rng_state = JsonUtil.normalize(d.get("rng_state", {}))
+	# 老存档（无 factions 或只有部分）在此补齐；幂等，不覆盖已存档的值（设计 §9.3/§9.5）
+	WorldFactions.initialize(w)
 	return w
