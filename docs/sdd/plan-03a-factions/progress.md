@@ -568,3 +568,37 @@
 - 教训（与台账既有的 Task 9 M6 / Task 11 M2「报告过度声明」同源）：**「已派发」这类可核查的动作，必须核对客观证据
   （run 列表 / `git log`）之后再写，不能凭意图写。** 也是本轮把「每任务收尾清单」做成硬规则的原因之一：
   文档要能独立于会话自述地反映真实状态。
+
+## 03a-P · B8（P5b）：把 UI 切片接进主题
+- dispatch: worker / run `52643b43-9a22-4dc8-86e6-94e5f3c20416`（BASE `main@06913c1`）
+- 实现完成：`cdddb98`（4 files, +200/-13）：`src/ui/theme_builder.gd`（+96）· `data/presentation.json`（+9，**只加真正接上的 7 个键**）·
+  `tests/theme_audio_test.gd`（+38 断言）· `tools/b1_acceptance.gd`（+14，修一条既有假绿）
+- 门禁：`test.sh` **EXIT=0**、**1985 → 2023** 断言（`[theme_audio]` 76→**114**）；`SCRIPT ERROR`=2、`ERROR:`=7；
+  `b1` **EXIT=0 / 151 断言 / 0 失败**；无残留进程
+- 接入：`Button`+`OptionButton` 的 `normal/hover/pressed/disabled` ← `ui.button_*`；`LineEdit.normal/read_only` ← `ui.textfield`；
+  `VScrollBar`/`HScrollBar` 的 `scroll`/`grabber`/`grabber_highlight`/`grabber_pressed` ← `ui.scrollbar_*`。**缺键逐键独立回退**
+- **九宫格取值全部有实测依据**（不是猜）：沿中行/中列扫 alpha 帽区 —— 按钮 160×44 帽厚 5–7px ⇒ `[8,8,8,6]`；
+  `textfield` 134×28 帽厚 3–4px ⇒ `[5,4,4,5]`；`scrollbar_bg` ⇒ `[5,4,4,4]`（4+4=8 正好等于绘制宽度 ⇒ 帽不被压缩）；
+  `scrollbar_grab` 实测帽厚 **0/0**（97% 不透明的平坦块）⇒ **不写没有依据的数字**，整张拉伸
+- **两条「布局无回归」的实测证据**：① `Button`/`LineEdit` 合并最小尺寸在「扁平 vs 贴图」两套主题下**逐字相同（差异 0.0/0.0）**；
+  ② `VScrollBar` 最小尺寸 (8,8) 与 **Godot 内置默认主题相同** ⇒ 滚动条宽度无回归
+- 细致的契约判断（值得记）：
+  · `StyleBoxFlat` 与 `StyleBoxTexture` **共用 `CONTENT_MARGIN_H/V`** ⇒ 素材到来前后**文字位置与最小高度不跳**
+  · `focus` **保持扁平**（透明底 + accent 描边）：它叠在当前状态盒之上画，用不透明贴图会把按钮本体盖掉
+  · `CheckBox` **不套按钮贴图**（勾选框本体不是按钮底；且仓库当前无 CheckBox 实例）⇒ 5 个槽位照旧全扁平，行为与改造前逐字一致
+  · 滚动条：**改造前从没设过滚动条样式**（一直用内置默认）⇒ 缺键时**不能补一个扁盒子**（那会把「没素材」变成「观感变了」），
+    而是干脆不设、继续用内置默认；`grabber_highlight/pressed` **必须设**（否则 Godot 回落到内置扁盒子，hover 时观感突变）
+- 破坏实验（1 组）：打掉「缺键 ⇒ 回退扁平」⇒ `[theme_audio]` **恰好 7 红**、EXIT=1、**无套件中止**、噪音计数不变；cp+md5 还原 OK
+- 🔴 **worker 顺手挖出并修掉一条既有假绿（重要）**：`tools/b1_acceptance.gd` 原用 `is StyleBoxFlat` 当
+  「样式来自 ThemeBuilder（而非 Godot 内置默认）」的**代理**；实测 **Godot 内置默认主题的 `Button.normal` 也是 `StyleBoxFlat`**
+  ⇒ 该代理**从来没有判别力**，只是恰好一直为真。B8 把 normal 换成 `StyleBoxTexture` 后它才变红（本次唯一一次 b1 失败）。
+  改用**真判别器** `content_margin == ThemeBuilder.CONTENT_MARGIN_H`（我们 8 / 内置默认 4），且该值对扁平与贴图两种盒子**都成立**
+  ⇒ 以后在两者间切换素材，这条断言既不假红也不假绿。另测：`theme.has_stylebox(...)` **也不能**当判别器（内置默认同样为 `true`）
+- 授权偏离（控制器认可）：`OptionButton` 也套按钮贴图（任务原文只点名 `Button`）—— 创建界面 7 个下拉框是最显眼控件，
+  只给 `Button` 贴图会当场不一致；若要撤销删 3 行即可
+- 有意不接的 5 件（**因此没有写进清单，避免死旋钮**）：`panel_bg` / `frame_horizontal` / `frame_vertical` / `emblem_ring` /
+  `panel_slot` / `button_close` —— 需要真实布局落点（`PanelContainer` 包裹等）会新增布局分支、打掉 B1 的反返工断言 ⇒ 归 03b 界面改版
+- B8: 残余/未验证：① **视觉观感未验**（无头环境看不到像素）：按钮贴图与文字贴合度、8px 滚动条里 grabber 压缩观感、
+  禁用态是否够暗 ⇒ **待人类目视确认**（观感调只改 `nine_patch`，**零代码**）；② `[theme_audio]` 有一条既有断言
+  （「缺 `fonts.body` ⇒ 用内置字号回退」）在真实清单上**恒真**（16==16），属既有测试强度问题，未修（范围外，已登记）
+- 状态：**B8 complete**（`cdddb98`）⇒ **03a-P 的功能面全部收口**（剩 03b 界面改版才需要的 5 件切片）

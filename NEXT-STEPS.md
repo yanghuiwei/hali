@@ -1,7 +1,7 @@
 # 下一步待办 · 哈利·波特·魔法纪元
 
 > 用途：换机器/换会话后接手**第一份**要读的执行清单（配合 `HANDOFF.md`）。HANDOFF 讲「现状与铁律」，本文件讲「接下来做什么、按什么顺序、验收标准是什么」。
-> 最后更新：2026-09-20（**计划 03a「派系与政治骨架」Tasks 1–13 与计划 03a-P「表现层与素材接线」P1–P5 均已完成并合入 `main`**；人类裁定启用**快跑模式**（见 §0A）；素材线 B6 已完成（CJK 字体 + OFL 原文 + 13 张切片已入库，中文界面已可读），剩 §B8。）
+> 最后更新：2026-09-20（**计划 03a（Tasks 1–13）与 03a-P（P1–P5 + B8）均已完成并合入 `main`**；素材线已全部入库（CJK 字体 + OFL 原文 + 13 张切片），中文界面已可读、按钮/输入框/滚动条已换用切片贴图；人类裁定启用**快跑模式**（见 §0A）。**下一步 = §B7：03b 经济骨架 / 03c 社会与法律**。）
 > 维护规则：每完成一项就在方框里打勾并补上提交哈希；**换机器前必须回来更新本文件**。
 
 ---
@@ -143,7 +143,7 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
 
 ## B. 队列 B —— 计划 03a / 03a-P（**均已完成**）与下一步
 
-> ⚖️ **状态（2026-09-20）**：计划 03a（Tasks 1–13）与 03a-P（P1–P5）**均已完成并合入 `main`**；素材线 **B6 已完成**（剩 §B8 切片接进主题）。
+> ⚖️ **状态（2026-09-20）**：计划 03a（Tasks 1–13）与 03a-P（P1–P5 + **B8**）**均已完成并合入 `main`**；素材线 **B6 / B8 均已完成**。
 > **恢复第一件事**：读 `docs/sdd/plan-03a-factions/progress.md`（耐久台账）+ 本节 + §0A（快跑模式）。
 
 - [x] **B3 计划 03「派系与政治经济」启动** —— 已拆为 03a/03b/03c；**03a 已完成 Tasks 1–13**
@@ -180,8 +180,15 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
     ② 合完跑 `--import` → `git add` 新生成的 `.import` → `bash tools/test.sh`（**21 套件 / 1985 断言**、噪音计数 2/7）
   - 完整流程与校验命令写在 `docs/sdd/plan-03a-P/assets-agent-repair-prompt.md` 文末（该文件也记录了**执行者用 PowerShell 弄坏 worktree 引用**的事故与修法）
   - 缺口清单与验收标准：`HANDOFF.md` §8#72（✅ 已闭合）
-- [ ] **B8 P5b：把 13 张 UI 切片接进主题** —— 🔄 **进行中**（worker run `52643b43-9a22-4dc8-86e6-94e5f3c20416`，BASE `main@06913c1`）
-  - 先 `git log --oneline -6`：有 `B8(P5b)` 提交 ⇒ 已完成，按「每任务收尾清单」复核（`test.sh` + `b1` + 噪音计数 + 读 diff）后推送；没有 ⇒ 按下面规格重派
+- [x] ✅ **B8 P5b：把 UI 切片接进主题（已完成 2026-09-20，提交 `cdddb98`）** —— `Button`+`OptionButton` 四态 ← `ui.button_*`；
+  `LineEdit` ← `ui.textfield`；`VScrollBar`/`HScrollBar` ← `ui.scrollbar_*`；**缺键逐键独立回退**。
+  门禁：`test.sh` EXIT=0（1985→**2023** 断言）· `b1` EXIT=0 / **151** 断言 · 噪音计数 2 与 7。
+  ✅ 顺手修掉一条**既有假绿**（`is StyleBoxFlat` 当「样式来自 ThemeBuilder」的代理 —— 引擎内置默认也是 `StyleBoxFlat`）
+  ✅ 九宫格边距**全部来自实测 alpha 帽厚**（不是猜）；两条「布局无回归」实测证据（最小尺寸差异 0.0）
+  ⏳ **待人类目视确认**：按钮贴图与文字贴合度、8px 滚动条里 grabber 压缩观感、禁用态是否够暗（调观感只改 `nine_patch`，**零代码**）
+  - 有意**未接**且**未写进清单**的 6 件：`panel_bg` / `frame_horizontal` / `frame_vertical` / `emblem_ring` / `panel_slot` / `button_close`
+    —— 需要真实布局落点（`PanelContainer` 包裹等）⇒ 归 **03b 界面改版**（写进清单而无人消费 = 死旋钮）
+  - （下面保留当时派发的规格，供追溯）
   - 实测切片尺寸（供边距决策）：`assets/ui/` 下 `panel_bg` 244×366 · 按钮四态 160×44 · `textfield` 134×28 · `scrollbar_bg` 36×134 / `grab` 30×48 · `frame_horizontal` 224×33 / `vertical` 33×141 · `emblem_ring` 80×80 · `panel_slot` 42×42 · `button_close` 60×58 · `button_neutral` 160×44
   - **做法（不新增布局分支）**：`ThemeBuilder` 里按「清单有没有 `ui.<键>`」切换样式来源 —— 有则用 `AssetSlots.stylebox_for()` 造 `StyleBoxTexture`，无则沿用现有 `StyleBoxFlat`（`stylebox_for` 早已实现且有断言覆盖）
   - 需要真实布局落点的（`panel_bg` / `frame_*` / `emblem_ring` / `panel_slot`）**先只给按钮/文本框/滚动条加清单行**，或留到 03b 的界面改版一起做
@@ -262,5 +269,4 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
 | 计划 02 计划 / spec / 台账 | `docs/superpowers/plans/2026-09-19-...-02-llm-narrative.md` / `docs/superpowers/specs/2026-09-19-...-02-llm-narrative-design.md` / `docs/sdd/plan-02-llm-narrative/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎）；**自带 stderr 噪音门禁**（`SCRIPT ERROR`==2 且 `ERROR:`==7，不符即 `1`；常量 `EXPECTED_*` 可覆盖） |
 | 正典规格 | `哈利·波特·魔法纪元.md`（仓库根，勿移动改名） |
-| 下一步第一件事 | **§B8 P5b**（**进行中**，worker run `52643b43-9a22-4dc8-86e6-94e5f3c20416`）：把 UI 切片接进主题（`ThemeBuilder` 按清单键切换样式来源，**不新增布局分支**）。
-先 `git log --oneline -6` 看有没有 `B8(P5b)` 提交：有则复核后推送，无则按 §B8 重派。然后 **§B7**：开新分支做 03b 经济 / 03c 社会与法律 |
+| 下一步第一件事 | **§B7：开新分支做 03b 经济骨架 / 03c 社会与法律**（边界照 03a spec §14）。先读 `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` §14 |

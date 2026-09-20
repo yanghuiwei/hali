@@ -14,7 +14,7 @@
 
 【先做体检】
 git fetch origin && git status -sb          # 期望：干净。⚠️ 仓库根可能有**外来**未跟踪文件（如 .workbuddy/），不算失败，别删别提交
-bash tools/test.sh                          # 期望：EXIT=0；21 套件 / 1985 断言 / 失败 0；4 步全过
+bash tools/test.sh                          # 期望：EXIT=0；21 套件 / 2023 断言 / 失败 0；4 步全过
 timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 失败（会临时移走 llm_settings.json 并逐字还原）
 
 `tools/test.sh` **自带 stderr 噪音门禁**：`SCRIPT ERROR` 必须 == 2 **且** `^ERROR:` 必须 == 7，不符即 `EXIT=1`。
@@ -31,18 +31,20 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 �
    - `docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`（表现层与素材契约；§2 有 🔒 接口冻结）
 
 【现状（一句话）】
-计划 01 / 02 / **03a（派系与政治骨架，Tasks 1–13）** / **03a-P（表现层与素材接线，P1–P5）** 均已完成并合入 `main`。
-素材已入库：**CJK 正文字体**（霞鹜文楷；中文界面已可读，`FontFile.has_char()` 实测 PASS）+ 4 份 OFL 官方原文
-+ `interface.psd` 切出的 **13 张 UI 切片** + `assets/icons/ICON-MEANINGS.md`（图标语义核定）。
+计划 01 / 02 / **03a（派系与政治骨架，Tasks 1–13）** / **03a-P（表现层与素材接线，P1–P5 + B8）** 均已完成并合入 `main`。
+素材已全部入库：**CJK 正文字体**（霞鹜文楷；中文界面已可读，`FontFile.has_char()` 实测 PASS）+ 4 份 OFL 官方原文
++ `interface.psd` 切出的 **13 张 UI 切片**（其中 7 个键已接进主题：按钮四态 / 输入框 / 滚动条）+ 图标语义核定。
+⇒ **现在可以直接跑窗口程序看效果**：`./Godot_v4.7.2-stable_win64_console.exe --path .`
+（要观测界面文本用 `HALI_DEBUG_LOG=1` 前缀；有两处**待目视确认**：按钮贴图与文字的贴合度、滚动条 grabber 观感。）
 
 【接下来做什么】
-A. **§B8（P5b）：把 UI 切片接进主题** —— 状态：**进行中**（worker run `52643b43-9a22-4dc8-86e6-94e5f3c20416`）。
-   先 `git log --oneline -6` 看有没有 `B8(P5b)` 的提交：
-   - **有** ⇒ 已完成：按「每任务收尾清单」复核（`test.sh` + `b1` + 噪音计数 + 读 diff）后推送，然后进 B
-   - **没有** ⇒ 等它 / 按 `NEXT-STEPS.md` §B8 的规格重派
-B. **§B7：下一批主线** —— **03b 经济骨架** / **03c 社会与法律**（边界照 03a spec §14）。**开新分支**做。
+A. **§B7：下一批主线** —— **03b 经济骨架** / **03c 社会与法律**（边界照 03a spec §14）。**开新分支**做。
+B. **人类目视验收（顺手可做）**：跑窗口程序看主题与中文字体效果（无头环境看不到像素）——
+   两处已登记待确认：按钮贴图与文字贴合度、8px 滚动条里 grabber 压缩观感、禁用态是否够暗。
+   **调观感只需改 `data/presentation.json` 的 `nine_patch`，零代码。**
 C. 仍挂账（**不阻塞**）：短音效 SFX / 环境音素材 · `bg_main.ogg` 时长异常（211.88s vs 原 309.09s，人类自行替换）·
-   存档格式 v2 批次（`§8#26`/`#47`/`#19`/`#49` + `#71` 读档 `house_id` 归一化）· B2 真机 LLM 联调（人类已裁定暂不做）
+   存档格式 v2 批次（`§8#26`/`#47`/`#19`/`#49` + `#71` 读档 `house_id` 归一化）· B2 真机 LLM 联调（人类已裁定暂不做）·
+   `panel_bg` / `frame_*` / `emblem_ring` / `panel_slot` / `button_close` 这 6 件切片待 03b 界面改版落地
 
 【流程：快跑模式（人类 2026-09-20 裁定；别自创，也别偷偷恢复旧仪式）】
 每任务 = 抽 brief（可内联进 dispatch，不必单独写长文件）→ 派 worker（**与主会话同模型**）实现 → 自跑到绿 →
