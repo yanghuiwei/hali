@@ -1259,7 +1259,7 @@ Expected: 失败（`compute_tension` 等未定义；`political_events` 表缺失
 			errors.append("%s: 缺少 condition" % where)
 ```
 
-`src/rules/factions.gd`：把 `evolve()` 的 `return []` 替换为：
+`src/rules/factions.gd`：把 `evolve()` 的 `return []` 替换为（**含末尾的数值量化**，理由见下方 ⚠️）：
 
 ```gdscript
 	world.flags[GOVERNMENT_FLAG] = government_type(world)
@@ -1268,8 +1268,43 @@ Expected: 失败（`compute_tension` 等未定义；`political_events` 表缺失
 	var picked := pick_political_event(world)
 	if not picked.is_empty():
 		events.append(picked)
+	quantize_state(world)
 	return events
 ```
+
+⚠️ **数值量化（2026-09-20 Task 5 实跑新增，控制器已并入计划）**：接上演化后，`[save]` 的既有不变量
+`a.eq(w3r.to_dict(), w3.to_dict(), "读档后重建引擎续跑：世界状态一致")` 会变红 —— 根因**不是** key 顺序，
+而是 **1 ULP**（`0.21739610501640022` 存盘文本逐字正确、解析回来变 `0.21739610501640025`，差 `-2.78e-17`），
+即计划 02 登记的 `§8#50`（`full_precision` 不保证 double 逐位往返）被回归+噪声产生的连续长尾浮点**新触发**。
+若不管它，「存档往返逐字一致」这条计划 01 的设计不变量就实际失效。因此本计划要求：
+
+```gdscript
+const QUANTIZE_DECIMALS := 4        # 玩法精度：面板只显示 2 位小数；4 位远超需求
+
+# 幂等量化：把长尾浮点压到 4 位小数，保证存档文本短且 JSON 往返稳定（§8#50 的触发面收窄）。
+static func quantize(value: float) -> float:
+	var factor := pow(10.0, QUANTIZE_DECIMALS)
+	return roundf(value * factor) / factor
+
+static func quantize_state(world: WorldState) -> void:
+	for fid in world.factions.keys():
+		var st = world.factions[fid]
+		if typeof(st) != TYPE_DICTIONARY:
+			continue
+		if (st as Dictionary).has("power"):
+			(st as Dictionary)["power"] = quantize(float((st as Dictionary)["power"]))
+		var control = (st as Dictionary).get("control", {})
+		if typeof(control) == TYPE_DICTIONARY:
+			for inst in (control as Dictionary).keys():
+				(control as Dictionary)[inst] = quantize(float((control as Dictionary)[inst]))
+	if world.flags.has(TENSION_FLAG):
+		world.flags[TENSION_FLAG] = quantize(float(world.flags[TENSION_FLAG]))
+```
+
+**注意**：这只是**收窄** `§8#50` 的触发面，**不是**修掉它 —— 存档 v2（float 字符串化 / 定点编码）仍登记为独立议题（见
+`HANDOFF §8#50`）。量化只用于「写入持久化的游戏数值」，不得用于中间计算（`power_share` 等仍按量化后的值计算，
+因为那是持久状态本身）。`quantize_state()` 必须幂等（对已量化的值再量化不得改变它），且**不得**用量化掩盖随机性或
+舍入方向（`roundf` 是确定性的）。
 
 并追加：
 
@@ -1359,10 +1394,10 @@ static func apply_rumor_reveals(world: WorldState, _events: Array) -> void:
 
 ```gdscript
 	# 3) 计划 03a：传闻揭示（第四十三/五十七章）——玩家通过传闻获知秘密派系
-	WorldFactions.apply_rumor_reveals(world, events)
+	WorldFactions.apply_rumor_reveals(self, events)
 
 	# 4) 计划 03a：派系与政治演化（第十二/四十六/四十七/四十九章）
-	for political_event in WorldFactions.evolve(world):
+	for political_event in WorldFactions.evolve(self):
 		events.append(political_event)
 		log.append(political_event)
 ```
@@ -1371,6 +1406,11 @@ static func apply_rumor_reveals(world: WorldState, _events: Array) -> void:
 
 Run: `bash tools/test.sh 2>&1 | grep -E "^\[factions\]|^\[registry\]|^\[world_tick\]|总计|全部通过"`
 Expected: 全部 `失败=0`；`全部通过。`
+
+> ⚠️ **这段代码要插进 `WorldState.tick()` 内部**，那里**没有** `world` 这个局部变量（成员即 `self`）。
+> 原稿写 `WorldFactions.apply_rumor_reveals(world, events)` / `WorldFactions.evolve(world)` 会直接
+> `Identifier "world" not declared in the current scope` 编译失败（Task 5 实跑踩到，已改为 `self`）。
+> 同时**必须**给传闻事件字典补 `"rumor_id": str(picked.get("id", ""))`（Task 6 的传闻揭示依赖它）。
 
 - [ ] **Step 5: 提交**
 
