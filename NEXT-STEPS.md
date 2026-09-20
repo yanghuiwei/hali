@@ -36,7 +36,7 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 
 建议分支：`git checkout main && git checkout -b docs/plan-02-closeout`；每项完成后重跑 `bash tools/test.sh`（文档改动也应保持绿灯）再提交。
 
-- [ ] **A1 补录计划 02 耐久台账 Tasks 8–12**
+- [x] **A1 补录计划 02 耐久台账 Tasks 8–12**（`0367eb7`）
   - 现状：`docs/sdd/plan-02-llm-narrative/progress.md`（46 行）只记到 **Tasks 1–7**；Tasks 8–12 一条都没有。`.superpowers/.../progress.md`（工具工作区，被 gitignore）同样只有 1–7，所以**耐久副本真的缺**。
   - 要做：按已有 1–7 的写法补 8–12 条目（brief → worker 提交 → 绿灯断言数 → 审查结论/严重度 → 修复提交 → scoped 复审结论 → 残余）。
   - 素材：提交 `fed4767`（Task 8 `LlmGameMaster`）、`878e9e3`（Task 9 `submit_async`）、`c87959e`（Task 10 provider）、`15c1ff0`（Task 11 UI）、`a48f108`（Tasks 8–11 修复轮）、`18eaa5c`（F4 修复）、`1f82483` / `d885cf9`（Task 12 文档收尾）；报告 `task-8/9/10/11-report.md`；审查包 `review-*.diff`。
@@ -47,6 +47,8 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
   - 正文只存在于被忽略的 `.superpowers/sdd/2026-09-19-hp-magic-era-02-llm-narrative/task-811-reviewer.log`（首轮，11.7KB）与 `task-811-rereviewer.log`（复审，9.0KB）。
   - 要做：把两份 log 的**完整结论**（发现表 F1–F9、反证表、未验证清单）原样落进 `docs/sdd/plan-02-llm-narrative/`（可清理成干净 md），提交。
   - 验收：`docs/sdd/plan-02-llm-narrative/` 下有 `task-811-review.md` + `task-811-rereview.md`，内容与 log 一致且无省略。
+  - ⚠️ **核对结论（2026-09-20，在 `main` 上实测）**：两份 log **在本机不存在**，无法「原样落进」。已排除的可能位置：`.superpowers/sdd/2026-09-19-hp-magic-era-02-llm-narrative/`（目录不存在，本机 `.superpowers/sdd/` 只有计划 01 的 2026-09-18 目录）、`~/.pi/agent/sessions/--E--Hali--/subagent-artifacts/`（只有 2026-09-18 的计划 01 worker/oracle/reviewer 工件，无 09-19）、`git log --all`（从未入库）、stash（空）。**结论：文件已随旧机器丢失，`内容与 log 一致` 这条验收标准不可达**。
+  - 可行的替代（待裁定）：(a) 出**重建版**并显式标注「非 reviewer 原文」（素材：提交 `a48f108` diff、`task-811-*-brief.md`、`task-8/9/10/11-report.md`，外加可复跑的实测反证）；(b) 放弃 A2，把该缺口登记入 HANDOFF §8 后勾掉。
 
 - [ ] **A3 补记 F4 的修复与最终结论**
   - 首轮审查 6 条：F1/F5/F6（Minor，已修）、**F3 Important**（等待期按钮行未禁用，已修）、**F2**（`choices[0]` 非对象导致降级链断，已修）、**F4 Minor**（`_on_load` 里 `_build_gm()` 的「未配置 LLM」提示被下一行 `status_label.text` 覆盖）。
