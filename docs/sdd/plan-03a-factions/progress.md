@@ -349,3 +349,35 @@
   `docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`（含现状审计、素材契约、5 个 seam、5 任务草案、7 个待人类回答的问题）
   - 硬前提：**Godot 4 默认字体不含 CJK** ⇒ 全中文界面必须有 CJK 字体资产（待 headless 探针复核 `ThemeDB.fallback_font.has_char`）
 - 队列调整建议（待人类确认）：Task 12 → **03a-P（表现层素材接线，5 任务）** → Task 13 收尾合入 main；若素材先到，03a-P 可提前
+
+---
+
+## Phase 0（**非计划任务**）：首批素材落位 + 计划文本订正（2026-09-20，控制器直接执行）
+
+> 人类在 Task 11 之后的暂停期整理素材并要求"代码要能和素材串起来"。控制器把素材落位放在**所有表现层代码之前**做，
+> 因为这是唯一"现在做才便宜"的一步：素材当时**未被 Git 跟踪**，改名/剔重/转码的成本是 0；一旦入库再改就是改写历史。
+
+- **d67bbb1 `feat(assets)`** —— 素材落位（53 files，`assets/` 共 19MB）
+  - 目录 `asssets/` → **`assets/`**（人类手工改名）；音频统一进 `assets/audio/bgm/`
+  - 音频 32.4MB → 14.4MB：`FantasyWav.wav`（17.3MB 未压缩 PCM）→ `bg_fantasy_theme.ogg` 2.0MB；
+    320kbps mp3 → `bg_woodland_fantasy.ogg` 2.9MB；`DarkWinds_0.OGG` → `bg_dark_winds.ogg`（原样）；
+    主题曲 → `bg_main.ogg`（人类自行转换，控制器实测确认是**真 OGG**，未再编码）
+  - **4 个 BGM 的 `.import` 设 `loop=true`**（Godot 默认 false），实测 `AudioStreamOggVorbis.loop == true`
+  - `assets/CREDITS.md` 授权台账（机器可读总表 + CC-BY/SA/OFL 条款 + `bg_main.ogg` 版权声明）；`assets/README.md` 改为指针
+  - 删 `harry_p.zip`（与 `HARRYP__.TTF` md5 完全相同）；`.gitattributes` 补 mp3/wav/otf/psd/zip/svg/jpeg
+  - 素材原件备份在**仓库外** `E:/Hali-asset-originals/`
+  - 控制器核对：`bash tools/test.sh` → **EXIT=0 / 18 套件 / 1746 断言 / 失败 0**（素材接入未动任何既有断言）；
+    提交后重跑 `--import` → `git status` **干净**（`.import` 稳定，可安全入库）
+- **7c1b147 `docs(03a-P)`** —— 素材落位事实回写 spec（§0/§1/§3/§6/§8 订正；§8.3 的 8 条决策 → 裁定结果表；**新增 §8.4 落位执行记录 10 条实测事实**、§8.5 仍缺素材）+ NEXT-STEPS / NEXT-SESSION-PROMPT 同步
+- **b48bd76 `docs(plan-03a)`** —— **Task 12 计划文本订正**（按铁律"先改计划再改代码"，单独一次 docs 提交 + 实测依据）
+  - **实测缺陷 1（会静默假修 §8#21）**：`data/wand_cores.json` 的 `rarity` 是**字符串标签** `"common"/"rare"`，
+    实测 `float("common")==0.0` ⇒ 计划原文 `stream_pick_weighted(..., "rarity")` 总权重恒为 0 ⇒ 回退均匀 ⇒ **未生效**，
+    而 Step 1 自带断言（只测 weight=0 / 全零 / 空表）**抓不到**。实测对照（6000 次）：`weight=6/1` → common 各 ≈1700 / rare 各 ≈283；
+    `"rarity"` → 六条各 ≈1000（完全均匀）。正解：给每条加数值 `weight`（common=6/rare=1），调用改 `"weight"`，并补分布断言。
+  - **实测缺陷 2（类型陷阱）**：字面 `null` 赋给 `Dictionary` 是**解析期错误**（`Cannot assign a value of type "null" as "Dictionary"`）
+    ⇒ 明确禁止给 `stream_pick_weighted` 加 `-> Dictionary` 返回标注（空表返回 null）。
+  - 另补警告：`stream_pick` 用 `randi_range`、`stream_pick_weighted` 用 `randf` ⇒ 同名流**消耗方式变了**
+    ⇒ `[creation]/[world_tick]/[save]` 里依赖固定种子的期望值都会变（**改期望值，不许放宽断言**）。
+  - 顺手修 Plan Task 12 的两处纪律问题：Step 4 的 `b1_acceptance.sh` 补外部 `timeout 300`；Step 5 的 `git add` 补 `data/wand_cores.json`。
+- **仍缺（阻塞 P3/P5，不阻塞 P1/P2/P4）**：① **CJK 正文字体**（必须全字集、不能子集化）② `interface.psd` 切片 PNG
+- **待人类确认**：`bg_main.ogg` 时长 211.88s vs 原始 mp3 309.09s（ffprobe）——**少了 97 秒**；若非有意剪辑需重转
