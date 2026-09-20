@@ -980,7 +980,20 @@ git commit -m "feat(factions): 玩家所属/立场与加入退出 op + 守卫与
 	a.is_true(WorldFactions.power_of(press, "death_eaters") < before_weak, "敌对强者压制弱者")
 	a.is_true(WorldFactions.power_of(press, "death_eaters") >= WorldFactions.SUPPRESS_FLOOR - 0.0001,
 		"压制有下限，不会归零")
+
+	# 非对称声明：只有字典序较大的一方声明敌对，也必须生效（I1 回归；真实内容里 black_market 单方声明 auror_office）
+	var asym := make_world("modern")
+	WorldFactions.ensure_state(asym, "auror_office")["power"] = 0.90
+	WorldFactions.ensure_state(asym, "black_market")["power"] = 0.60
+	var asym_before := WorldFactions.power_of(asym, "black_market")
+	WorldFactions.apply_rival_pressure(asym)
+	a.is_true(WorldFactions.power_of(asym, "black_market") < asym_before,
+		"非对称敌对声明（black_market 单方声明 auror_office）也必须被处理")
+	a.is_true(WorldFactions.power_of(asym, "auror_office") > 0.90,
+		"非对称敌对的胜者也获得收益")
 ```
+
+> 上面那条非对称回归用例是 **Task 4 审查 I1 的回归护栏**：旧实现（`oid <= id`）下它是唯一会红的断言。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -1023,14 +1036,25 @@ static func structure_pull(world: WorldState, faction_id: String) -> float:
 		_:
 			return 0.0
 
-# 敌对压制：对每一对 rivals（按 id 排序只算一次），强者压低弱者、自己小幅获益
+# 敌对压制：对每一对 rivals 只处理一次（**无向对**语义，与哪一方声明无关），强者压低弱者、自己小幅获益。
+# 注意：内容表的 `rivals` 是**非对称**的（黑市视傲罗为敌，傲罗的主要敌人却是食死徒），
+# 因此去重必须按「无向对键」——用 `oid <= id` 会把「只有字典序较大的一方声明」的敌对对静默丢弃
+# （实测 11 个已声明敌对对中有 5 个被丢，见 Task 4 审查 I1）。
 static func apply_rival_pressure(world: WorldState) -> void:
+	var seen: Dictionary = {}
 	for fid in world.registry.ids("factions"):
 		var id := str(fid)
-		for other in (entry_of(world, id).get("rivals", []) as Array):
+		var rivals_raw = entry_of(world, id).get("rivals", [])
+		if typeof(rivals_raw) != TYPE_ARRAY:
+			continue
+		for other in (rivals_raw as Array):
 			var oid := str(other)
-			if oid <= id:
+			if oid.is_empty() or oid == id:
 				continue
+			var pair_key := id + "|" + oid if id < oid else oid + "|" + id
+			if seen.has(pair_key):
+				continue
+			seen[pair_key] = true
 			var pa := power_of(world, id)
 			var pb := power_of(world, oid)
 			if is_equal_approx(pa, pb):
@@ -1075,7 +1099,10 @@ static func evolve(world: WorldState) -> Array:
 Run: `bash tools/test.sh 2>&1 | grep -E "^\[factions\]|总计|全部通过"`
 Expected: `[factions] 断言=... 失败=0`；`全部通过。`
 
-**反证实验（spec §9.4 要求，必须贴进报告）**：把 `apply_rival_pressure()` 的调用在 `evolve()` 里注释掉，重跑 —— 「敌对强者压制弱者」那条断言必须变红；恢复后重跑变绿。把两段原始输出都贴进报告，否则视为假绿。
+**反证实验（spec §9.4 要求，必须贴进报告）**：把 `apply_rival_pressure()` 的调用在 `evolve()` 里注释掉，重跑。⚠️ **注意（2026-09-20 Task 4 实跑发现）**：本步骤原先只要求「『敌对强者压制弱者』那条断言必须变红」——**那条断言没有判别力**，注释掉压制后它照样绿。原因是现代世界里 `structure_pull(death_eaters) = +0.06` 使它的目标值只有 0.11，单靠「向目标回归」就把 0.60 拉到 0.5691（已低于起点），噪音也帮不上忙。因此在实现时必须**另加两条有判别力的用例**（见 Step 1 的「可判别压制」与「单对精确幅度」两条）：
+- 「可判别压制」用例把 `war_pressure`/`corruption` 提到 1.0（把败者目标值抬到 0.45）、败者起点设为 **0.06**（高于下限 0.05）→ 纯回归会把它**拉高**到 0.0756±noise，只有真压制才能压回起点以下并压到下限；
+- 「单对精确幅度」用例用**最小夹具**（只有两个派系互为 rivals）断言跌幅恰为 `SUPPRESS_RATE × gap`；在 17 派系真实内容表上多对叠加会改变净跌幅（实测 0.004752 ≠ 单对 0.0105），故必须隔离。
+反证时这两条必须变红；恢复后重跑变绿；两段原始输出都贴进报告，否则视为假绿。**另**：`oid <= id` 的去重缺陷（审查 I1）由 Step 1 的「非对称敌对声明」用例看护——它也必须能在旧实现下变红。
 
 - [ ] **Step 5: 提交**
 
