@@ -216,7 +216,7 @@ static func reveal(world: WorldState, faction_id: String, source: String) -> boo
 
 1. `order_resistance`：`world_vars.war_pressure >= 0.6` 且 魔法部控制权 `< 0.4` 且凤凰社 power 最高 → **凤凰社抵抗组织**（影子政府）。
 2. `death_eater_dictatorship`：`dark` 类派系对 `law_enforcement`+`wizengamot` 的控制权均值 `>= 0.6` → **食死徒独裁**。
-3. `pureblood_oligarchy`：`pureblood` 类派系 `power_share` 合计 `>= 0.45` 且魔法部控制权 `< 0.5` → **纯血寡头制**。
+3. `pureblood_oligarchy`：`pureblood` 类派系 `power_share` 合计 `>= 0.28` 且魔法部控制权 `< 0.5` → **纯血寡头制**。
 4. 否则 `ministry_bureaucracy`。
 
 优先级按 1→4 短路。结果写入 `world.flags["government_type"]`。
@@ -275,7 +275,8 @@ static func reveal(world: WorldState, faction_id: String, source: String) -> boo
 ## 13. 风险与未决
 
 1. **派系数量与「够用」的边界**：14–18 个是本计划的假设；若评审认为太少/太多，改 `data/factions.json` 即可，代码不受影响（枚举校验只需覆盖 `kind` 集）。
-2. **政体判定的阈值（0.6/0.45/0.4）是首版拍数**，需要实跑几局观察是否过于频繁/罕见；`factions_test` 用构造用例钉住逻辑，阈值调整只需改常量。
+2. **政体判定的阈值（0.6/0.28/0.26）是首版拍数**，需要实跑几局观察是否过于频繁/罕见；`factions_test` 用构造用例钉住逻辑，阈值调整只需改常量。
+   - ⚠️ **勘误（2026-09-20，人类裁定 A，实现 Task 2 时发现）**：本节原写「纯血寡头制阈值 `0.45`」与「`oligarchy_pressure` 条件里 `power_share >= 0.40`」，两者都是**算错的数**：`power_share()` 是**四角归一化**，魔法部那一角含 4 个机构、商业角含 4 个、霍格沃茨 1 个，任何单角现实上限约 1/3；纯血只有 2 个派系（power ≤ 1.0），两派拉满也只有 **0.3017**。实测：构造用例 0.3010、默认现代格局 0.1627 → 0.45/0.40 在任何合法状态下都**不可达**（该分支等于死代码）。裁定改为 **0.28**（寡头制门限：构造用例命中、默认不命中，两侧余量足）与 **0.26**（`oligarchy_pressure` 条件，仍保留 `or pureblood_influence >= 0.65` 那条内容驱动的路子）。**这是修正 spec 原意的数值笔误，不是语义变更**：语义仍是「纯血在四角中占比显著抬高 → 寡头制」。
 3. **面板把机构指标改为派系派生后，数值语义变了**（原来 `war_pressure` 冒充「法律执行」）。这可能让老玩家觉得「数字变小/变得不稳」，但这是修 bug（`§8#7`）的必要代价。
 4. **`standing` 与 `reputation` 的关系**未在本计划处理：`PlayerState.reputation` 是全局声望，`standing` 是逐派系立场。若评审希望统一，应在 03b/03c 一并裁定。
 5. **事件频率**：新增政治事件与既有传闻事件共用 `MAJOR_EVENT_GAP`，可能挤掉原有传闻（同月最多一起重大事件）。若实跑发现政治事件过于抢戏，需给两套事件分配各自的配额——本计划先用共享配额，实跑后调整。

@@ -631,7 +631,7 @@ static func government_type(world: WorldState) -> String:
 	if dark_count > 0 and (dark_sum / float(dark_count)) >= 0.6:
 		return "death_eater_dictatorship"
 	# 3) 纯血寡头：纯血权重高 + 魔法部弱（第十一章第 2 条）
-	if float(power_share(world).get("pureblood", 0.0)) >= 0.45 and power_of(world, MINISTRY_ID) < 0.5:
+	if float(power_share(world).get("pureblood", 0.0)) >= 0.28 and power_of(world, MINISTRY_ID) < 0.5:
 		return "pureblood_oligarchy"
 	# 4) 默认：官僚制（第十一章第 1 条）
 	return "ministry_bureaucracy"
@@ -1277,7 +1277,7 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
 		"economic_slump":
 			return float(v.get("economy_index", 0.6)) <= 0.35
 		"oligarchy_pressure":
-			return float(power_share(world).get("pureblood", 0.0)) >= 0.40 \
+			return float(power_share(world).get("pureblood", 0.0)) >= 0.26 \
 				or float(v.get("pureblood_influence", 0.3)) >= 0.65
 		"lawlessness":
 			return float(v.get("corruption", 0.3)) >= 0.65 \
