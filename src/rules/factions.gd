@@ -136,6 +136,15 @@ static func state_of(world: WorldState, faction_id: String) -> Dictionary:
 static func power_of(world: WorldState, faction_id: String) -> float:
 	return clampf(float(state_of(world, faction_id).get("power", 0.0)), 0.0, 1.0)
 
+# 信息保护（第四十三/五十七章）：只有 revealed 的派系对玩家可见。
+# 调用方注意：`PackedStringArray == Array` 是解析期错误，只能用 `.has(x)` 判断。
+static func visible_faction_ids(world: WorldState) -> PackedStringArray:
+	var out := PackedStringArray()
+	for fid in world.registry.ids("factions"):
+		if bool(state_of(world, str(fid)).get("revealed", false)):
+			out.append(str(fid))
+	return out
+
 # ---------- 权力四角（第十二章） ----------
 
 static func power_share(world: WorldState) -> Dictionary:

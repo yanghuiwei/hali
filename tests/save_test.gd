@@ -71,6 +71,7 @@ func run() -> int:
 		'{"save_version":null}',
 		'{"save_version":[]}',
 		'{"save_version":1,"player":{"personality":123}}',
+		'{"save_version":1,"player":{"standing":123}}',
 		'{"save_version":1,"clock":{"year":[]}}',
 	]
 	for i in malformed_payloads.size():
@@ -80,6 +81,13 @@ func run() -> int:
 		a.is_true(res.has("ok"), "畸形载荷 #%d 必须返回结构化结果（不能是空字典）" % i)
 		a.is_false(bool(res.get("ok", true)), "畸形载荷 #%d 必须被拒绝" % i)
 		a.is_true(res.get("world", null) == null, "畸形载荷 #%d 不得返回半成品世界" % i)
+
+	# 计划 03a：standing 类型错的拒绝理由必须指向 standing（否则可能是碰巧被别的分支拒了）
+	var standing_payload := '{"save_version":1,"player":{"standing":123}}'
+	var standing_crafted := "%s v1\nchecksum: %s\npayload:\n%s" % [SaveCodec.HEADER, SaveCodec.checksum(standing_payload), standing_payload]
+	var standing_res := SaveCodec.decode(standing_crafted, reg)
+	a.is_false(bool(standing_res["ok"]), "standing 非对象必须被拒")
+	a.is_true(str(standing_res["error"]).contains("standing"), "拒绝理由指向 standing：%s" % str(standing_res["error"]))
 
 	# ---- 读写槽（真实 IO，测试目录独立，避免污染正式存档） ----
 	var test_dir := "user://test_saves"
@@ -164,5 +172,18 @@ func run() -> int:
 	wc.flags["_gm_rng_counter"] = 7
 	var restored_c: WorldState = SaveCodec.decode(SaveCodec.encode(wc), reg)["world"]
 	a.eq(int(restored_c.flags.get("_gm_rng_counter", 0)), 7, "RNG 计数器存读档往返")
+
+	# ---- 计划 03a：standing 与 factions 必须往返一致 ----
+	w.player.faction_id = "ministry"
+	w.player.add_standing("ministry", 42)
+	w.flags["government_type"] = "ministry_bureaucracy"
+	var f_text := SaveCodec.encode(w)
+	var f_back := SaveCodec.decode(f_text, reg)
+	a.is_true(bool(f_back["ok"]), "含 standing 的存档可解码")
+	var f_world: WorldState = f_back["world"]
+	a.eq(f_world.player.faction_id, "ministry", "faction_id 往返一致")
+	a.eq(f_world.player.standing_of("ministry"), 42, "standing 往返一致")
+	a.eq(f_world.flags.get("government_type", ""), "ministry_bureaucracy", "政体缓存往返一致")
+	a.eq(f_world.factions.size(), 17, "factions 往返一致（17 条）")
 
 	return a.report("save")

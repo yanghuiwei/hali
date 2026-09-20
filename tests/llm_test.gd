@@ -106,6 +106,21 @@ func run() -> int:
 	a.eq(weird.ops[0]["knuts"], 0, "畸形 knuts 视为 0，不崩")
 	a.eq(weird.ops[1]["trust"], 0, "畸形 trust 视为 0，不崩")
 
+	# ---- 计划 03a：OpGuard 只允许 LLM 动 membership/standing，不允许任何 set_faction_* ----
+	var fguard := OpGuard.sanitize_detailed(gworld, [
+		{"op": "join_faction", "faction_id": "ministry"},
+		{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 999},
+		{"op": "set_faction_power", "faction_id": "ministry", "power": 1.0},
+	])
+	a.eq(fguard.ops[0]["op"], "join_faction", "join_faction 进入净化结果")
+	a.eq(int(fguard.ops[1]["delta"]), OpGuard.MAX_STANDING_DELTA, "standing 增量被钳到上限")
+	var faction_kinds := ""
+	for o in fguard.ops:
+		faction_kinds += str(o.get("op", "")) + ","
+	a.is_true(faction_kinds.contains("set_faction_power"), "未知 set_faction_* 透传给 StateOps 拒绝，不静默丢弃")
+	a.is_true(" | ".join(StateOps.apply(gworld, fguard.ops)).contains("未知操作"),
+		"StateOps 最终拒绝 set_faction_power")
+
 	# ---- LlmGameMaster ----
 	var mworld := Registry.load_default()
 	var mp := PlayerState.new_default()

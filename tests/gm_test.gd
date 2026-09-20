@@ -197,4 +197,18 @@ func run() -> int:
 	var bad_train := StateOps.apply(wt, [{"op": "train_skill", "skill_id": "不存在", "base_gain": 4}])
 	a.eq(bad_train.size(), 1, "未知技能报错")
 
+	# ---- 计划 03a：派系 op 的守卫与端到端 ----
+	var fe := StateOps.apply(w, [{"op": "join_faction", "faction_id": "nope"}])
+	a.is_true(" | ".join(fe).contains("未知派系"), "join_faction 未知 id 被拒")
+	a.eq(w.player.faction_id, "", "被拒的加入不写状态")
+	var fe2 := StateOps.apply(w, [{"op": "join_faction", "faction_id": "death_eaters"}])
+	a.is_true(" | ".join(fe2).contains("未揭示"), "未揭示的派系不能加入（第四十三/五十七章）")
+	var fe3 := StateOps.apply(w, [{"op": "join_faction", "faction_id": "ministry"}])
+	a.eq(fe3.size(), 0, "加入公开派系无错误")
+	a.eq(w.player.faction_id, "ministry", "所属写入")
+	var fe4 := StateOps.apply(w, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 5}])
+	a.eq(fe4.size(), 0, "立场调整无错误")
+	a.eq(w.player.standing_of("ministry"), 5, "立场累加")
+	a.is_true(int(WorldFactions.state_of(w, "ministry").get("stance_to_player", 0)) > 0, "派系态度反向变化")
+
 	return a.report("gm")

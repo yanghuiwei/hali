@@ -211,4 +211,42 @@ func run() -> int:
 	for gov_id in ["ministry_bureaucracy", "pureblood_oligarchy", "death_eater_dictatorship", "order_resistance"]:
 		a.is_true(reg.has("governments", gov_id), "政体 id 在内容表里：%s" % gov_id)
 
+	# ---- 玩家立场与加入/退出（Task 3） ----
+	var pw := make_world("modern")
+	WorldFactions.initialize(pw)
+	a.eq(pw.player.standing, {}, "初始无立场记录")
+	a.eq(pw.player.standing_of("ministry"), 0, "未记录即 0")
+
+	var errs := StateOps.apply(pw, [
+		{"op": "join_faction", "faction_id": "不存在的派系"},
+	])
+	a.is_true(" | ".join(errs).contains("未知派系"), "加入未知派系被拒")
+	a.eq(pw.player.faction_id, "", "被拒的加入不写状态")
+
+	errs = StateOps.apply(pw, [{"op": "join_faction", "faction_id": "death_eaters"}])
+	a.is_true(" | ".join(errs).contains("未揭示"), "未揭示的派系不能加入")
+	a.eq(pw.player.faction_id, "", "未揭示派系的加入不写状态")
+
+	errs = StateOps.apply(pw, [{"op": "join_faction", "faction_id": "ministry"}])
+	a.eq(errs.size(), 0, "加入已揭示派系无错误")
+	a.eq(pw.player.faction_id, "ministry", "所属写入")
+
+	errs = StateOps.apply(pw, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 500}])
+	a.eq(errs.size(), 0, "立场调整无错误")
+	a.eq(pw.player.standing_of("ministry"), 100, "立场钳到 100")
+	a.is_true(int(WorldFactions.state_of(pw, "ministry").get("stance_to_player", 0)) > 0,
+		"玩家立场反向影响派系对玩家的态度")
+
+	errs = StateOps.apply(pw, [{"op": "leave_faction"}])
+	a.eq(errs.size(), 0, "退出无错误")
+	a.eq(pw.player.faction_id, "", "退出后无所属")
+	a.eq(pw.player.standing_of("ministry"), 100, "退出不清立场")
+
+	# outlaw 派系：先揭示才能加入；加入成功但要留痕（正典第五十章允许，代价留 03c）
+	WorldFactions.ensure_state(pw, "death_eaters")["revealed"] = true
+	errs = StateOps.apply(pw, [{"op": "join_faction", "faction_id": "death_eaters"}])
+	a.eq(pw.player.faction_id, "death_eaters", "已揭示的 outlaw 派系可以加入")
+	a.eq(str(pw.flags.get("illegal_affiliation", "")), "death_eaters", "非法所属被记录进 flags")
+	a.is_true(" | ".join(errs).contains("非法"), "非法所属给出警告")
+
 	return a.report("factions")
