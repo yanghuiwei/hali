@@ -2300,6 +2300,7 @@ git commit -m "fix(gm): 降级原因透出 + is_async 鸭子类型 + 测试可�
 
 **Files:**
 - Modify: `src/rules/character_creation.gd`、`src/ui/main.gd`、`src/core/rng_service.gd`、`src/model/world_state.gd`（传闻加权抽取）
+- Modify: `data/wand_cores.json`（每条加数值字段 `weight`；`rarity` 保留为语义标签）
 - Test: `tests/creation_test.gd`、`tests/world_tick_test.gd`、`tools/b1_acceptance.gd`
 
 **Interfaces:**
@@ -2307,7 +2308,7 @@ git commit -m "fix(gm): 降级原因透出 + is_async 鸭子类型 + 测试可�
   - 哑炮 `house_id = "none"`（正典第七章/第二十四章：哑炮不进霍格沃茨）
   - 创建界面：姓名框默认为空 + 占位提示；新增「性别」下拉（男 / 女 / 未定），选择值进入 `choices["gender"]`
   - `RngService.stream_pick_weighted(name: String, entries: Array, weight_key: String = "weight")`
-  - `WorldState.tick()` 的传闻抽取改用 `stream_pick_weighted(..., "weight")`；`generate_wand` 的杖芯抽取改用 `stream_pick_weighted(..., "rarity")`
+  - `WorldState.tick()` 的传闻抽取改用 `stream_pick_weighted(..., "weight")`；`generate_wand` 的杖芯抽取改用 `stream_pick_weighted(..., "weight")`（**不是** `"rarity"`，见 Step 3 末尾的实测缺陷说明）
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2333,6 +2334,22 @@ git commit -m "fix(gm): 降级原因透出 + is_async 鸭子类型 + 测试可�
 	normal_choices["aptitude_id"] = "normal"
 	var normal_res := CharacterCreation.create(normal_choices, reg, RngService.new(5))
 	a.is_true(normal_res.player.house_id != "none", "非哑炮仍会入学")
+	# ---- 计划 03a（§8#21）：杖芯 rarity 必须真的生效 ----
+	# ⚠️ rarity 是字符串标签，float("common")==0.0，不能直接当权重；权重来自新增的数值字段 "weight"。
+	var core_entries: Array = []
+	for cid in reg.ids("wand_cores"):
+		core_entries.append(reg.entry("wand_cores", str(cid)))
+	var wrng2 := RngService.new(7)
+	var common_hits := 0
+	var rare_hits := 0
+	for i in 3000:
+		var picked: Dictionary = wrng2.stream_pick_weighted("wand_core_test", core_entries, "weight")
+		if str(picked.get("rarity", "")) == "rare":
+			rare_hits += 1
+		else:
+			common_hits += 1
+	a.is_true(common_hits > rare_hits * 4, "常见杖芯显著多于稀有杖芯（weight 生效；均匀时会红）")
+	a.is_true(rare_hits > 0, "稀有杖芯仍会被抽中（weight 不是硬排除）")
 ```
 
 `tests/world_tick_test.gd` 追加：
@@ -2460,26 +2477,53 @@ func stream_pick_weighted(name: String, entries: Array, weight_key: String = "we
 	var core_entries: Array = []
 	for cid in registry.ids("wand_cores"):
 		core_entries.append(registry.entry("wand_cores", str(cid)))
-	var core_entry: Dictionary = rng.stream_pick_weighted("wand_core", core_entries, "rarity")
+	var core_entry: Dictionary = rng.stream_pick_weighted("wand_core", core_entries, "weight")
 	var core_id := str(core_entry.get("id", ""))
 ```
 
-> 动手前先跑这两条确认字段名，并把输出贴进报告：
+> ⚠️ **计划原文的实测缺陷（控制器已核实，2026-09-20）——必须先改计划再改代码**：
+> `data/wand_cores.json` 的 `rarity` 是**字符串标签**（`"common"` / `"rare"`），**不是数值权重**：
+> 实测 `float("common") == 0.0`、`maxf(float("rare"), 0.0) == 0.0` ⇒ `stream_pick_weighted(..., "rarity")` 的
+> **总权重恒为 `0.0`** ⇒ 走「全零权重→回退均匀抽取」分支 ⇒ **`§8#21` 静默假修**，而 Step 1 的断言
+> （只测 `weight=0` / 全零 / 空表）**抓不到**这个假修。
+>
+> **实测对照**（`RngService.new(7)`，计划中的 6 条杖芯，6000 次抽取）：
+>
+> | 权重来源 | common（3 条） | rare（3 条） | 结论 |
+> | --- | --- | --- | --- |
+> | `weight`=6/1 | 各 ≈1700（合计 85.3%） | 各 ≈283（合计 14.7%） | ✅ 权重真生效 |
+> | `"rarity"` 字符串（计划原文） | 各 ≈1000 | 各 ≈1000 | ❌ **完全均匀 = 未生效** |
+>
+> **正解（本计划已改为这个口径）**：给 `data/wand_cores.json` 的**每一条**加数值字段 `weight`
+> （`common`=6、`rare`=1；即 3×6 + 3×1 = 21 总权重 ⇒ 稀有合计 14.3%）；调用处统一用 `"weight"`。
+> `rarity` 字段**保留**——它是给 UI / 提示词用的语义标签，不是权重。
+>
 > ```bash
-> python -c "import json;print(sorted(json.load(open('data/wand_cores.json',encoding='utf-8'))[0].keys()))"
+> python -c "import json;print([(x['id'],x['rarity'],x.get('weight')) for x in json.load(open('data/wand_cores.json',encoding='utf-8'))])"
 > python -c "import json;print(sorted(json.load(open('data/wand_woods.json',encoding='utf-8'))[0].keys()))"
 > ```
-> `wand_cores.json` 必须有 `rarity`；`wand_woods.json` 若无 `weight` 字段，则**保留原均匀抽取不动**（只改杖芯），并在报告里写明「wand_woods 无权重字段，未改」。
+> `wand_woods.json` **没有** `weight` 字段（实测只有 `id` / `label`）⇒ 传 `"weight"` 时全部走默认 `1.0`，**等价于均匀抽取**。
+> 可以照改（保持两处调用形式一致），也可以保持原 `stream_pick` 不动——**二选一，但必须在报告里写明选了哪个、为什么**。
+>
+> ⚠️⚠️ **随机流消耗会变（必须提前预期，否则会误以为“回归”）**：`stream_pick` 用 `randi_range`，
+> `stream_pick_weighted` 用 `randf` ⇒ 同名流的内部状态推进方式不同 ⇒ `wand_wood` / `wand_core` / `pick_%d`
+> **之后的一切抽取结果都会变** ⇒ `[creation]` / `[world_tick]` / `[save]` 里**依赖固定种子的期望值**会变。
+> **处置铁律**：这是“内容变了”，要改的是**期望值**；**不许**放宽/删除断言，**不许**改随机流名字去绕开。
+>
+> ⚠️ **类型陷阱（实测）**：`stream_pick_weighted` **不要**加 `-> Dictionary` 返回标注——空表时它返回 `null`，
+> 而 GDScript 对「字面 `null` 赋给 `Dictionary`」是**解析期错误**（实测 `Cannot assign a value of type "null" as "Dictionary"`）。
+> 保持无返回标注 + 调用处靠“registry 非空”这一事实即可；若想更稳，调用处用无类型局部变量并判空。
 
 - [ ] **Step 4: 验证**
 
-Run: `bash tools/test.sh 2>&1 | grep -E "^\[creation\]|^\[world_tick\]|总计|全部通过" && bash tools/b1_acceptance.sh 2>&1 | grep -E "\[FAIL\]|断言" | tail -5`
+Run: `bash tools/test.sh 2>&1 | grep -E "^\[creation\]|^\[world_tick\]|总计|全部通过" && timeout 300 bash tools/b1_acceptance.sh 2>&1 | grep -E "\[FAIL\]|断言" | tail -5`
 Expected: 单测全绿；B1 盘验失败=0（其中骰子学院一项改为断言 `none`）。
+> ⚠️ `b1_acceptance.sh` 必须带**外部** `timeout 300`（HANDOFF §4 第 12 条：探针可能死锁，bash 会直接挂死）。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add src/rules/character_creation.gd src/ui/main.gd src/core/rng_service.gd src/model/world_state.gd tests/creation_test.gd tests/world_tick_test.gd tools/b1_acceptance.gd
+git add data/wand_cores.json src/rules/character_creation.gd src/ui/main.gd src/core/rng_service.gd src/model/world_state.gd tests/creation_test.gd tests/world_tick_test.gd tools/b1_acceptance.gd
 git commit -m "fix(rules,ui): 哑炮不进霍格沃茨 + 创建界面姓名/性别 + 权重/稀有度生效（§8#69/#70/#16/#21）（计划 03a Task 12）"
 ```
 
