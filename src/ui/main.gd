@@ -29,6 +29,14 @@ var personality_edit: LineEdit = null
 var creation_error: Label = null
 var button_row: HBoxContainer = null
 
+# 计划 03a-P P5：素材槽位。**缺素材 ⇒ 不可见、不占位**（Container 跳过不可见子节点）。
+# 本轮只做「解析 + 回退」；`ui.panel_bg`/`button_*` 的九宫格套用等切片到场（见 asset_slots.gd 头注）。
+var backdrop_rect: TextureRect = null
+var logo_rect: TextureRect = null
+var assets_row: HBoxContainer = null
+var emblem_rect: TextureRect = null
+var portrait_rect: TextureRect = null
+
 # B1 人工验收用：HALI_DEBUG_LOG=1 时把界面文本镜像到 stdout（默认关闭，行为完全不变）。
 var _debug_mirror: bool = false
 
@@ -59,6 +67,7 @@ func _ready() -> void:
 	add_child(audio)
 	_build_ui()
 	_show_creation()
+	_refresh_slots()
 
 # ---- 计划 03a-P P4：音频触发点 ----
 
@@ -82,6 +91,31 @@ func _sync_bgm() -> void:
 		switched = audio.set_bgm("%s.%s" % [AudioDirector.ERA_NS, world.era_id])
 	_mirror("[音频] bgm=%s volume_db=%.1f" % [audio.current_bgm_path() if switched else "(未切)",
 		audio.bgm_volume_db()])
+
+
+# 计划 03a-P P5：刷新 4 个素材槽位。**完全数据驱动**（键名与九宫格边距都来自清单）。
+# 刷新点与 `_sync_bgm()` 一致（开局/读档/回合结束），因为这三处正是「地点/时代/学院可能变」的时刻。
+func _refresh_slots() -> void:
+	if presentation == null:
+		return
+	AssetSlots.apply_to(logo_rect, presentation, AssetSlots.SLOT_LOGO)
+	var location_id := ""
+	var era_id := ""
+	var house_id := ""
+	if world != null:
+		location_id = world.player.location_id
+		era_id = world.era_id
+		house_id = world.player.house_id
+	var backdrop := AssetSlots.backdrop_key(presentation, location_id, era_id)
+	AssetSlots.apply_to(backdrop_rect, presentation, backdrop)
+	# 先把徽记/立绘各自置好，再由「有没有任何一个可见」决定整行是否占位
+	AssetSlots.apply_to(emblem_rect, presentation, AssetSlots.house_emblem_key(house_id))
+	AssetSlots.apply_to(portrait_rect, presentation, AssetSlots.SLOT_PLAYER_PORTRAIT)
+	if assets_row != null:
+		assets_row.visible = AssetSlots.any_visible([emblem_rect, portrait_rect])
+	_mirror("[素材槽] logo=%s backdrop=%s emblem=%s portrait=%s" % [
+		str(logo_rect != null and logo_rect.visible), backdrop if not backdrop.is_empty() else "(无)",
+		str(emblem_rect != null and emblem_rect.visible), str(portrait_rect != null and portrait_rect.visible)])
 
 # §8#61：`LlmGameMaster` 的两条降级分支都往 `warnings` 追加「LLM 降级：<原因>」，
 # `TurnEngine._resolve` 把 `warnings` 并进 `op_errors`（llm_game_master.gd:73/77 + turn_engine.gd:39）。
@@ -112,10 +146,29 @@ func _mirror(text: String) -> void:
 		print(DebugMirror.format(text))
 
 func _build_ui() -> void:
+	# P5：背景槽位。直接挂在根 Control 下（**不进 `root_box`**）⇒ 不参与任何容器布局；
+	# 先于 root_box 入树 ⇒ 画在最底层；不可见时不占位也不吃鼠标。
+	backdrop_rect = TextureRect.new()
+	backdrop_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	backdrop_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	backdrop_rect.visible = false
+	add_child(backdrop_rect)
+
 	root_box = VBoxContainer.new()
 	root_box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root_box.add_theme_constant_override("separation", 6)
 	add_child(root_box)
+
+	# P5：标题 Logo 槽（在状态行上方）。`visible=false` 时 VBoxContainer 会跳过它 ⇒ 不占位。
+	logo_rect = TextureRect.new()
+	logo_rect.custom_minimum_size = Vector2(0, 48)
+	logo_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	logo_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo_rect.visible = false
+	root_box.add_child(logo_rect)
 
 	status_label = Label.new()
 	_set_status("《哈利·波特·魔法纪元》魔法世界沙盘·超高自由度人生模拟器")
@@ -125,6 +178,25 @@ func _build_ui() -> void:
 		if title_font != null:
 			status_label.add_theme_font_override("font", title_font)
 	root_box.add_child(status_label)
+
+	# P5：徽记 + 立绘共占一行。两个都缺 ⇒ 整行 `visible=false`（不占位，见 b1 的反返工断言）。
+	assets_row = HBoxContainer.new()
+	assets_row.visible = false
+	root_box.add_child(assets_row)
+	emblem_rect = TextureRect.new()
+	emblem_rect.custom_minimum_size = Vector2(32, 32)
+	emblem_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	emblem_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	emblem_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	emblem_rect.visible = false
+	assets_row.add_child(emblem_rect)
+	portrait_rect = TextureRect.new()
+	portrait_rect.custom_minimum_size = Vector2(0, 144)
+	portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait_rect.visible = false
+	assets_row.add_child(portrait_rect)
 
 	creation_box = VBoxContainer.new()
 	root_box.add_child(creation_box)
@@ -308,6 +380,7 @@ func _on_start_pressed() -> void:
 	_append("%s，%d岁。你的人生开始了。" % [world.player.name_text, world.player.age_years()])
 	_append(PanelFormatter.player_panel(world))
 	_sync_bgm()
+	_refresh_slots()
 	command_edit.grab_focus()
 
 func _personality_words() -> Array:
@@ -409,6 +482,7 @@ func _on_command_submitted(text: String) -> void:
 		if is_fallback_result(turn_result):
 			_cue("llm_fallback")
 		_sync_bgm()
+		_refresh_slots()
 	_set_status(PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn)
 
 # 单独的协程：它的失败（运行期错误使协程中止）不会阻止 _on_command_submitted 的看门狗循环（§8#62）。
@@ -488,6 +562,7 @@ func _on_load() -> void:
 	_cue("load_ok")
 	_append(PanelFormatter.player_panel(world))
 	_sync_bgm()
+	_refresh_slots()
 	command_edit.grab_focus()
 
 func _on_audit() -> void:

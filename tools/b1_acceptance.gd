@@ -214,6 +214,7 @@ func _initialize() -> void:
 	await _part11b_reentrancy(restarted)
 	await _part11c_null_engine(restarted)
 	await _part12_theme_audio(node, restarted)
+	_part13_asset_slots(node)
 
 	_part10_summary()
 	_restore_user_files()
@@ -268,6 +269,43 @@ func _part12_theme_audio(node: Node, restarted: Node) -> void:
 	check(quiet == 8, "8 个 cue 在无 sfx 素材时全部静音返回 false（实际 %d/8）" % quiet)
 	check(audio.cue_ids_seen().size() >= 6, "本次会话共触发过至少 6 个不同 cue（实际 %d）" % audio.cue_ids_seen().size())
 	note("观察（P3/P4）：主题取自 data/presentation.json；BGM=%s；cue 全部接上但无 sfx 素材⇒静音" % audio.current_bgm_path())
+
+# 清单 13（计划 03a-P P5）：素材槽位 —— 缺素材必须「不可见 + 不占位 + 不崩」。
+# 本轮真实素材（UI 切片 / 背景 / 徽记 / 立绘）**都还没到**，所以这里钉的正是「没素材时的行为」：
+# 既是回退契约的证据，也是「加槽位没有偷偷改布局」的反返工断言。
+func _part13_asset_slots(node: Node) -> void:
+	part("清单 13 · 素材槽位：缺素材不可见、不占位（计划 03a-P P5）")
+	for slot in ["logo_rect", "backdrop_rect", "emblem_rect", "portrait_rect"]:
+		var rect: TextureRect = node.get(slot)
+		check(rect != null, "槽位控件 %s 存在" % slot)
+		if rect != null:
+			check(not rect.visible, "无对应素材 ⇒ %s 不可见" % slot)
+			check(rect.texture == null, "无对应素材 ⇒ %s 没设贴图（不留旧图）" % slot)
+	var row: Control = node.get("assets_row")
+	check(row != null and not row.visible, "徽记/立绘都缺 ⇒ 整行不占位")
+	var root_box: VBoxContainer = node.get("root_box")
+	if root_box != null:
+		var slots_in_root: Array = [node.get("logo_rect"), node.get("assets_row")]
+		var visible_total := 0
+		var visible_slot := 0
+		for child in root_box.get_children():
+			if child is CanvasItem and (child as CanvasItem).visible:
+				visible_total += 1
+				if slots_in_root.has(child):
+					visible_slot += 1
+		# 反返工的核心口径：**槽位一个可见子节点都不贡献** ⇒ 容器布局与加槽位前逐像素一致
+		check(visible_slot == 0, "反返工：槽位没有贡献任何可见子节点（实际 %d）" % visible_slot)
+		# 具体数字说明当前状态：本 Part 在第一实例上跑（已开局）⇒ 可见的是状态行 + 对局区，
+		# 创建区已被 `creation_box.visible=false` 隐藏。数字变了不是坏事，是提醒你看一眼布局。
+		check(visible_total == 2, "反返工：可见子节点仍为 2（状态行 + 对局区；创建区开局后隐藏）—— 实际 %d" % visible_total)
+		check(root_box.get_child_count() == 5, "root_box 共 5 个子节点（3 原有 + 标题 Logo 槽 + 徽记/立绘行）")
+	check(root_box != null, "拿得到 root_box")
+	var backdrop: TextureRect = node.get("backdrop_rect")
+	check(backdrop != null and backdrop.get_parent() == node, "背景槽挂在根节点下（不参与 root_box 布局）")
+	check(backdrop != null and backdrop.mouse_filter == Control.MOUSE_FILTER_IGNORE, "背景槽不吃鼠标事件（不撞输入框）")
+	check(AssetSlots.stylebox_for(node.get("presentation"), "ui.panel_bg") == null,
+		"真实清单还没有 ui.panel_bg ⇒ stylebox_for 返回 null（切片到场后只需加一行清单）")
+	note("观察（P5）：4 个槽位在素材缺失时全部不可见；槽位贡献的可见子节点 = 0（与加槽位前一致）")
 
 # 清单 1：窗口/创建界面
 func _part1_creation_ui(node: Node) -> void:
