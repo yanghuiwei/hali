@@ -22,6 +22,7 @@ const SUITES: Array[String] = [
 	"res://tests/prompt_test.gd",
 	"res://tests/debug_mirror_test.gd",
 	"res://tests/factions_test.gd",
+	"res://tests/presentation_test.gd",
 ]
 
 func _initialize() -> void:
