@@ -7,7 +7,7 @@
 ---
 
 ```text
-项目 E:/Hali（Godot 4.7.2 stable，Windows + Git Bash）。当前分支 plan-03-factions（已推送，HEAD=08228df，尚未合入 main）。
+项目 E:/Hali（Godot 4.7.2 stable，Windows + Git Bash）。当前分支 plan-03-factions（已推送，**尚未合入 main**；顶端以 `git log --oneline -1` 为准）。
 
 【先做体检】
 git fetch origin && git status -sb          # 期望：干净（工作区里可能有未跟踪的 asssets/，那是待处理的素材）
