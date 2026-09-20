@@ -260,16 +260,26 @@ func run() -> int:
 	for fid in e1.registry.ids("factions"):
 		a.near(WorldFactions.power_of(e1, str(fid)), WorldFactions.power_of(e2, str(fid)), 0.0000001,
 			"%s 实力演化可复现（同 seed）" % str(fid))
-	# 逐字段对比：整个 factions 字典（power / control / revealed / stance_to_player / last_change_turn / notes）
+	# 逐字段对比（M2 修复轮 1：原先的 compared_fields/expected_fields 是同源算术互证，已改成真逐字段遍历）：
+	# 遍历 17 派系的实际键集（power / control / revealed / stance_to_player / last_change_turn / notes），
+	# 逐键用类型严格的 != 比较并把差异收集成列表，最后断言差异为 0；JSON 整体序列化作为冗余护栏。
 	var compared_fields := 0
-	var expected_fields := 0
+	var mismatches: Array[String] = []
 	for fid in e1.registry.ids("factions"):
 		var st1: Dictionary = WorldFactions.state_of(e1, str(fid))
-		compared_fields += 1 + (st1.get("control", {}) as Dictionary).size() + 4
-		expected_fields += 5 + (e1.registry.entry("factions", str(fid)).get("institutions", []) as Array).size()
-	a.eq(compared_fields, expected_fields, "确定性对比逐字段覆盖 5 + 机构数 个字段/派系（共 %d）" % expected_fields)
+		var st2: Dictionary = WorldFactions.state_of(e2, str(fid))
+		var keys: Array = st1.keys().duplicate()
+		for key in st2.keys():
+			if not keys.has(key):
+				keys.append(key)
+		for key in keys:
+			compared_fields += 1
+			if st1.get(key, null) != st2.get(key, null):
+				mismatches.append("%s.%s" % [str(fid), str(key)])
+	a.eq(compared_fields, 102, "逐字段对比实际遍历 102 个字段（17 派系 × 6 键）")
+	a.eq(mismatches.size(), 0, "同 seed 双世界逐字段全等（差异字段：%s）" % str(mismatches))
 	a.eq(JSON.stringify(e1.factions), JSON.stringify(e2.factions),
-		"同 seed 双世界的 factions 字典整体逐字段一致（%d 字段）" % compared_fields)
+		"同 seed 双世界的 factions 字典整体序列化一致（冗余护栏，%d 字段）" % compared_fields)
 	a.eq(str(e1.flags.get(WorldFactions.GOVERNMENT_FLAG, "")), WorldFactions.government_type(e1),
 		"演化后政体缓存与本回合推导一致")
 	a.is_true(e1.registry.has("governments", str(e1.flags[WorldFactions.GOVERNMENT_FLAG])),
@@ -300,21 +310,32 @@ func run() -> int:
 	a.is_true(WorldFactions.power_of(press, "death_eaters") >= WorldFactions.SUPPRESS_FLOOR - 0.0001,
 		"压制有下限，不会归零")
 
-	# 可判别的压制用例：brief 原用例里「向目标回归」本身就会把败者拉低 0.0196 + 噪音 -0.0113 = -0.0309，
-	# 即使刪掉压制也仍会低于起点 → 无判别力。这里改成「回归把败者拉高、压制把它压回起点以下」的格局
-	# （war/corruption 拉高黑暗势力的目标值，败者起点高于 SUPPRESS_FLOOR），使「压制未接线」时该断言必红。
+	# 非对称声明：只有字典序较大的一方声明敌对，也必须生效（I1 回归；真实内容里 black_market 单方声明 auror_office）
+	var asym := make_world("modern")
+	WorldFactions.ensure_state(asym, "auror_office")["power"] = 0.90
+	WorldFactions.ensure_state(asym, "black_market")["power"] = 0.60
+	var asym_before := WorldFactions.power_of(asym, "black_market")
+	WorldFactions.apply_rival_pressure(asym)
+	a.is_true(WorldFactions.power_of(asym, "black_market") < asym_before,
+		"非对称敌对声明（black_market 单方声明 auror_office）也必须被处理")
+	a.is_true(WorldFactions.power_of(asym, "auror_office") > 0.90,
+		"非对称敌对的胜者也获得收益")
+
+	# 可判别压制用例（M5 修复轮 1：删掉与 seed 挂钩的「< 起点」那一条，只留与 seed 无关的下限断言）：
+	# war/corruption 拉高黑暗势力目标值（0.45），败者起点 0.06 高于 SUPPRESS_FLOOR。
+	# 为何删「< 起点」：纯回归值 = 0.06 + (0.45-0.06)*0.04 + noise = 0.0756 + noise，
+	# 要它在「无压制」时仍 ≥ 起点需 noise > -0.0156——只差 0.0043 的余量，换 seed / 改 EVOLVE_NOISE 就会退化成恒真。
+	# 为何「按到下限」与 seed 无关：death_eaters 在真实内容表里同时是 4 对的败者（ministry/auror_office/
+	# order_of_phoenix/hogwarts），四对合计压制 ≈ 0.09 ≫ noise 带宽 ±0.02 → 必被压到下限。
 	var press2 := make_world("modern")
 	WorldFactions.initialize(press2)
 	press2.world_vars["war_pressure"] = 1.0
 	press2.world_vars["corruption"] = 1.0
 	WorldFactions.ensure_state(press2, "ministry")["power"] = 0.95
 	WorldFactions.ensure_state(press2, "death_eaters")["power"] = 0.06
-	var press2_before := WorldFactions.power_of(press2, "death_eaters")
 	WorldFactions.evolve(press2)
-	a.is_true(WorldFactions.power_of(press2, "death_eaters") < press2_before,
-		"可判别：回归本会把败者拉高，压制把它压回起点以下")
 	a.near(WorldFactions.power_of(press2, "death_eaters"), WorldFactions.SUPPRESS_FLOOR, 0.0001,
-		"压制把败者按到下限，不会归零")
+		"压制把败者按到下限，不会归零（与 seed 无关）")
 
 	# 直接调用压制函数（无回归/无噪音）：用**只有两个派系、互为 rivals** 的最小夹具隔离单对，幅度必须恰好
 	# 等于 SUPPRESS_RATE × 实力差。（在 17 派系的真实内容表上会同时处理多对，net 跌幅不等于单对幅度。）
@@ -362,6 +383,9 @@ func run() -> int:
 	var half_state := WorldFactions.ensure_state(half, "ministry")
 	a.near(float(half_state.get("power", -1.0)), 0.75, 0.0001, "clock 为 null 时 ensure_state 仍能建出状态")
 	a.eq(int(half_state.get("last_change_turn", -1)), 0, "clock 为 null 时 last_change_turn 兜底为 0")
+	# M3 修复轮 1：evolve() 也必须对 null registry / null clock 早退（旧实现紧接着读 world.clock.turn 会崩）
+	a.eq(WorldFactions.evolve(naked).size(), 0, "裸世界调用 evolve 返回空数组（早退，不崩）")
+	a.eq(WorldFactions.evolve(half).size(), 0, "registry 齐但 clock 为 null 时 evolve 也早退（不读 clock.turn）")
 
 	# ---- Task 2 审查 Minor 3：institutions/rivals/allies 必须补数组类型守卫 ----
 	var bad_inst_type_entry := base_entry.duplicate(true)

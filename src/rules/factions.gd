@@ -228,14 +228,25 @@ static func structure_pull(world: WorldState, faction_id: String) -> float:
 		_:
 			return 0.0
 
-# 敌对压制：对每一对 rivals（按 id 排序只算一次），强者压低弱者、自己小幅获益
+# 敌对压制：对每一对 rivals 只处理一次（**无向对**语义，与哪一方声明无关），强者压低弱者、自己小幅获益。
+# 注意：内容表的 `rivals` 是**非对称**的（黑市视傲罗为敌，傲罗的主要敌人却是食死徒），
+# 因此去重必须按「无向对键」——用 `oid <= id` 会把「只有字典序较大的一方声明」的敌对对静默丢弃
+# （实测 11 个已声明敌对对中有 5 个被丢，见 Task 4 审查 I1）。
 static func apply_rival_pressure(world: WorldState) -> void:
+	var seen: Dictionary = {}
 	for fid in world.registry.ids("factions"):
 		var id := str(fid)
-		for other in (entry_of(world, id).get("rivals", []) as Array):
+		var rivals_raw = entry_of(world, id).get("rivals", [])
+		if typeof(rivals_raw) != TYPE_ARRAY:
+			continue
+		for other in (rivals_raw as Array):
 			var oid := str(other)
-			if oid <= id:
+			if oid.is_empty() or oid == id:
 				continue
+			var pair_key := id + "|" + oid if id < oid else oid + "|" + id
+			if seen.has(pair_key):
+				continue
+			seen[pair_key] = true
 			var pa := power_of(world, id)
 			var pb := power_of(world, oid)
 			if is_equal_approx(pa, pb):
@@ -254,6 +265,10 @@ static func apply_rival_pressure(world: WorldState) -> void:
 # 单回合演化：就地更新 world.factions / world.flags，返回事件数组（结构与 tick 的 events 一致；本任务恒空）。
 # 随机数全部走命名流，保证同 seed + 同回合 ⇒ 同结果。
 static func evolve(world: WorldState) -> Array:
+	# M3（Task 4 审查修复轮 1）：与 initialize() 同样早退——否则紧接着的 world.clock.turn 会在
+	# 裸世界 / 畸形载荷（registry 或 clock 为 null）上直接崩。
+	if world == null or world.registry == null or world.clock == null:
+		return []
 	initialize(world)
 	var rng := RngService.new(world.game_seed + world.clock.turn * 31337)
 	for fid in world.registry.ids("factions"):
