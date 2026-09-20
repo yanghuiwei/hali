@@ -1,6 +1,6 @@
 # 计划 03a-P · 表现层与素材接线 设计（Draft Spec · 待评审）
 
-> 状态：**草稿，待人类评审**（人类正在整理字体/美术/声音素材；本文件是他与代码之间的**契约**）
+> 状态：**已评审 · 首批素材已落位**（§8.3 的 8 条决策已于 2026-09-20 拍板并执行，落位记录见 §8.4；剩余缺口见 §8.5）。本文件是人类与代码之间的**契约**。
 > 日期：2026-09-20 ｜ 依据：计划 03a Task 1–11 已交付（纯逻辑 + 文本面板），仓库当前**零表现层代码**
 > 目标读者：素材提供者（人类）+ 零上下文的实现者
 > 结论先行：**「加素材 = 放文件 + 改一行 JSON」，永不改代码；缺素材永远不崩；每条表现层规则都有 headless 断言兜底。**
@@ -11,8 +11,8 @@
 
 | 项 | 现状 | 对素材是否友好 |
 | --- | --- | --- |
-| `assets/` 目录 | **不存在** | 需新建（本计划第 1 个任务） |
-| `.gitattributes` | **已有** `*.png/*.jpg/*.ogg/*.ttf binary` 规则 | ✅ 已预留二进制位，不必改 |
+| `assets/` 目录 | **已存在**（首批素材已入库 `d67bbb1`，见 §8.4） | ✅ 只剩「清单 + 校验」（P1） |
+| `.gitattributes` | 已补 `*.jpeg/*.mp3/*.wav/*.otf/*.psd/*.zip/*.svg binary` | ✅ 已做完，不必再改 |
 | `project.godot` | 无 `theme` / `icon` / `font` / `boot_splash` / 音频配置 | 需加 1 行主题（本计划第 3 个任务） |
 | `grep -rn "Theme\|FontFile\|AudioStream\|TextureRect\|ColorRect\|res://assets" src/ tools/` | **零命中** | 需新建 theme/asset/audio 三个小模块 |
 | UI 构建方式 | 全部在 `src/ui/main.gd` 里用代码建 `VBox/HBox/Label/RichTextLabel/LineEdit/OptionButton/SpinBox/Button` | ✅ **挂一个 `Theme` 即整体生效**，不需要重做场景 |
@@ -102,6 +102,11 @@ assets/
 
 约定：cue 的**触发点**由代码固定（下表 §4），**素材映射**由这张表决定；表里没有的 cue = 静音；文件缺失 = 静音（不报错、不阻塞回合）。
 
+> **实际已有的 BGM（2026-09-20 已入库，见 §8.4）**：`res://assets/audio/bgm/` 下 4 个真 OGG，
+> `bg_main.ogg`（211.88s）· `bg_dark_winds.ogg`（128.25s）· `bg_fantasy_theme.ogg`（98.12s）· `bg_woodland_fantasy.ogg`（150.05s），
+> 且 4 个 `.import` 已设 `loop=true`（实测 `AudioStreamOggVorbis.loop == true`）⇒ **P4 只要 `play()`**。
+> `bgm_by_era` / `bgm_by_location` 可以直接填这四个；**sfx / ambient 目前无素材**（缺则静音，不阻塞）。
+
 ## 4. 代码 seam（只新增，不改逻辑）
 
 | 新文件 | 职责 | 关键 API（草案） |
@@ -126,7 +131,7 @@ assets/
 
 | # | 任务 | 交付 |
 | --- | --- | --- |
-| P1 | 目录骨架 + 两张清单表 + Registry 注册与校验（含 `assets/credits.md` 模板） | 可加载的空清单；`validate` 通过 |
+| P1 | ~~目录骨架~~（**已落位**，见 §8.4）+ 两张清单表 + Registry 注册与校验（CREDITS 已建） | 可加载的清单；`validate` 通过；**清单路径必须在 CREDITS 有登记** |
 | P2 | `Presentation`（安全加载/缓存/回退）+ `presentation_test`（含"缺文件必须优雅回退"的断言） | 无素材也全绿 |
 | P3 | `ThemeBuilder` + `main.gd` 应用主题 + `project.godot` 设默认主题（**含 CJK 字体**） | 中文字面可读、配色统一 |
 | P4 | `AudioDirector` + 8 个 cue 触发点接线 + BGM 切换 + 音量 | 有素材就有声、无素材静音 |
@@ -146,10 +151,11 @@ assets/
 
 ---
 
-## 8. 素材实测盘点（2026-09-20，人类首次落盘 `asssets/`，30MB）
+## 8. 素材实测盘点（2026-09-20，首批素材已入库）
 
-> 人类已把第一批素材放进仓库工作区（**未跟踪**）：`asssets/`（注意目录名是**三个 s**，与本文约定的 `assets/` 不一致）。
-> 人类自带的 `asssets/README.md` 已列**来源 + 许可**（很完整，可直接升级为 `assets/CREDITS.md`）。
+> 首批素材已落位并提交（`d67bbb1`，53 files）：目录已改名为 **`assets/`**，音频统一 OGG 进 `assets/audio/bgm/`，
+> 授权台账 `assets/CREDITS.md` 已建（由人类原有的 `asssets/README.md` 全量升级而来，无信息丢失）。
+> **本节是「素材 → 代码」的实测事实，P1–P5 一律按 §8.4 写实现，不要凭 §1–§3 的示例路径猜。**
 
 ### 8.1 字体：**全部不含中文**（实测，Godot `FontFile.has_char()`）
 
@@ -168,21 +174,60 @@ FONT HARRYP__.TTF          CJK=0/5  LATIN=1   （Harry P，dafont）
 
 | 类别 | 文件 | 体积 | 许可（人类 README） | 可用性判断 |
 | --- | --- | --- | --- | --- |
-| audio | `audio/DarkWinds_0.OGG` | 2.0MB | CC-BY-SA 3.0 | ✅ 可作 BGM；⚠️ **SA 是 copyleft**，改编版必须同样 SA（打包播放通常没问题，但需人类确认接受该条款） |
-| audio | `audio/FantasyWav.wav` | **17.3MB** | CC0 | ✅ 建议**转 OGG**（体积可降一个数量级）再入库 |
-| audio | `audio/Woodland%20Fantasy_0.mp3` | 6.0MB | CC-BY 3.0 | ⚠️ 文件名带 URL 编码空格 → 改 `woodland_fantasy.mp3`；Godot 支持 mp3 但**建议统一 OGG** |
-| icons | `icons/*.svg` ×15 | ~20KB | CC-BY 3.0（game-icons.net） | ✅ Godot 可导入 SVG（ThorVG）→ 作面板/事件图标；**CC-BY 必须署名**（credits） |
-| fonts | `fonts/harry_p.zip` | 15KB | 同 HarryP | 🗑️ 与 `fonts/HarryP/` 重复 → 建议删除 |
-| ui | `interface.psd`（README 已列，**未落盘**） | — | CC0 | ⚠️ **PSD 不能直接被 Godot 用** → 需切成 PNG（九宫格面板底、按钮 normal/hover/pressed、滚动条、进度条） |
-| textures | `runic_codex.png`（README 已列，**未落盘**） | — | CC0 | 待落盘 |
+| audio | `audio/bgm/bg_main.ogg` | 7.4MB | **未授权**（John Williams 电影原声） | ⚠️ 人类决定**保留入库**（个人非商用学习用）；版权声明见 `assets/CREDITS.md` §二 |
+| audio | `audio/bgm/bg_dark_winds.ogg` | 2.0MB | CC-BY-SA 3.0 | ✅ 可作 BGM；⚠️ **SA 是 copyleft**，改编版须同样 SA（原样打包播放一般不触发，人类已接受条款） |
+| audio | `audio/bgm/bg_woodland_fantasy.ogg` | 2.9MB | CC-BY 3.0（Matthew Pablo） | ✅ 已由 320kbps mp3 转 OGG（`libvorbis -q:a 5`） |
+| audio | `audio/bgm/bg_fantasy_theme.ogg` | 2.0MB | CC0 | ✅ 已由 **17.3MB 未压缩 PCM** 转 OGG（-88%） |
+| icons | `icons/*.svg` ×15 | ~20KB | CC-BY 3.0（game-icons.net） | ✅ **实测可导入**为 `CompressedTexture2D` **512×512**（ThorVG）；**CC-BY 必须署名** |
+| fonts | `fonts/*.ttf` ×4 | 496KB | OFL-1.1 ×3 + HarryP | ✅ 仅覆盖拉丁；CJK 覆盖全为 0（见 §8.1） |
+| ui | `ui/interface.psd` | 4.4MB | CC0 | ⚠️ **实测 Godot 无 PSD 导入器**（`ResourceLoader.exists()` = false）⇒ **惰性文件**，仅作切片源存档，不产生 `.import` |
+| textures | `textures/runic_codex.png` | 39KB | CC0 | ✅ 448×384，可直接用作贴图 |
+| — | ~~`fonts/harry_p.zip`~~ | ~~15KB~~ | 同 HarryP | ✅ **已删除**：与 `fonts/HarryP/HARRYP__.TTF` **md5 完全相同**（`181ef9a7aee45c119e68f294e8426a3a`） |
 
-### 8.3 由此产生的待决策（替代 §7，请人类逐条拍）
+### 8.3 待决策 8 条的裁定结果（2026-09-20 人类拍板 + 执行）
 
-1. **目录改名**：`asssets/` → **`assets/`**（趁未入库最省事；若坚持三名则我把契约改成 `asssets/`）。
-2. **补 CJK 正文字体**（**必须**）：给一个文件名（建议 `assets/fonts/body_cjk.ttf`），我会在 `presentation.json` 里把它设为 `fonts.body`，并在 `presentation_test` 里断言"未配置 CJK 字体即失败"。
-3. **体积策略**：现状 30MB（含 17MB WAV + 6MB MP3）。建议：① 音频统一转 OGG（约 -20MB）；② 删 `harry_p.zip`；③ 若最终 >50MB 再上 **Git LFS**。是否同意？
-4. **HarryP 字体**：非商用授权 + 粉丝字体 IP 风险 → 是否放进 **public 仓库**？（替代：只本地使用、或换成 OFL 字体做标题）
-5. **CC-BY-SA 音乐**（DarkWinds）：接受 share-alike 条款吗？
-6. **`interface.psd` 切图**：能否提供切片 PNG（或告诉我你希望我按哪些尺寸切）？
-7. **credits 落位**：把你现有 `asssets/README.md` 升级为 `assets/CREDITS.md`，并在清单校验里加一条"`presentation.json` 里出现的每条素材都必须在 CREDITS 里有条目；CC-BY 素材必须含署名行"——同意吗？
-8. **图标语义映射**（我可以直接给草案，你确认即可）：`castle`→霍格沃茨、`cauldron`/`round-potion`→魔药、`bolt-spell-cast`→施法、`lunar-wand`→魔杖、`book-cover`/`scroll-quill`→学业、`crown`→纯血/威森加摩、`dragon-orb`→黑暗势力、`floating-ghost`→幽灵/死亡、`barn-owl`→信件、`rune-stone`→如尼/古物、`tarot-01-the-magician`→预言、`wizard-face`→人物面板、`crystal-earrings`→首饰/财富。
+| # | 事项 | 裁定 | 执行状态 |
+| --- | --- | --- | --- |
+| 1 | 目录改名 `asssets/` → `assets/` | ✅ **改名** | 人类手工改名；本 spec 及后续契约一律用 `assets/` |
+| 2 | 补 CJK 正文字体（**必须**） | ⛔ **仍未提供** | 见 §8.5；`presentation_test` 的「未配置 CJK 即失败」断言**照原计划加** |
+| 3 | 体积策略（转 OGG / 删 zip / LFS） | ✅ **选 A：音频全部 OGG** | 已执行：音频 32.4MB → 14.4MB，`assets/` 共 **19MB**；`harry_p.zip` 已删；**不上 Git LFS** |
+| 4 | HarryP 字体是否进 public 仓库 | ⏳ **未拍板** | 当前**保留入库**（27KB）；`CREDITS.md` §一/§三 已记明「个人免费、商用需授权 + 粉丝字体模仿官方 Logo 的 IP 风险」，并写明不用于对外发布物主标题 |
+| 5 | CC-BY-SA 音乐（DarkWinds） | ✅ **接受** | `CREDITS.md` §三 写明 SA 义务（仅原样播放不触发；若剪辑/混音则成片须 CC-BY-SA 分发） |
+| 6 | `interface.psd` 切图 | ⏳ **未拍板**（控制器切 / 人类导出） | 本机**无** PIL / psd_tools / ImageMagick ⇒ 待定，见 §8.5 |
+| 7 | credits 落位 + 清单校验 | ✅ **同意** | `assets/CREDITS.md` 已建（含机器可读总表）；`presentation_test` 增加「清单路径必须在 CREDITS 有登记」断言 |
+| 8 | 图标语义映射草案 | ⏳ **未拍板** | 下面的草案保留为 P5 的**默认映射**，人类可随时改 |
+
+**图标语义映射草案（P5 默认，未拍板）**：`castle`→霍格沃茨、`cauldron`/`round-potion`→魔药、`bolt-spell-cast`→施法、`lunar-wand`→魔杖、`book-cover`/`scroll-quill`→学业、`crown`→纯血/威森加摩、`dragon-orb`→黑暗势力、`floating-ghost`→幽灵/死亡、`barn-owl`→信件、`rune-stone`→如尼/古物、`tarot-01-the-magician`→预言、`wizard-face`→人物面板、`crystal-earrings`→首饰/财富。
+
+### 8.4 首批素材落位执行记录（2026-09-20，提交 `d67bbb1`）
+
+1. **音频最终形态**（`assets/audio/bgm/`，4 个全是**真 OGG Vorbis**，实测 `load()` 得 `AudioStreamOggVorbis`）：
+
+   | 文件 | 时长 | 码率 | 来源 / 处理 |
+   | --- | --- | --- | --- |
+   | `bg_main.ogg` | 211.88s | 281kbps | 主题曲，人类自行转换；本次**未再编码**（见下方 ⚠️） |
+   | `bg_dark_winds.ogg` | 128.25s | 128kbps | DarkWinds，原样改名归位 |
+   | `bg_fantasy_theme.ogg` | 98.12s | 164kbps | ← `FantasyWav.wav`（44.1kHz，`libvorbis -q:a 5`） |
+   | `bg_woodland_fantasy.ogg` | 150.05s | 157kbps | ← 320kbps mp3（保持 48kHz，`libvorbis -q:a 5`） |
+
+2. **BGM 循环已在「导入层」设好**：4 个 `.ogg.import` 的 `loop=true`（Godot 默认 `false`），并已实测 `AudioStreamOggVorbis.loop == true`。
+   ⇒ **P4 不必自己管循环，只要 `play()`**。这是「先落位再写代码」的典型收益：换到 P4 才发现不循环，就要回头改导入设置 + 重导。
+3. **`.import` 文件必须入库**（本项目已定）：它们是 Godot 4 导入设置的载体（`loop`、`svg/scale`、字体参数都在里面），不提交则换机器后设置丢失。
+   **实测**：提交后重跑 `--import`，`git status` **干净**（`.import` 稳定，不会造成脏工作区，不违反 HANDOFF §9 的「工作区必须干净」）。
+4. **`.gitattributes` 已补**：`*.jpeg/*.mp3/*.wav/*.otf/*.psd/*.zip/*.svg` 一律 `binary`。
+   SVG 虽是 XML 文本，但 game-icons.net 出品是**单行压缩**形式，按二进制处理可避免无意义 diff（已在文件里写明理由）。
+5. **PSD 是惰性文件**：实测 `ResourceLoader.exists("res://assets/ui/interface.psd") == false` ⇒ 在 `assets/` 里只是**切片源存档**，不产生 `.import`、不影响导入耗时。（仍按 CC0 入库，人类已同意保留原始素材。）
+6. **SVG 图标可用**：15 个 `.svg` 均导入为 `CompressedTexture2D` **512×512**。`.import` 里有 `svg/scale=1.0` 旋钮——**要别的尺寸改它，不要改 SVG 文件本身**。
+7. **素材原件已备份到仓库外**：`E:/Hali-asset-originals/`（4 个音频原件 + 原 `README.md` + `harry_p.zip`）⇒ 转码与删除**都可逆**。
+8. **字体导入参数含 `allow_system_fallback=true`**（Godot 4 默认）：Windows 上中文可能靠系统字体回退**侥幸**显示——这正是「不可依赖」的原因（换机器/换平台即失效）。CJK 字体仍必须自带。
+9. ⚠️ **待人类确认的异常**：`bg_main.ogg` 时长 **211.88s**，而原始 mp3 是 **309.09s**（`ffprobe` 实测）——**少了 97 秒**。若不是有意剪辑，需重新转一次。
+10. **`assets/CREDITS.md` 的结构**（P2 的校验器按此解析）：§一 是机器可读总表，列 `文件 | 类别 | 作者/来源 | 许可证 | 可否商用 | 署名要求`，
+    其中「文件」列 = 相对 `res://assets/` 的路径（例：`audio/bgm/bg_main.ogg`）⇒ 校验器可直接用 `presentation.json` 里的路径去掉 `res://assets/` 前缀去查表。
+
+### 8.5 仍缺的素材（阻塞 P3 / P5，**不阻塞** P1 / P2 / P4）
+
+| 缺口 | 阻塞谁 | 说明 |
+| --- | --- | --- |
+| **CJK 正文字体** | **P3**（主题与字体） | 全中文界面「能不能读」的硬前提。两条路：① 人类给文件；② 控制器取 OFL 字体（霞鹜文楷 LXGW WenKai / Noto Serif SC）。⚠️ **不能子集化**——玩家可输入任意汉字、LLM 可产出任意文本 ⇒ 必须**全字集**（10–20MB），建议命名 `assets/fonts/body_cjk.ttf` |
+| **`interface.psd` 切片 PNG** | **P5**（UI 皮肤插槽） | 本机无 PIL / psd_tools / ImageMagick。两条路：① 控制器 `pip install psd-tools` 自己切（需联网）；② 人类导出 PNG（面板底九宫格 / 按钮三态 / 滚动条） |
+| 短音效 SFX、环境音 ambient | P4（**可选**） | `data/audio_cues.json` 的 cue 触发点已规划；缺素材 = 静音，可接受 |

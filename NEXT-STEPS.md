@@ -131,13 +131,19 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 105 断言 / 
   - **Task 12**（未开始）：`§8#69` 哑炮不进霍格沃茨（`house_id="none"`）· `§8#70` 创建界面姓名默认空 + 性别下拉 · `§8#16` `rumors.weight` 生效 · `§8#21` `wand_cores.rarity` 生效（新增 `RngService.stream_pick_weighted`）
   - **Task 13**（未开始）：全量回归（`tools/test.sh` + `b1_acceptance.sh`）→ 把新工件同步进 `docs/sdd/plan-03a-factions/`（**T1–T11 的副本已在暂停时预先落盘**）→ 更新 README/HANDOFF/NEXT-STEPS → `git checkout main && git merge --no-ff plan-03-factions` → 推送
   - ⚠️ Task 12/13 的 brief 必须**重新抽取**（计划文本在 T4–T11 期间被改过多次）
-- [ ] **B5 计划 03a-P「表现层与素材接线」**（人类正在整理素材；草稿 spec 待评审）
-  - 草稿 spec：`docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`（现状审计 / 素材契约 / 5 个 seam / 任务草案 P1–P5 / 7 个待人类回答的问题）
-  - **硬前提（已实测）**：Godot 内置字体**不含 CJK 字形**（`你/魔/法/あ/한` 全 `has_char=false`，只有 `A` true）⇒ 中文界面**必须自带 CJK 字体**；建议把「未配置 CJK 字体 → `presentation_test` 失败」钉进 CI
-  - 素材契约：`assets/{fonts,ui,emblems,backdrops,portraits,audio/{bgm,sfx,ambient},credits.md}` + `data/presentation.json`（键→路径，**全可选、缺则回退**）+ `data/audio_cues.json`（cue→音效/BGM/音量）
-  - 插入位置：**Task 12 之后、Task 13 收尾之前**；**若素材先到，P1–P3 可提前**（与 Task 12 的文件重叠几乎为零）
+- [ ] **B5 计划 03a-P「表现层与素材接线」**（spec 已评审；**首批素材已落位**）
+  - spec：`docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`（现状审计 / 素材契约 / 5 个 seam / 任务草案 P1–P5 / **§8 素材实测盘点与落位记录**）
+  - ✅ **素材已落位（`d67bbb1`，2026-09-20）**：目录改 `assets/`、音频统一 OGG 进 `assets/audio/bgm/`（32.4MB→14.4MB）、
+    4 个 BGM 的 `.import` 已设 `loop=true`（实测生效）、`assets/CREDITS.md` 授权台账已建、`.gitattributes` 已补二进制规则、
+    `harry_p.zip` 已删（md5 重复）；原件备份在仓库外 `E:/Hali-asset-originals/`。**实测事实一律以 spec §8.4 为准。**
+  - ⛔ **仍缺 2 项**（只阻塞 P3/P5，**不阻塞** P1/P2/P4）：
+    ① **CJK 正文字体**——Godot 内置字体不含中日韩字形（实测 `has_char('你')==false`），现有 4 个字体 CJK 覆盖也是 0 ⇒
+       全中文界面是豆腐块。**不能子集化**（玩家可输入任意汉字），需全字集（10–20MB）。待人类给文件，或控制器取 OFL 字体。
+    ② **`interface.psd` 切片 PNG**——本机无 PIL / psd_tools / ImageMagick；控制器 `pip install psd-tools` 自己切，或人类导出。
+  - ⚠️ **待人类确认**：`bg_main.ogg` 时长 211.88s，而原始 mp3 是 309.09s（ffprobe）⇒ **少了 97 秒**；若非有意剪辑需重转。
+  - 插入位置：**Task 12 之后、Task 13 收尾之前**（素材已到，P1–P4 可自由提前；与 Task 12 的文件重叠几乎为零）
+    - 唯一的真冲突点：P3/P5 与 **Task 12** 都要改 `src/ui/main.gd` ⇒ 仍按「Task 12 → 03a-P → Task 13」串行，不并发。
   - 一条已挂账的 UX 修复也归这里：`LlmGameMaster` 无 fallback 分支的**降级原因双显**（叙事里 `（原因：X）` + `warnings` 也打印）
-  - **待人类回答的 7 问**：① 字体格式/套数（TTF/OTF、是否含繁体）② 图片格式/尺寸/是否 9-slice 与按钮三态 ③ 音频格式与循环 ④ 命名策略（逻辑键 vs 自带映射表）⑤ 槽位清单（时代背景/学院徽记/派系徽记/地点插图/玩家立绘/NPC 立绘/UI 皮肤/Logo）⑥ 大文件是否走 Git LFS ⑦ `credits.md` 必填字段
 - [ ] **B2 真机 LLM 联调（剩余项）** —— ⏸️ 人类已裁定**暂不做**；剩余：断网/401/超时真的降级且有提示、连续多回合、`api_key` 掩码端到端、提示注入绕过率、思考档位参数名（见 `docs/sdd/plan-02-llm-narrative/b2-live-integration.md` §7.1）
 
 ## C. 仍然开放的人类裁定项（HANDOFF §8 中与后续计划直接相关的）
@@ -196,4 +202,4 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 105 断言 / 
 | 计划 02 计划 / spec / 台账 | `docs/superpowers/plans/2026-09-19-...-02-llm-narrative.md` / `docs/superpowers/specs/2026-09-19-...-02-llm-narrative-design.md` / `docs/sdd/plan-02-llm-narrative/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎） |
 | 正典规格 | `哈利·波特·魔法纪元.md`（仓库根，勿移动改名） |
-| 下一步第一件事 | **B4 Task 12**（03a 续做）；素材就绪则并行定稿 **B5 03a-P**；两者都在分支 `plan-03-factions` 上做，最后 Task 13 合入 `main` |
+| 下一步第一件事 | **素材已落位（`d67bbb1`）** → 按顺序：① **Task 12**（⚠️ 先改计划文本：`wand_cores.rarity` 是字符串标签，按计划原文写会静默失效，见下）② **03a-P P1–P5**（阻塞项只剩 CJK 字体 + PSD 切片）③ **Task 13** 合入 `main` |
