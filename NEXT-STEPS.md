@@ -83,7 +83,7 @@ main scene ready, godot=4.7.2-stable (official)
 
 ## B. 队列 B —— 计划 03 与人工验收
 
-- [x] **B1 人工 GUI 验收（HANDOFF §6 第 1 项 / §8#55）** —— ✅ **2026-09-20 完成（自动化通道）**：`bash tools/b1_acceptance.sh` → 计划 01 Step 6 的 8 项 + 计划 02 追加的 2 项**逐项核对通过，78/78 断言，EXIT=0**。报告：`docs/sdd/plan-02-llm-narrative/b1-acceptance.md`。
+- [x] **B1 人工 GUI 验收（HANDOFF §6 第 1 项 / §8#55）** —— ✅ **2026-09-20 完成（自动化通道，`311db31`）**：`bash tools/b1_acceptance.sh` → 计划 01 Step 6 的 8 项 + 计划 02 追加的 2 项**逐项核对通过，78/78 断言，EXIT=0**。报告：`docs/sdd/plan-02-llm-narrative/b1-acceptance.md`。
   - 关键转折：它**不再需要人手动点击**——`HALI_DEBUG_LOG` 镜像（`be9cddc`）让界面文本可外部观测，`tools/b1_acceptance.gd` 直接驱动界面处理器（等同于点按钮/回车）并从真实控件状态 + 真实日志文本断言。
   - 覆盖：7 个创建下拉 / 哑炮角色（无魔法无魔杖，`house_id` 见 §8#69）/ 练药收益递减（第三次「重复练习收益下降」）/ 打工加钱 / 四面板（哑炮分支）/ 存档·读档回合与财富一致 / 新实例重启后直接读档 / 第 15 回合自检挂起·拒绝行动·「确认自检」后可继续 / 等待期置灰与恢复（400ms 慢 provider 造真实等待窗）/ 未配置 LLM 提示的创建与读档两条路径（F4）。
   - 原「人工清单」文本：

@@ -1,7 +1,7 @@
 # B1 · 人工 GUI 验收（自动化通道版，2026-09-20）
 
 > 结论：**计划 01 Step 6 的 8 项清单 + 计划 02 追加的 2 项，全部由自动化通道逐项核对通过（78/78 断言，EXIT=0）**。
-> 命令：`bash tools/b1_acceptance.sh`（`tools/b1_acceptance.gd` + 已有的 `HALI_DEBUG_LOG` 镜像）。
+> 命令：`bash tools/b1_acceptance.sh`（`tools/b1_acceptance.gd` + 已有的 `HALI_DEBUG_LOG` 镜像）。提交：`311db31`。
 > 仍未覆盖的只有「真实鼠标/键盘事件」与「真实鼠标下的可读性」——这两项不影响功能正确性，且真机 LLM 的等待期已由用户裁定留给 B2（暂不做）。
 
 ---
