@@ -70,17 +70,27 @@ assets/
   },
   "icons":    {"castle": "res://assets/icons/castle.svg", "round_potion": "res://assets/icons/round-potion.svg"},
   "textures": {"runic_codex": "res://assets/textures/runic_codex.png"},
-  "emblems":  {"faction.ministry": "res://assets/emblems/faction_ministry.png"},
-  "backdrops":{"era.modern": "res://assets/backdrops/era_modern.png"},
-  "portraits":{"player.default": "res://assets/portraits/player_default.png"},
+  "emblems":  {"faction": {"ministry": "res://assets/emblems/faction_ministry.png"}},
+  "backdrops":{"era": {"modern": "res://assets/backdrops/era_modern.png"}},
+  "portraits":{"player": {"default": "res://assets/portraits/player_default.png"}},
   "palette":  {"text": "#e8e2d0", "accent": "#c8a24a", "panel_bg": "#1c1a17cc", "danger": "#b04a3a"}
 }
 ```
 
 约定：
 1. **路径缺失/为空/文件不存在 ⇒ 回退**（`body` 缺失 → Godot 默认字体；`palette` 缺失 → 内置配色；贴图缺失 → 不画）。
-2. 键的**命名空间点号**（`faction.ministry`）让「内容 id」与「素材键」自动对齐，不必逐个写代码分支。
+2. 键的**命名空间点号**（查询键写作 `emblems.faction.ministry`）让「内容 id」与「素材键」自动对齐，不必逐个写代码分支。
+   ⚠️ **清单里必须写成嵌套对象，严禁写成字面点号键**（**本条是实测修正，2026-09-20**）：
+   `Presentation.resolve()` 只做「按 `.` 逐段下钻」（`presentation.gd:62-78`）——
+   写 `"faction.ministry": "…"` 这种字面键时，`resolve("emblems.faction.ministry")` **永远返回 `null`**，
+   即该行素材「声明了但取不到」= 与 `§8#16/#21` 同类的静默失效。
+   本节示例原来就是错的（已改），且 `presentation_test` 当时对点号规则零断言，所以一直没被发现。
+   现在有**响亮门禁**：`presentation_test` 递归扫描两张清单，**任何含 `.` 的键都判失败**（不会静静失效）。
 3. `palette` 是**唯一**允许把"颜色"写进配置的地方——所有 `StyleBoxFlat`/字体色都从它取，代码里不许出现魔法颜色常量。
+4. `nine_patch` 的**四元数顺序冻结为 `[上, 右, 下, 左]`**（与 `presentation.gd` 的 `nine_patch()` 文档一致，实现依赖它）。
+   Godot `StyleBoxTexture` 用的是 `(left, top, right, bottom)`，映射写作 `Vector4i(raw[3], raw[0], raw[1], raw[2])`
+   （已封在 `AssetSlots.patch_insets()` 里，**只此一处**）。
+   ⚠️ 写测试时**必须用非对称值**（如 `[1,2,3,4]`）——对称值测不出左右写反。
 
 > 🔒 **接口冻结（控制器裁定，2026-09-20）——P1–P5 一律照此实现，不得改形状。**
 >

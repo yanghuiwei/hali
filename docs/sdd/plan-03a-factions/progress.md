@@ -491,3 +491,33 @@
   → **控制器已就地修复**：`git branch assets/cjk-and-ui-slices 05abb0d`（指向它实际检出的提交，**不动它的工作树内容**），
   修后 worktree 有效、`git -C /e/hali-assets status` 只剩它自己的临时文件 ⇒ 它可以正常提交了
 - 状态：**P3+P4 complete**（`05abb0d` + `2518183`）；**P5 待素材**（切片未到，先写槽位会因尺寸/九宫格返工）
+
+## 03a-P P5: 素材槽位（收紧范围版 —— 不改变现有布局）
+- dispatch: worker / run `861ad3fd`
+- 实现完成：`c79996b`（7 files, +414/-0）：`src/ui/asset_slots.gd`(+uid) ·
+  `main.gd` 4 个槽位（背景 / 标题 Logo / 学院徽记 / 玩家立绘）+ `_refresh_slots()` ·
+  `tests/asset_slots_test.gd`(+uid，59 断言) + `run_tests.gd` · `tools/b1_acceptance.gd` 清单 13（+20）
+- 门禁：`test.sh` **EXIT=0**、套件 20→**21**、断言 1924→**1983**；`SCRIPT ERROR`=2、`ERROR:`=7；
+  `b1` **131→151** / 0 失败；工作区干净；无残留进程
+- 破坏实验（`apply_to` 无条件 `visible=true`）→ `[asset_slots]` **恰好 4 红**、EXIT=1、**无套件中止**；cp+md5 还原 OK
+- **不返工机制**：缺素材 ⇒ `visible=false` ⇒ Container 跳过 ⇒ **不占位**。b1 用两条钉住「加槽位没偷偷改布局」：
+  ① 槽位贡献的可见子节点 == 0；② 可见子节点仍为 2（状态行 + 对局区）。背景槽挂根节点 + `MOUSE_FILTER_IGNORE`，不参与容器布局
+- **九宫格边距全部来自数据**：`AssetSlots.patch_insets()` 是「清单 `[上,右,下,左]` → Godot `(left,top,right,bottom)`」的**唯一**翻译点；
+  测试用**非对称值 `[1,2,3,4]`** 断言 `Vector4i(4,1,2,3)` + 四个 `texture_margin_*` 逐个相等（对称值测不出左右写反）
+- 🔴 **worker 发现真契约缺陷（重要）**：`Presentation.resolve()` 只做**嵌套下钻**（`presentation.gd:62-78`），
+  而 **spec §2 示例**里 `emblems`/`backdrops`/`portraits` 用的是**字面点号键**（`"faction.ministry": "…"`）
+  ⇒ `resolve()` 恒返回 `null` ⇒ **该行素材永远取不到 = 「声明了但无效」（`§8#16/#21` 同类）**；
+  且 `presentation_test` 对点号规则**零断言**，所以一直没被抓到。
+  worker **没有**擅自改 spec/Presentation，而是在套件里加了 `_test_key_resolution_contract` 把两种写法行为都钉住
+- **控制器处置**：
+  ① spec §2 三行示例改为**嵌套形式**，并把规则写成硬约定（含实测依据与失效机制）
+  ② spec 补一条：`nine_patch` 顺序**冻结为 `[上,右,下,左]`**（与 `presentation.gd` 文档一致）+ Godot 映射式 + 「必须用非对称值测」
+  ③ **控制器自我更正**：P5 派发书里我写的 `[左,上,右,下]` **是错的**，worker 正确地选了仓库内已冻结的口径
+  ④ 新增**响亮门禁**（`presentation_test` ②b）：递归扫描两张清单，**任何含 `.` 的键都判失败并报出具体键名** ——
+     把「静默失效」变成「响亮失败」。负向验证实测：注入 `"faction.ministry"` → `EXIT=1` + 报出 `["emblems.faction.ministry"]`
+     （顺带 CREDITS 对账也一起红）；`cp` + `md5sum -c` 还原校验 OK
+- P5: 有意未做（避免返工）：`ui.panel_bg` / `button_*` 的九宫格**套用**（需真实切片尺寸）——`stylebox_for` 已实现且有断言覆盖，
+  切片到场后**只需加清单行，零代码改动**
+- P5: 残余/未验证：Logo 48 / 立绘 144 / 徽记 32×32 是**占位尺寸**（素材到场后可能要调，但不影响缺素材时的布局）·
+  背景槽与不透明 StyleBox 的层级遮挡未验证（属素材到场后的视觉验收）· `llm_fallback` 真触发属 B2
+- 状态：**P5 complete**（`c79996b`）；**03a-P 的 P1–P5 全部完成**

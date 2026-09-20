@@ -63,6 +63,17 @@ func run() -> int:
 	a.is_true(p.values("icons").has("castle"), "values(icons) 给出条目副本")
 	a.eq(p.values("__nope__").size(), 0, "未知命名空间 values() 返回空字典")
 
+	# ---- ②b 防「字面点号键」：含 `.` 的键**永远取不到**（resolve() 只按 `.` 逐段下钻） ----
+	# 依据：spec §2 约定 2（实测修正，2026-09-20）——spec 自己的示例原来写成 "faction.ministry": "…" 字面键，
+	# 于是 resolve("emblems.faction.ministry") 恒返回 null ⇒ 该行素材「声明了但取不到」= §8#16/#21 同类的静默失效。
+	# 必须写成嵌套对象："faction": {"ministry": "…"}。本断言把这件事变成**响亮失败**而不是静默失效。
+	var dotted: PackedStringArray = []
+	_collect_dotted_keys(manifest, "", dotted)
+	a.eq(dotted.size(), 0, "presentation.json 不含字面点号键（必须写成嵌套对象）：%s" % str(dotted))
+	var dotted_cues: PackedStringArray = []
+	_collect_dotted_keys(cues, "", dotted_cues)
+	a.eq(dotted_cues.size(), 0, "audio_cues.json 不含字面点号键：%s" % str(dotted_cues))
+
 	# ---- ③ 回退：缺键 / 缺文件 / 类型不对 ----
 	a.is_false(p.has("icons.__nope__"), "不存在的键 has() 为假")
 	a.eq(p.texture("icons.__nope__"), null, "不存在的贴图 ⇒ null（不报错）")
@@ -225,6 +236,19 @@ func _shape_violations(table: Dictionary, allowed: PackedStringArray, label: Str
 
 
 # 递归收集 `res://` 开头的字符串（palette 的十六进制颜色与 nine_patch 的数字天然不会被收进来）
+# 递归收集**含点号的键**（清单里出现即判失败：resolve() 只按 `.` 下钻，字面点号键永远取不到）。
+func _collect_dotted_keys(value: Variant, prefix: String, out: PackedStringArray) -> void:
+	if typeof(value) != TYPE_DICTIONARY:
+		return
+	var d: Dictionary = value
+	for k in d.keys():
+		var key := str(k)
+		var where := key if prefix.is_empty() else "%s.%s" % [prefix, key]
+		if key.contains("."):
+			out.append(where)
+		_collect_dotted_keys(d[k], where, out)
+
+
 func _collect_asset_paths(value: Variant, out: Array) -> void:
 	if typeof(value) == TYPE_STRING:
 		var s := str(value)
