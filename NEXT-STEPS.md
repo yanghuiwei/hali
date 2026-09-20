@@ -180,7 +180,9 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
     ② 合完跑 `--import` → `git add` 新生成的 `.import` → `bash tools/test.sh`（**21 套件 / 1985 断言**、噪音计数 2/7）
   - 完整流程与校验命令写在 `docs/sdd/plan-03a-P/assets-agent-repair-prompt.md` 文末（该文件也记录了**执行者用 PowerShell 弄坏 worktree 引用**的事故与修法）
   - 缺口清单与验收标准：`HANDOFF.md` §8#72（✅ 已闭合）
-- [ ] **B8 P5b：把 13 张 UI 切片接进主题**（`assets/ui/` 已有切片，实测尺寸：`panel_bg` 244×366 · 按钮四态 160×44 · `textfield` 134×28 · `scrollbar_bg` 36×134 / `grab` 30×48 · `frame_horizontal` 224×33 / `vertical` 33×141 · `emblem_ring` 80×80 · `panel_slot` 42×42 · `button_close` 60×58 · `button_neutral` 160×44）
+- [ ] **B8 P5b：把 13 张 UI 切片接进主题** —— 🔄 **进行中**（worker run `52643b43-9a22-4dc8-86e6-94e5f3c20416`，BASE `main@06913c1`）
+  - 先 `git log --oneline -6`：有 `B8(P5b)` 提交 ⇒ 已完成，按「每任务收尾清单」复核（`test.sh` + `b1` + 噪音计数 + 读 diff）后推送；没有 ⇒ 按下面规格重派
+  - 实测切片尺寸（供边距决策）：`assets/ui/` 下 `panel_bg` 244×366 · 按钮四态 160×44 · `textfield` 134×28 · `scrollbar_bg` 36×134 / `grab` 30×48 · `frame_horizontal` 224×33 / `vertical` 33×141 · `emblem_ring` 80×80 · `panel_slot` 42×42 · `button_close` 60×58 · `button_neutral` 160×44
   - **做法（不新增布局分支）**：`ThemeBuilder` 里按「清单有没有 `ui.<键>`」切换样式来源 —— 有则用 `AssetSlots.stylebox_for()` 造 `StyleBoxTexture`，无则沿用现有 `StyleBoxFlat`（`stylebox_for` 早已实现且有断言覆盖）
   - 需要真实布局落点的（`panel_bg` / `frame_*` / `emblem_ring` / `panel_slot`）**先只给按钮/文本框/滚动条加清单行**，或留到 03b 的界面改版一起做
   - ⚠️ 纪律：**不要先往 `data/presentation.json` 写没有消费者的行**（那就是「声明了但无效」的死旋钮，`§8#16/#21` 同类）
@@ -240,6 +242,13 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
 6. **新增测试套件**必须把路径追加到 `tests/run_tests.gd` 的 `SUITES`，否则不会被执行。
 7. **正典优先**：计划文本与《哈利·波特·魔法纪元.md》冲突时改计划、不要顺着错的计划写实现，并在报告里写明依据行号（HANDOFF §4 第 9 条）。
 8. **内容进 `data/*.json`**，代码不硬编码内容；`to_dict()` 只放 JSON 原生类型并过 `JsonUtil.normalize()`；新脚本连 `.gd.uid` 一起 `git add`。
+9. **每任务收尾清单（人类 2026-09-20 要求）—— 做完就更新，保证随时能开新会话接手**：
+   1. `docs/sdd/<plan>/progress.md` 追加该任务条目（提交哈希 / 断言数前后 / 门禁结果 / findings 处置 / 挂账 / 残余）
+   2. 本文件：待办打勾或标「**进行中（run id）**」；新发现写成新条目；§E「下一步第一件事」改成真实的下一个
+   3. `NEXT-SESSION-PROMPT.md`：**刷新「现状」与「接下来做什么」两段 + 体检数字**（这两段最容易漂）
+   4. 耐久副本复制进 `docs/sdd/<plan>/`（brief / report / review / `review-*.diff`），与代码同一次提交
+   5. `git push`
+   ⇒ 这三份文档（台账 / 本文件 / 开场语）**必须互相一致**；不一致时以**台账**为准。
 
 ---
 
@@ -251,6 +260,7 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
 | 计划 03a / 03a-P 计划 · spec · 台账 | `docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` · `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` · `docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` · `docs/sdd/plan-03a-factions/progress.md` |
 | 计划 01 计划 / 台账 | `docs/superpowers/plans/2026-09-18-...-01-core-foundation.md` / `docs/sdd/plan-01-core-foundation/progress.md` |
 | 计划 02 计划 / spec / 台账 | `docs/superpowers/plans/2026-09-19-...-02-llm-narrative.md` / `docs/superpowers/specs/2026-09-19-...-02-llm-narrative-design.md` / `docs/sdd/plan-02-llm-narrative/progress.md` |
-| 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎） |
+| 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎）；**自带 stderr 噪音门禁**（`SCRIPT ERROR`==2 且 `ERROR:`==7，不符即 `1`；常量 `EXPECTED_*` 可覆盖） |
 | 正典规格 | `哈利·波特·魔法纪元.md`（仓库根，勿移动改名） |
-| 下一步第一件事 | **§B8 P5b**：把 13 张 UI 切片接进主题（`ThemeBuilder` 按清单键切换样式来源，**不新增布局分支**）；然后 **§B7**：开新分支做 03b 经济 / 03c 社会与法律 |
+| 下一步第一件事 | **§B8 P5b**（**进行中**，worker run `52643b43-9a22-4dc8-86e6-94e5f3c20416`）：把 UI 切片接进主题（`ThemeBuilder` 按清单键切换样式来源，**不新增布局分支**）。
+先 `git log --oneline -6` 看有没有 `B8(P5b)` 提交：有则复核后推送，无则按 §B8 重派。然后 **§B7**：开新分支做 03b 经济 / 03c 社会与法律 |
