@@ -467,3 +467,27 @@
 - Task P1+P2: minor (登记)：CREDITS 对账的已知放松点（`icons/*.svg` 是 glob ⇒ 任何新图标都算已登记，已写成显式断言）·
   `has()` 语义 = 「键存在且值非空」而非「可加载」（已注释）· `bgm` 映射是「全覆盖但复用」的占位策略
 - 状态：**P1+P2 complete**（`cc9eb15`）
+
+## 03a-P P3+P4: `ThemeBuilder`（运行期主题）+ `AudioDirector`（8 cue + BGM 切换）
+- dispatch: worker / run `22d4536e`（一个 worker 出 2 个可独立构建的 commit）
+- 实现完成：`05abb0d`（P3）· `2518183`（P4）；`test.sh` **EXIT=0**、套件 19→**20**、断言 1848→**1924**
+  （`[presentation]=81`、`[theme_audio]=76`，其余 18 套件未动）；`SCRIPT ERROR`=2、`^ERROR:`=7（**噪音门禁首次实战通过**）；
+  `b1` **112→131** / 0 失败；工作区干净（除另一个 agent 的 5 个外来临时文件，见文末）
+- **B1 最强的一条**：8 个 cue 里 **6 个由既有流程真实触发**，**没有手调任何 handler**
+  （`seen=["turn_submit","turn_done","faction_revealed","save_ok","load_ok"]` + `audit_ack` 来自真实的「确认自检」提交）
+- 唯一一组破坏实验 **D1**（拆掉 `load_stream` 的 `ResourceLoader.exists` 守卫）：
+  `[theme_audio] 76/0` **全绿 —— 套件内完全抓不到**，而外部 `ERROR:` 8≠7 ⇒ **噪音门禁 EXIT=1**
+  ⇒ ① `exists` 守卫承重；② 「缺素材静默回退」在断言层不可判别；③ **自动噪音门禁不可省 —— 这是第三次独立证据**
+- 授权偏离 3 条（控制器事先同意，spec 已同步）：
+  ① **不改 `project.godot`**（spec §6 P3 原写「设默认主题」）→ 运行期挂主题。理由：提交 `.tres` 会让「改一行 JSON 换素材」变成
+     「还要重新生成资源」= 返工；`data/*.json` 必须保持唯一事实来源
+  ② **`llm_fallback` 在 UI 层触发**（spec §4 原写在 `_fallback()` 里）→ **`src/gm/` 零改动**，不牵动计划 02 的断言
+  ③ **删掉 `data/presentation.json` 的 `fonts.numbers`** —— Godot 没有「数字字体」主题槽位 ⇒ 无消费者，
+     留着就是制造第二个「声明了但无效」的旋钮（`§8#16/#21` 同类）
+- 未验证项：`llm_fallback` 的**真触发**需要一条真降级回合（属 B2 真机范畴），本次只有 `is_fallback_result` 的 7 条静态断言
+- ⚠️ **外来干扰（另一个素材 agent 造成的，非本任务）**：仓库根出现 5 个 `.ps_*.txt`（PowerShell 探针输出，17:08 起）；
+  它用 PowerShell 驱动 git 失败多次（`fatal: invalid reference`），随后**手工 `mkdir refs/heads/assets` 造分支**，
+  导致 `assets/cjk-and-ui-slices` 的 worktree 引用悬空（`worktree list` 显示 `0000000`、分支 ref 不存在、`git -C /e/hali-assets status` 会看到全部文件未跟踪）
+  → **控制器已就地修复**：`git branch assets/cjk-and-ui-slices 05abb0d`（指向它实际检出的提交，**不动它的工作树内容**），
+  修后 worktree 有效、`git -C /e/hali-assets status` 只剩它自己的临时文件 ⇒ 它可以正常提交了
+- 状态：**P3+P4 complete**（`05abb0d` + `2518183`）；**P5 待素材**（切片未到，先写槽位会因尺寸/九宫格返工）
