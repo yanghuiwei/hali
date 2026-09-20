@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ministry_bureaucracy",
+    "label": "魔法部官僚制",
+    "canon_line": 160,
+    "summary": "部长、司长、办公室主任、傲罗指挥部、威森加摩；法律与行政结合。优点是组织稳定，缺点是官僚主义、腐败、低效与政治妥协。"
+  },
+  {
+    "id": "pureblood_oligarchy",
+    "label": "纯血寡头制",
+    "canon_line": 162,
+    "summary": "古老家族通过财富、联姻、威森加摩席位和魔法部游说控制决策；纯血家族之间既有合作也有斗争。"
+  },
+  {
+    "id": "death_eater_dictatorship",
+    "label": "食死徒独裁",
+    "canon_line": 164,
+    "summary": "黑巫师通过恐怖、夺魂咒与纯血主义清洗夺取政权；法律成为压迫工具，反对者被投入阿兹卡班或消失。"
+  },
+  {
+    "id": "order_resistance",
+    "label": "凤凰社抵抗组织",
+    "canon_line": 166,
+    "summary": "不是合法政府，而是由不同出身、不同立场巫师组成的秘密抵抗网络；以信任、情报和牺牲维持运作，战争时期可能成为影子政府。"
+  }
+]

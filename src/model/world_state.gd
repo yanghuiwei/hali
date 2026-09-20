@@ -33,6 +33,7 @@ static func create(era_id_: String, player_: PlayerState, seed_: int, registry_:
 	# JSON 解析出的整数值 float 必须归一，保证 create 与 from_dict 的内存类型一致（HANDOFF 第 4 节第 1 条）
 	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
 	w.player.age_months = maxi(w.player.age_months, 0)
+	WorldFactions.initialize(w)
 	return w
 
 func era() -> Dictionary:
@@ -114,7 +115,8 @@ func tick() -> Array:
 		if month_rng.chance("extra_rumor", 0.35 * intensity):
 			rumor_count = 2
 		for i in rumor_count:
-			var picked: Dictionary = month_rng.stream_pick("pick_%d" % i, candidates)
+			# 计划 03a（§8#16）：传入传闻模板的 weight 必须真的生效（原为均匀抽取 ⇒ 稀有度旋钮失效）
+			var picked: Dictionary = month_rng.stream_pick_weighted("pick_%d" % i, candidates, "weight")
 			if picked.is_empty():
 				continue
 			var is_major := bool(picked.get("major", false))
@@ -130,6 +132,7 @@ func tick() -> Array:
 				"text": str(picked.get("text", "")),
 				"major": is_major,
 				"turn": clock.turn,
+				"rumor_id": str(picked.get("id", "")),
 			}
 			events.append(ev)
 			log.append(ev)
@@ -137,17 +140,25 @@ func tick() -> Array:
 				add_fact("major", str(picked.get("text", "")))
 				break   # 同月最多一起重大事件，保证 MAJOR_EVENT_GAP 成立
 
-	# 3) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
+	# 3) 计划 03a：传闻揭示（第四十三/五十七章）——玩家通过传闻获知秘密派系
+	WorldFactions.apply_rumor_reveals(self, events)
+
+	# 4) 计划 03a：派系与政治演化（第十二/四十六/四十七/四十九章）
+	for political_event in WorldFactions.evolve(self):
+		events.append(political_event)
+		log.append(political_event)
+
+	# 5) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
 	var style_now := sim_style()
 	var mundane_ratio := clampf(float(style_now.get("mundane_ratio", 0.7)), 0.0, 1.0)
 	if month_rng.chance("mundane_day", 0.5 + mundane_ratio * 0.4):
 		log.append({"turn": clock.turn, "kind": "mundane",
 			"text": "%s，日子照常过。" % clock.formatted()})
 
-	# 4) 年龄推进（玩家与世界同时变老）
+	# 6) 年龄推进（玩家与世界同时变老）
 	player.age_months += 1
 
-	# 5) 日志裁剪，避免存档无限膨胀
+	# 7) 日志裁剪，避免存档无限膨胀
 	while log.size() > RECENT_LOG_LIMIT:
 		log.pop_front()
 
@@ -184,4 +195,6 @@ static func from_dict(d: Dictionary, registry_: Registry) -> WorldState:
 	w.log = JsonUtil.normalize(d.get("log", []))
 	w.flags = JsonUtil.normalize(d.get("flags", {}))
 	w.rng_state = JsonUtil.normalize(d.get("rng_state", {}))
+	# 老存档（无 factions 或只有部分）在此补齐；幂等，不覆盖已存档的值（设计 §9.3/§9.5）
+	WorldFactions.initialize(w)
 	return w

@@ -4,6 +4,7 @@ extends RefCounted
 const MAX_OPS := 20
 const MAX_MONEY_GAIN := 1000
 const MAX_RELATION_DELTA := 20
+const MAX_STANDING_DELTA := 20
 const TRAIN_BASE_GAIN := 4
 
 class Result:
@@ -66,6 +67,22 @@ static func sanitize_detailed(world: WorldState, raw_ops: Array) -> Result:
 					"interest": clampi(_to_int(raw.get("interest", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
 					"hostility": clampi(_to_int(raw.get("hostility", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
 				})
+			"join_faction", "leave_faction":
+				if op == "join_faction":
+					var fid := str(raw.get("faction_id", ""))
+					if fid.is_empty():
+						out.warnings.append("忽略缺 faction_id 的 join_faction")
+						continue
+					out.ops.append({"op": "join_faction", "faction_id": fid})
+				else:
+					out.ops.append({"op": "leave_faction"})
+			"faction_standing_delta":
+				var sid := str(raw.get("faction_id", ""))
+				if sid.is_empty():
+					out.warnings.append("忽略缺 faction_id 的 faction_standing_delta")
+					continue
+				out.ops.append({"op": "faction_standing_delta", "faction_id": sid,
+					"delta": clampi(_to_int(raw.get("delta", 0)), -MAX_STANDING_DELTA, MAX_STANDING_DELTA)})
 			"set_flag", "set_player_flag":
 				var key := str(raw.get("key", ""))
 				if key.is_empty() or key.begins_with("_"):

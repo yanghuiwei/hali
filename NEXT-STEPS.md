@@ -1,8 +1,27 @@
 # 下一步待办 · 哈利·波特·魔法纪元
 
-> 用途：换机器后接手**第一份**要读的执行清单（配合 `HANDOFF.md`）。HANDOFF 讲「现状与铁律」，本文件讲「接下来做什么、按什么顺序、验收标准是什么」。
-> 最后更新：2026-09-20（**队列 A（A1–A7）已全部完成**，分支 `docs/plan-02-closeout` → `main`；计划 01 + 计划 02 均已合入 `main`。**本次新增：B1 观测通道（`HALI_DEBUG_LOG` 调试镜像）已实现并纳入 `tools/test.sh`**，人工验收不再靠存档反推）。
+> 用途：换机器/换会话后接手**第一份**要读的执行清单（配合 `HANDOFF.md`）。HANDOFF 讲「现状与铁律」，本文件讲「接下来做什么、按什么顺序、验收标准是什么」。
+> 最后更新：2026-09-20（**计划 03a「派系与政治骨架」Tasks 1–13 与计划 03a-P「表现层与素材接线」P1–P5 均已完成并合入 `main`**；人类裁定启用**快跑模式**（见 §0A）；素材线 B6 已完成（CJK 字体 + OFL 原文 + 13 张切片已入库，中文界面已可读），剩 §B8。）
 > 维护规则：每完成一项就在方框里打勾并补上提交哈希；**换机器前必须回来更新本文件**。
+
+---
+
+## 0A. 工作模式：快跑模式（人类裁定，2026-09-20 起）
+
+人类反馈「每次都走 TDD，测试期间消耗了好多时间，进度太慢」，并问「先开发完再统一验证会不会大量返工」⇒ 裁定**相信自己、激进快跑**。工作模式据此变更（背景与完整记录见 `docs/sdd/plan-03a-factions/progress.md`「流程变更：快跑模式」）：
+
+**砍掉**：独立 reviewer（降级为控制器自查 diff + 静态反证；仅**不变量/契约改动**时临时派）· 修复轮 · scoped 复审 · 破坏实验（4–7 组 → **0–1 组**）· 红步原始输出仪式 · 每题长 brief/report · **每题写台账**（改为收尾时一次写全）· 任务拆分（合并派发）
+
+**保留（廉价且真正承重，4 道门禁）**：
+
+1. `bash tools/test.sh` 全绿（**21 套件 / 1985 断言**）
+2. **两个 stderr 噪音计数**（`SCRIPT ERROR` == 2 且 `ERROR` == 7）——已在 `tools/test.sh` 第 2 步里自动化（不符即 `EXIT=1`）
+3. `timeout 300 bash tools/b1_acceptance.sh` 全绿（**151 断言 / 0 失败**）
+4. 工作区干净 + 无残留 godot 进程
+
+**为什么连 90 秒的 `test.sh` 都不砍**：理由不是「质量」，是**让红色可归因**。攒到数千行后一次跑出几十条红，无法判断是哪次改动引起的——调试考古的成本远高于 90 秒。这是新模式下**唯一的硬约束**。
+
+**控制器的证据依据**（为什么「晚验证」不会导致大返工）：本仓库至今所有审查/实跑抓到的真缺陷，修复量**全是 1–20 行**（字段名 / 测试输入值 / 2 个类型标注 / 2 行边界条件 / 去重键 / 1 个常量 / 1 个量化函数）⇒ 属「局部化小修」型，**晚发现 = 晚修 10 行，不是推翻重做**。会产生真返工的只有两类：① **全局且不可逆的选择**（目录名 / 格式 / 授权 / 大文件）——已在 Phase 0 一次性做完；② **接口/契约扇出**——靠「**先冻结接口、不冻结实现**」规避。
 
 ---
 
@@ -17,20 +36,61 @@ bash tools/test.sh                     # 期望：EXIT=0；全部套件失败=0�
 引擎：Windows + Git Bash，**Godot 4.7.2 stable（非 .NET）**，两个 exe 放仓库根（不入库，见 HANDOFF §2）。
 基线事实：`main` == `origin/main`；工作区干净。**以 `git log --oneline -1` 为交付点**（本文件不再钉死 HEAD 哈希）。
 
-基线测试绿（本文件写下时实测，`tools/test.sh` 已扩为 4 步）：
+基线测试绿（**计划 03a / 03a-P 完成后实测**，`tools/test.sh` 共 4 步）：
 
 ```
-[harness]=8  [registry]=26  [money]=18  [magic_level]=48  [model]=49  [clock]=47
-[world_tick]=104  [creation]=176  [spell]=229  [gm]=63  [panel]=71  [selfcheck]=32
-[save]=97  [async_probe]=2  [llm]=84  [prompt]=13  [debug_mirror]=23
-==== 总计失败=0，失败套件=0 ====   ALL TESTS PASSED
+[harness]=8  [registry]=244  [money]=18  [magic_level]=48  [model]=49  [clock]=47
+[world_tick]=189  [creation]=188  [spell]=229  [gm]=128  [panel]=102  [selfcheck]=32
+[save]=112  [async_probe]=2  [llm]=106  [prompt]=38  [debug_mirror]=23  [factions]=204
+[presentation]=83  [theme_audio]=76  [asset_slots]=59
+==== 总计失败=0，失败套件=0 ====   ALL TESTS PASSED     （21 套件 / 1985 断言）
 main scene ready, godot=4.7.2-stable (official)
 [HALI] PROBE-APPEND-MARK（第 4 步：HALI_DEBUG_LOG=1 镜像冒烟）   全部通过。
 ```
 
+> ⚠️ 第 `2/4` 步还会校验 **stderr 噪音计数**（`SCRIPT ERROR` == 2 且 `ERROR` == 7），不符即 `EXIT=1`——见 §0A 门禁 2。
+> B1 自动通道：`timeout 300 bash tools/b1_acceptance.sh` → **151 断言 / 0 失败**。
+
 ---
 
-## A. 队列 A —— 计划 02 文档收口（**建议最先做，一行代码都不用改**）
+## 0.5 恢复指引（新会话开场照这个做）
+
+```bash
+cd /e/Hali
+git fetch origin && git status -sb        # 期望：干净；交付分支 = main（03a / 03a-P 均已合入）
+git log --oneline -1                      # 期望：HEAD = main 顶端（以 git log 为准，不要照抄旧哈希）
+bash tools/test.sh                        # 期望 EXIT=0；**21 套件、1985 断言**、失败=0；噪音计数 SCRIPT ERROR=2 / ERROR=7
+timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言** / 0 失败（会临时移走 llm_settings.json 并逐字还原）
+```
+
+> 📋 **新会话开场语**：整段可直接复制的内容在 [`NEXT-SESSION-PROMPT.md`](NEXT-SESSION-PROMPT.md)（体检命令 + 读文件顺序 + 接下来做什么 + 流程铁律 + 运行纪律）。下面是同一份信息的展开版。
+
+**读文件顺序（不要跳）**
+
+1. `HANDOFF.md` —— 现状、铁律、§4 踩坑、§7 耐久副本规则、§8 待裁定项
+2. `NEXT-STEPS.md`（本文件）—— 接下来做什么
+3. `docs/sdd/plan-03a-factions/progress.md` —— **03a 的耐久台账**：每任务的提交哈希 / 断言数 / 审查结论 / 挂账 Minor + Phase 0 素材落位 + **快跑模式流程变更**
+4. `docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` —— 03a 计划（13 任务，**已全部完成**）。⚠️ 它的文本被控制器按实跑**修过多次**（阈值 0.45→0.28、`state_digest` 改为加键、`tick()` 片段用 `self`、`engine==null` 立即恢复、Task 12 的杖芯权重…）⇒ **以计划文件当前文本为准**
+5. `docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` —— 表现层 spec（**已评审**；§2 接口冻结、§8 素材实测盘点；P1–P5 已实现）
+6. `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` —— 03a 设计 spec（§7.4/§13.2 有勘误段）
+
+**工作流**：**默认按 §0A 的快跑模式**（brief → worker 实现 → 自跑绿灯 → 控制器读 diff + 复核门禁 → 提交推送）。旧版 **subagent-driven-development**（每任务派独立 reviewer + 修复轮 + scoped 复审 + 每题写台账）**已停用**，仅当改动涉及**不变量/契约**时临时恢复只读 reviewer。
+
+> ⚠️ 旧文档里写的 `scripts/task-brief PLAN N` / `scripts/review-package PLAN BASE HEAD` **在本机不存在**（已核实）：历史上 brief 是控制器手写（`.superpowers/sdd/.../task-N-brief.md`）、审查包是手生成的（`git diff BASE..HEAD` 落盘）。**不要照抄那两条命令**。
+
+**运行纪律（全是实跑踩出来的，见 `HANDOFF §4`）**
+
+1. 每个任务完成后 `git push origin <branch>`（别攒着）；
+2. 探针/破坏实验一律加**外部** `timeout`（例如 `timeout 300 bash tools/b1_acceptance.sh`）；
+3. 每组破坏实验后 `tasklist | grep -i godot` 查残留进程（有则 `taskkill //PID <PID> //F`）；
+4. 破坏实验的还原用**副本备份**（`cp` 回来 + md5 校验），**不要**用 `git checkout -- <file>` 对付未提交改动（已冲掉过一次实现者自己的改动）；
+5. **不要并发跑两个 headless Godot 实例**（会争 `.godot` 缓存）；
+6. 派 reviewer 时**限制阅读预算**（只读 1 次 diff、≤4 次 grep、报告 ≤120 行、不许整文件打印源码）——否则容易在长独白里撞上下文上限而失败（已发生过一次，重派时缩小输入即通过）。
+   快跑模式下只有**不变量/契约改动**才派独立 reviewer，但这条纪律仍然适用。
+
+---
+
+## A. 队列 A —— 计划 02 文档收口（**已全部完成**）
 
 > ✅ **本队列已于 2026-09-20 全部完成（A1–A7）**，分支 `docs/plan-02-closeout`，合入 `main`。提交：`0367eb7`(A1) · `18a1cf5`(A1 勾选 + A2 缺失核对) · `c17263f`(A4/A5/A6/A7) · `e6fdc24`(A2/A3) · 本勾选提交。
 > 遗留说明：A2 的**原始 reviewer log 已随旧机器丢失**，已用**重建版**代替并在工件页首显式标注（见 A2 条目）；不可恢复的部分已登记。
@@ -81,40 +141,64 @@ main scene ready, godot=4.7.2-stable (official)
 
 ---
 
-## B. 队列 B —— 计划 03 与人工验收
+## B. 队列 B —— 计划 03a / 03a-P（**均已完成**）与下一步
 
-- [x] **B1 人工 GUI 验收（HANDOFF §6 第 1 项 / §8#55）** —— ✅ **2026-09-20 完成（自动化通道，`311db31`）**：`bash tools/b1_acceptance.sh` → 计划 01 Step 6 的 8 项 + 计划 02 追加的 2 项**逐项核对通过，78/78 断言，EXIT=0**。报告：`docs/sdd/plan-02-llm-narrative/b1-acceptance.md`。
-  - 关键转折：它**不再需要人手动点击**——`HALI_DEBUG_LOG` 镜像（`be9cddc`）让界面文本可外部观测，`tools/b1_acceptance.gd` 直接驱动界面处理器（等同于点按钮/回车）并从真实控件状态 + 真实日志文本断言。
-  - 覆盖：7 个创建下拉 / 哑炮角色（无魔法无魔杖，`house_id` 见 §8#69）/ 练药收益递减（第三次「重复练习收益下降」）/ 打工加钱 / 四面板（哑炮分支）/ 存档·读档回合与财富一致 / 新实例重启后直接读档 / 第 15 回合自检挂起·拒绝行动·「确认自检」后可继续 / 等待期置灰与恢复（400ms 慢 provider 造真实等待窗）/ 未配置 LLM 提示的创建与读档两条路径（F4）。
-  - 原「人工清单」文本：
-    - `./Godot_v4.7.2-stable_win64_console.exe --path .`，按计划 01 Step 6 的 8 项清单逐项确认：创建界面 7 个下拉 / 哑炮角色 / 练魔药收益递减 / 打工加钱 / 魔法·关系·势力面板 / 存档·读档 / 重启后创建界面直接读档 / 第 15 回合自检挂起与「确认自检」。
-    - 计划 02 追加：等待 LLM 期间 `command_edit` 与整排按钮置灰、结束恢复；未配置时状态行显示提示（创建路径与**读档路径**都要看，后者正是 F4）。
-  - ⏸️ 历史记录（2026-09-20 早先那次非正式点击 + 人类裁定「暂不逐项跑」）：哑炮确实无魔法无魔杖、4 回合均推进且 `world.tick()` 生效、存档生成成功；但叙事来源/四个面板/读档/自检/置灰/降级全部无痕——这正是本次补镜像 + 补自动验收的起因。
-  - ✅ **已实现（`be9cddc`）：`HALI_DEBUG_LOG=1` 调试镜像**——界面文本带 `[HALI]` 前缀进 stdout（真窗口下实测落进 `user://logs/godot.log`）。不设该变量时一行都不输出（`tools/test.sh` `3/4` 反向断言）。
-  - ⚠️ **日志现状**（已查清）：引擎 stdout → `user://logs/*.log`；游戏内日志 → 存档 `world.log`；**叙事/面板/玩家输入既不 `print` 也不入档**——镜像就是为此而生。
-  - ⚠️ **仍未做的（不影响 B1 结论，已登记）**：真实 OS 鼠标/键盘事件、像素级排版可读性、真的关进程重开（用同进程新实例模拟）、真机 LLM 的几十秒等待与断网降级（属 B2）。
-  - 🕳️ 新登记坑（已入 `HANDOFF §4`）：`RichTextLabel.text` **不会**被 `append_text()` 更新，必须用 `get_parsed_text()`；headless 下 `get_line_count()` 恒为 0。
+> ⚖️ **状态（2026-09-20）**：计划 03a（Tasks 1–13）与 03a-P（P1–P5）**均已完成并合入 `main`**；素材线 **B6 已完成**（剩 §B8 切片接进主题）。
+> **恢复第一件事**：读 `docs/sdd/plan-03a-factions/progress.md`（耐久台账）+ 本节 + §0A（快跑模式）。
 
-- [ ] **B2 真机 LLM 联调（HANDOFF §0「下一步」）** —— 🔶 **2026-09-20 部分完成**（报告 `docs/sdd/plan-02-llm-narrative/b2-live-integration.md`，已脱敏）；⏸️ **用户裁定（2026-09-20）：暂不做**，先把 B3 推起来（剩余项见下方「仍未验」）。
-  - 写 `user://llm_settings.json`（Windows：`%APPDATA%\Godot\app_userdata\<项目名>\`）或设 `HALI_LLM_API_KEY`；跑一回合，确认：拿到真实叙事、`ops` 生效、等待期窗口不卡死、断网/超时自动降级为 `ScriptedGameMaster` 且有提示。
-  - 已知未验证项（来自 `task-811-rereviewer.log`）：真实 `HTTPRequest` 链路（`await request_completed`、`add_child`、timeout、4xx/5xx）、`api_key` 掩码的端到端执行、提示注入的实际绕过率。
-  - ✅ **已实测通过**（2026-09-20，内网 OpenAI 兼容网关 + 思考型模型）：`HTTPRequest` 真实链路、中文 UTF-8 往返、`response_format: json_object` 被接受、`PromptBuilder` 提示词被正确人格化（叙事里出现玩家真实学院）、模型产出的 ops 全部经`OpGuard`/`StateOps` 落地（`errors=[]`，状态真的变了）、`warnings → op_errors` 透出链有效。
-  - 🔴 ~~**阻塞（`§8#66`）**~~ **已修（`3240af6`）**：`LlmGameMaster` 现在把 settings 的 `temperature`/`max_tokens`/`timeout_ms` 灌进两处 request（含 `build_repair` 重试），`main.gd:_build_gm()` 同步传参；`§8#67`（错误串可诊断）同批修掉。`[llm]` 65→79，反证承重，**真机复测不再降级**（叙事 346 字、4 条 ops 落地、`errors=[]`、49.7s）。⚠️ 配置仍需显式给 `max_tokens ≥ 8192` / `timeout_ms ≥ 120000`（思考型模型），见 README「LLM 配置」。
-  - ⏭️ **仍未验**：断网/401/超时后真的降级且有提示、连续多回合、`api_key` 掩码的端到端执行、提示注入实际绕过率、思考档位参数名（见报告 §7）。
-    - （原「GUI 等待期不卡死（需 B1）」已在 B1 自动验收里用 mock 慢 provider 覆盖置灰/恢复；真机几十秒等待仍属本条。）
-  - ⚠️ **安全**：仓库是 **public**，报告内网地址用占位符；**建议轮换该 key**（已出现在会话记录里）。
-
-- [ ] **B3 计划 03「派系与政治经济」启动**
-  - 边界见计划 02 spec §15：03 派系与政治经济（`world_vars` 之外的九大支柱）→ 04 神奇生物生态与区域危险度 → 05 NPC 自主与信息可信度 → 06 多世代传承与世界记忆。
-  - 流程（沿用计划 01/02）：`git checkout main && git checkout -b plan-03-...` → brainstorming 探需求 → 写 spec（`docs/superpowers/specs/`）→ writing-plans 出计划（`docs/superpowers/plans/`）→ 逐任务 brief → worker → 绿灯 → 报告 → 只读 reviewer → 台账 → 合入 `main`。
-  - spec 里要顺带处理的世界观级遗留：`power_panel` 7 标签映射到 4 个 `world_vars`（HANDOFF §8#7）、`rumors.weight` 与 `wand_cores.rarity` 声明了但未生效（§8#16/#21）。
-  - **2026-09-20 裁定带入**：`NEXT-STEPS.md` §C 全表项（尤其 `§8#58`、`§8#61–#65` 计划 02 遗留）**不单开加固批次**，由计划 03 顺手处理 —— 启动 03 时把这 6 条列入任务拆解（`§8#61/#64/#65` 是完全廉价的单点修，`§8#62/#63` 要动 UI/provider）。
-
----
+- [x] **B3 计划 03「派系与政治经济」启动** —— 已拆为 03a/03b/03c；**03a 已完成 Tasks 1–13**
+  - 分支 `plan-03-factions`｜计划 `docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md`（13 任务）｜spec `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md`
+  - 交付：T1 内容表(17 派系 / 4 政体 / 5 政治事件) · T2 规则层(初始化 / 机构控制权 / 权力四角 / 政体推导) · T3 玩家 `standing` + 3 op + `OpGuard` + 存档校验 · T4 `evolve` 演化 + 政体刷新 · T5 `tension` + 政治事件 + `tick()` 接线 · T6 信息保护 `reveal()` + 传闻揭示 · **T7 势力面板重写（修 `§8#7`）** · T8 提示词只暴露已揭示派系 · T9 离线替身派系关键词 · T10 UI 看门狗 + provider 卫生（`§8#58/#62/#63`） · T11 降级原因 + 测试可判别性 + 鸭子类型（`§8#61/#64/#65`） · **T12 哑炮学院 + 创建界面姓名/性别 + 内容旋钮生效（`§8#69/#70/#16/#21`）** · **T13 收尾合入 `main`**
+  - 质量数据：起点 18 套件 / 1746 断言；**结束时 21 套件 / 1985 断言**（B1 探针 105 → 151）；审查 **Critical 0**；Important 全部修复或按人类裁定收口；修复轮 4 轮（T4/T5/T6/T10）
+  - Phase 0（暂停期由控制器直执）：素材落位（目录改名 / 音频统一 OGG 32.4MB→14.4MB / `assets/CREDITS.md` / `.gitattributes`）
+- [x] **B4 计划 03a 续做** —— Task 12 与 Task 13 **均已完成**
+  - **Task 12**（`973eea8` + `ce1594d` + `aefd612`）：`§8#69` 哑炮不进霍格沃茨（`house_id="none"`）· `§8#70` 创建界面姓名默认空 + 性别下拉 · `§8#16` `rumors.weight` 生效 · `§8#21` `wand_cores` 权重生效（新增 `RngService.stream_pick_weighted`）
+    - ⚠️ 计划原文的 `"rarity"` 是**字符串标签**（`float("common")==0.0`）⇒ 总权重 0 ⇒ 回退均匀 ⇒ 会静默假修；控制器已先改计划（`b48bd76`）再改代码，另改了一版 Step 1 测试片段（`f036394`）
+  - **Task 13**：全量回归（`test.sh` + `b1`）→ 文档（README/HANDOFF/NEXT-STEPS）→ `merge --no-ff` 回 `main` → 推送；台账 `docs/sdd/plan-03a-factions/progress.md` 含 T1–T12 + 03a-P P1–P5 全记录
+- [x] **B5 计划 03a-P「表现层与素材接线」**（**P1–P5 全部完成**）
+  - spec：`docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`（现状审计 / 素材契约 / 5 个 seam / **§2 接口冻结** / **§8 素材实测盘点与落位记录**）
+  - ✅ 交付：`data/presentation.json` + `data/audio_cues.json` · `Presentation` / `ThemeBuilder` / `AudioDirector` / `AssetSlots` 四个模块 · 新增三个套件（`[presentation]` 83 / `[theme_audio]` 76 / `[asset_slots]` 59）
+  - ⚠️ **下面这段是暂停期的状态记录（保留供追溯）**；**当前状态看 §B6**。
+  - ✅ **素材已落位（`d67bbb1`，2026-09-20）**：目录改 `assets/`、音频统一 OGG 进 `assets/audio/bgm/`（32.4MB→14.4MB）、
+    4 个 BGM 的 `.import` 已设 `loop=true`（实测生效）、`assets/CREDITS.md` 授权台账已建、`.gitattributes` 已补二进制规则、
+    `harry_p.zip` 已删（md5 重复）；原件备份在仓库外 `E:/Hali-asset-originals/`。**实测事实一律以 spec §8.4 为准。**
+  - ⛔ **仍缺 2 项**（只阻塞 P3/P5，**不阻塞** P1/P2/P4）：
+    ① **CJK 正文字体**——Godot 内置字体不含中日韩字形（实测 `has_char('你')==false`），现有 4 个字体 CJK 覆盖也是 0 ⇒
+       全中文界面是豆腐块。**不能子集化**（玩家可输入任意汉字），需全字集（10–20MB）。待人类给文件，或控制器取 OFL 字体。
+    ② **`interface.psd` 切片 PNG**——本机无 PIL / psd_tools / ImageMagick；控制器 `pip install psd-tools` 自己切，或人类导出。
+  - ⚠️ **待人类确认**：`bg_main.ogg` 时长 211.88s，而原始 mp3 是 309.09s（ffprobe）⇒ **少了 97 秒**；若非有意剪辑需重转。
+  - 插入位置：**Task 12 之后、Task 13 收尾之前**（素材已到，P1–P4 可自由提前；与 Task 12 的文件重叠几乎为零）
+    - 唯一的真冲突点：P3/P5 与 **Task 12** 都要改 `src/ui/main.gd` ⇒ 仍按「Task 12 → 03a-P → Task 13」串行，不并发。
+  - 一条已挂账的 UX 修复也归这里：`LlmGameMaster` 无 fallback 分支的**降级原因双显**（叙事里 `（原因：X）` + `warnings` 也打印）
+- [x] ✅ **B6 素材合并 + 清单加行（已完成 2026-09-20）** —— 素材提交 `d18df0f`（分支 `assets-cjk-ui-slices`，独立 worktree `/e/hali-assets`）
+  → 控制器校验**只动 `assets/`** 后合并 `ea50b91` → `--import` 生成 14 个 `.import` 并提交
+  → Godot `FontFile.has_char()` 覆盖自检 **PASS**（含 `龘爨饕餮`）→ `data/presentation.json` 加 `fonts.body` ⇒ **中文界面已可读**
+  ⚠️ 执行者用 PowerShell 弄坏过 worktree 引用（控制器已就地修复），事故与修法见 `docs/sdd/plan-03a-P/assets-agent-repair-prompt.md`
+  下面保留当时的验收标准（已执行，供追溯）：
+  - **当时的两道校验**：素材分支 + 独立 worktree `/e/hali-assets`
+    ① `git diff --name-only origin/main..origin/assets/cjk-ui-slices | grep -v '^assets/'` 必须为空（**只动 `assets/`** 才合并）；
+    ② 合完跑 `--import` → `git add` 新生成的 `.import` → `bash tools/test.sh`（**21 套件 / 1985 断言**、噪音计数 2/7）
+  - 完整流程与校验命令写在 `docs/sdd/plan-03a-P/assets-agent-repair-prompt.md` 文末（该文件也记录了**执行者用 PowerShell 弄坏 worktree 引用**的事故与修法）
+  - 缺口清单与验收标准：`HANDOFF.md` §8#72（✅ 已闭合）
+- [ ] **B8 P5b：把 13 张 UI 切片接进主题**（`assets/ui/` 已有切片，实测尺寸：`panel_bg` 244×366 · 按钮四态 160×44 · `textfield` 134×28 · `scrollbar_bg` 36×134 / `grab` 30×48 · `frame_horizontal` 224×33 / `vertical` 33×141 · `emblem_ring` 80×80 · `panel_slot` 42×42 · `button_close` 60×58 · `button_neutral` 160×44）
+  - **做法（不新增布局分支）**：`ThemeBuilder` 里按「清单有没有 `ui.<键>`」切换样式来源 —— 有则用 `AssetSlots.stylebox_for()` 造 `StyleBoxTexture`，无则沿用现有 `StyleBoxFlat`（`stylebox_for` 早已实现且有断言覆盖）
+  - 需要真实布局落点的（`panel_bg` / `frame_*` / `emblem_ring` / `panel_slot`）**先只给按钮/文本框/滚动条加清单行**，或留到 03b 的界面改版一起做
+  - ⚠️ 纪律：**不要先往 `data/presentation.json` 写没有消费者的行**（那就是「声明了但无效」的死旋钮，`§8#16/#21` 同类）
+  - 验收：`test.sh` 绿 + 噪音计数 2/7；九宫格边距**从清单数据来**（`[上,右,下,左]`），测试用**非对称值**
+- [ ] **B7 计划 03b / 03c**（下一批主线）
+  - 边界照 03a spec §14：**03b 经济骨架**（物价/工资/产业、古灵阁存贷与汇率、贸易价差与走私、经济危机连锁、`Money` 债务显示格式 `§8#5`）；
+    **03c 社会与法律**（纯血家族完整制度、协会体系、法律与审判、傲龙行动与非法施法后果 `§8#28/#29`，以及 `illegal_affiliation` 的清除/归一规则）
+  - 建议开新分支（从 `main` 拉），并按 §0A 的快跑模式跑；开工前先读 `HANDOFF.md` §5.5 与 §8
+- [ ] **B2 真机 LLM 联调（剩余项）** —— ⏸️ 人类已裁定**暂不做**；剩余：断网/401/超时真的降级且有提示、连续多回合、`api_key` 掩码端到端、提示注入绕过率、思考档位参数名（见 `docs/sdd/plan-02-llm-narrative/b2-live-integration.md` §7.1）
 
 ## C. 仍然开放的人类裁定项（HANDOFF §8 中与后续计划直接相关的）
 
 计划 03+ 动到相应模块时**顺手裁定**，不必单开批次：
+
+> ✅ **下表里带 `✅` 的行已在计划 03a / 03a-P 期间闭合**（2026-09-20，写明任务/提交）：`§8#7`（T7）· `§8#16`/`§8#21`（T12）· `§8#58`/`§8#62`/`§8#63`（T10）· `§8#61`/`§8#64`/`§8#65`（T11）· `§8#69`/`§8#70`（T12）· `§8#66`/`§8#67`（`3240af6`）。
+> ⏳ **仍未做（手动性项）**：`§8#3`（降级路径直改世界）· `§8#4`（哑炮失败率）· `§8#5`（`Money` 负值显示）· `§8#6`（大师级失败率上界）· `§8#9`/`§8#47`（嵌套校验）· `§8#19`（`game_seed` int64）· `§8#26` + **新增 `§8#71`（读档 `house_id` 归一化）** · `§8#49`（temp+rename）· `§8#55`（像素级/真实 OS 事件）· `§8#68`（`provider` 无读取端）· **新增 `§8#72`（素材线三件）**
+>
+> 📌 **下表是「计划 03+ 动到相应模块时顺手裁定」的清单；闭合后不要删行，只在编号上加 `~~` 与 `✅`，保留追溯。**
 
 > ⚖️ **2026-09-20 人类裁定**：下表全部项（含新登记的 `§8#58`、`§8#61–#65`）**不单开加固批次，一律留给计划 03 启动后顺手处理**。因此启动计划 03 时，下列行就是它的**必办清单的一部分**（已同步进 B3）。
 
@@ -129,24 +213,27 @@ main scene ready, godot=4.7.2-stable (official)
 | §8#26 | 载入路径不重跑 `validate_choices`，手改存档可塞进非法组合 | 存档格式 v2 或载入流程 |
 | §8#49 | `SaveStore.save` 无 temp+rename，写盘中断会毁旧档 | 存档格式 v2 |
 | §8#55 | 人工 GUI 验收缺口 | 见 B1 |
-| §8#58 | 计划 02 新增：UI 等待期无超时/取消（`await submit_async` 不恢复则输入与按钮停在禁用态） | **计划 03**（已裁定） |
-| §8#61 | 计划 02 重跑盲审：降级原因未进 `op_errors` + `last_error` 是 write-only（spec §9 偏差） | **计划 03**（已裁定；1 行修） |
-| §8#62 | 计划 02 重跑盲审：UI 提交路径无失败恢复 → 永久禁用只能重启；**不可**只补 `_on_load` 的 `editable`（治标） | **计划 03 动 UI 时**（已裁定） |
-| §8#63 | 计划 02 重跑盲审：provider 泄漏 `HTTPRequest` 节点（每次开始/读档 1 个）+ `timeout` 只生效一次 | **计划 03**（已裁定；建议与「设置界面」小计划一起） |
-| §8#64 | 计划 02 重跑盲审：测试可判别性批次（`build_repair` 不可判别 / `narration.length()>0` 准恒真 / 无 `api_key` 负向断言） | **计划 03**（已裁定；可与 §8#8/#40/#43 合并） |
-| §8#65 | 计划 02 重跑盲审：契约文档与类型守卫漂移（`act` 未注「可协程」/ `_resolve` vs spec `_post_submit` / `gm is` 具体类型 + blocked 空文案） | **计划 03**（已裁定） |
+| ~~§8#58~~ ✅ | ~~计划 02 新增：UI 等待期无超时/取消~~ → **T10 看门狗 + 单一恢复出口** | ✅ 已闭合 |
+| ~~§8#61~~ ✅ | ~~计划 02 重跑盲审：降级原因未进 `op_errors` + `last_error` 是 write-only~~ → **T11** | ✅ 已闭合 |
+| ~~§8#62~~ ✅ | ~~计划 02 重跑盲审：UI 提交路径无失败恢复~~ → **T10**（未只补 `_on_load`，而是收进唯一出口） | ✅ 已闭合 |
+| ~~§8#63~~ ✅ | ~~计划 02 重跑盲审：provider 泄漏 `HTTPRequest` 节点 + `timeout` 只生效一次~~ → **T10** | ✅ 已闭合 |
+| ~~§8#64~~ ✅ | ~~计划 02 重跑盲审：测试可判别性批次~~ → **T11** | ✅ 已闭合 |
+| ~~§8#65~~ ✅ | ~~计划 02 重跑盲审：契约文档与类型守卫漂移~~ → **T11** | ✅ 已闭合 |
 | ~~**§8#66**~~ | ~~B2 实测发现的阻塞 bug：`llm_settings.json` 的 `temperature`/`max_tokens`/`timeout_ms` 完全不生效~~ | ✅ **已修（`3240af6`，2026-09-20）** |
 | ~~§8#67~~ | ~~B2 实测：错误串诊断性不足~~ | ✅ **已修（`3240af6`）**；残留：默认值仍 1024（已在 README 写明思考型模型需显式配大） |
 | §8#68 | 复审 M-a：`LlmSettings.provider` 无读取端（只有一种实现） | 计划 03 做 provider 路由时顺手 |
-| §8#69 | **新发现（B1 点击）：哑炮却有学院**（`bloodline=squib` → `house_id=gryffindor`）——`character_creation.gd:175` 无条件 `assign_house()` 后才在 `:205` 设 `no_magic`；正典里哑炮不进霍格沃茨 | 魔法/学院相关任务，或计划 03（已裁定随 03） |
-| §8#70 | 新发现（UX）：创建界面姓名框默认「无名者」可直接提交、且**无性别输入**（恒为「未定」） | 计划 03，或「设置界面」小计划 |
+| ~~§8#69~~ ✅ | ~~哑炮却有学院~~ → **T12**（`house_id="none"`；**读档路径归存档 v2 = 见 `§8#71`**） | ✅ 已闭合（创建路径） |
+| ~~§8#70~~ ✅ | ~~创建界面姓名默认「无名者」+ 无性别输入~~ → **T12** | ✅ 已闭合 |
+| **§8#71** | **新增**：读档路径原样拷贝 `house_id`（不重判）⇒ 旧存档仍可见 `squib`+`gryffindor`；已裁定归**存档 v2** | 存档格式 v2（与 `§8#26` 同批） |
+| ~~**§8#72**~~ | ~~素材线三件~~ | ✅ **已闭合（`ea50b91`）**：字体 + OFL 原文 + 13 张切片已入库，中文界面已可读；剩「切片接进主题」= **§B8** |
 
 ---
 
 ## D. 协作约定（计划 01/02 已固化，续做必须遵守）
 
 1. **子代理必须用** `pi -p --provider deepseek --model deepseek-flash ...`（与主会话同模型），不要用 harness 默认模型。
-2. **每任务六步**：brief → worker 实现 → 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 只读 reviewer（`pi -p --tools read,bash`）审 diff → 台账记录。
+2. **每任务流程**：默认按 §0A **快跑模式**（brief → worker 实现 → 自跑 `bash tools/test.sh` 到绿 → 控制器读 diff + 复核 4 道门禁 → 提交推送；台账收尾时一次写全）。
+   旧版「六步」（含每任务派只读 reviewer + 修复轮 + scoped 复审）**已停用**，仅**不变量/契约**改动时临时恢复 reviewer。
 3. **提交前必须有绿灯**；报告里要贴 `tools/test.sh` 的原始输出（含断言数）。
 4. **审查者只读**；Critical/Important 要么当轮修掉 + scoped 复审，要么明确登记进人类批次（不得静默放过）。
 5. **耐久副本**：任务完成后把 brief / report / review / 审查包 `review-<from>..<to>.diff` 从 `.superpowers/sdd/.../` 同步到 `docs/sdd/<plan>/`，与代码同一次提交（HANDOFF §7）。**A1–A3 就是在补这条规则的历史欠账。**
@@ -160,9 +247,10 @@ main scene ready, godot=4.7.2-stable (official)
 
 | 项 | 值 |
 | --- | --- |
-| 交付点 | `main` 顶端（本文件提交后见 `git log --oneline -1`） |
+| 交付点 | **`main`** 顶端（计划 01 / 02 / 03a / 03a-P 均已合入；**以 `git log --oneline -1` 为准**） |
+| 计划 03a / 03a-P 计划 · spec · 台账 | `docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` · `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` · `docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` · `docs/sdd/plan-03a-factions/progress.md` |
 | 计划 01 计划 / 台账 | `docs/superpowers/plans/2026-09-18-...-01-core-foundation.md` / `docs/sdd/plan-01-core-foundation/progress.md` |
 | 计划 02 计划 / spec / 台账 | `docs/superpowers/plans/2026-09-19-...-02-llm-narrative.md` / `docs/superpowers/specs/2026-09-19-...-02-llm-narrative-design.md` / `docs/sdd/plan-02-llm-narrative/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎） |
 | 正典规格 | `哈利·波特·魔法纪元.md`（仓库根，勿移动改名） |
-| 下一步第一件事 | **B3 启动计划 03**（先 `git checkout main && git checkout -b plan-03-...`）；人工验收则用 B1 的镜像通道（`HALI_DEBUG_LOG=1`） |
+| 下一步第一件事 | **§B8 P5b**：把 13 张 UI 切片接进主题（`ThemeBuilder` 按清单键切换样式来源，**不新增布局分支**）；然后 **§B7**：开新分支做 03b 经济 / 03c 社会与法律 |

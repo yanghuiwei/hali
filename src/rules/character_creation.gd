@@ -100,10 +100,27 @@ static func default_skills_for(choices: Dictionary, registry: Registry) -> Dicti
 	return skills
 
 static func generate_wand(rng: RngService, registry: Registry) -> Dictionary:
-	var wood: String = str(rng.stream_pick("wand_wood", registry.ids("wand_woods").duplicate()))
-	var wood_entry: Dictionary = registry.entry("wand_woods", str(wood))
-	var core_ids := registry.ids("wand_cores").duplicate()
-	var core_id := str(rng.stream_pick("wand_core", core_ids))
+	# 计划 03a（§8#16/#21）：杖芯的 rarity 只是语义标签（"common"/"rare"），不是权重；
+	# 真正的权重是 wand_cores.json 里的数值字段 weight（common=6 / rare=1）。
+	# 木材表没有 weight 字段 ⇒ 全部走默认 1.0 = 均匀抽取；仍然走同一个函数，保持两处形式一致。
+	# ⚠️ 不要用有类型接收（`: Dictionary`）接 stream_pick_weighted 的返回值：空表时它返回 null，
+	#    而「可空值赋给有类型变量」是**运行期** SCRIPT ERROR（实测），会中止所在函数、并污染很敏感的
+	#    「SCRIPT ERROR == 2 条」基线指标。当前 registry 表非空 ⇒ 不可达，但不依赖不可达前提。
+	var wood_entries: Array = []
+	for wid in registry.ids("wand_woods"):
+		wood_entries.append(registry.entry("wand_woods", str(wid)))
+	var wood_entry_pick = rng.stream_pick_weighted("wand_wood", wood_entries, "weight")
+	if wood_entry_pick == null:
+		return {}
+	var wood := str((wood_entry_pick as Dictionary).get("id", ""))
+	var wood_entry: Dictionary = registry.entry("wand_woods", wood)
+	var core_entries: Array = []
+	for cid in registry.ids("wand_cores"):
+		core_entries.append(registry.entry("wand_cores", str(cid)))
+	var core_entry_pick = rng.stream_pick_weighted("wand_core", core_entries, "weight")
+	if core_entry_pick == null:
+		return {}
+	var core_id := str((core_entry_pick as Dictionary).get("id", ""))
 	var core_entry: Dictionary = registry.entry("wand_cores", core_id)
 	var flex_ids := registry.ids("wand_flexibilities").duplicate()
 	var flex_id := str(rng.stream_pick("wand_flex", flex_ids))
@@ -172,7 +189,8 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) -> 
 	p.birth_identity_id = str(choices["birth_identity_id"])
 	p.birthplace = str(choices.get("birthplace", ""))
 	p.family_status = str(choices.get("family_status", ""))
-	p.house_id = assign_house(choices, rng, registry)
+	# §8#69：原来这里有一行**无条件**的 p.house_id = assign_house(...)，现已移入下方「非哑炮」分支——
+	# 哑炮即使在创建界面显式选了学院，也不得入学（正典第七章/第二十四章：哑炮不进霍格沃茨）。
 	p.political_leaning_id = str(choices["political_leaning_id"])
 	p.personality = (choices.get("personality", []) as Array).duplicate()
 	p.life_goal = str(choices["life_goal"])
@@ -204,7 +222,10 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) -> 
 		p.wand = {}
 		p.flags["no_magic"] = true
 		p.job = ""
+		# §8#69 正典修正（第七章/第二十四章）：哑炮不进霍格沃茨；「未入学」用 houses.json 里已有的 none
+		p.house_id = "none"
 	else:
+		p.house_id = assign_house(choices, rng, registry)
 		p.magic_tier = MagicLevel.Tier.PRE_SCHOOL
 		var wand_choice: Dictionary = choices.get("wand", {})
 		p.wand = wand_choice if not wand_choice.is_empty() else generate_wand(rng, registry)

@@ -1,0 +1,352 @@
+# Review package: 413cd3f..51a3455
+
+## Commits
+51a3455 feat(factions): 信息保护与传闻揭示（计划 03a Task 6）
+
+## Files changed
+ data/rumors.json         |  6 +++-
+ src/core/registry.gd     |  3 ++
+ src/rules/factions.gd    | 40 +++++++++++++++++++---
+ tests/factions_test.gd   | 87 ++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/registry_test.gd   | 23 +++++++++++++
+ tests/world_tick_test.gd |  4 +--
+ 6 files changed, 156 insertions(+), 7 deletions(-)
+
+## Diff
+diff --git a/data/rumors.json b/data/rumors.json
+index 968cbd7..e9673bc 100644
+--- a/data/rumors.json
++++ b/data/rumors.json
+@@ -7,12 +7,16 @@
+ 	{"id": "creature_dragon", "label": "龙越界", "category": "神奇生物", "text": "龙类保护区报告有一条龙越过了界线，罗马尼亚那边正在追踪。", "weight": 3, "major": false, "min_year": 990, "zones": ["diagon_alley", "ministry_of_magic", "knockturn_alley"], "requires_flags": []},
+ 	{"id": "economy_price", "label": "魔药材料涨价", "category": "经济", "text": "魔药材料涨价了，曼德拉草尤其贵，几家魔药店已经开始限购。", "weight": 12, "major": false, "min_year": 990, "zones": ["diagon_alley", "knockturn_alley", "hogsmeade"], "requires_flags": []},
+ 	{"id": "economy_wand", "label": "魔杖木材短缺", "category": "经济", "text": "魔杖木材运输受阻，奥利凡德店里的交货期又长了半个月。", "weight": 8, "major": false, "min_year": 990, "zones": ["diagon_alley"], "requires_flags": []},
+ 	{"id": "international", "label": "国际巫师联合会会议", "category": "国际", "text": "国际巫师联合会就某国的保密法执行问题又开了一次没有结论的会。", "weight": 6, "major": false, "min_year": 1692, "zones": ["ministry_of_magic", "diagon_alley"], "requires_flags": []},
+ 	{"id": "quidditch", "label": "魁地奇转会", "category": "巫师", "text": "魁地奇联赛换季，几家俱乐部的转会消息占据了报纸的半个版面。", "weight": 12, "major": false, "min_year": 990, "zones": ["diagon_alley", "hogsmeade", "hogwarts", "the_burrow"], "requires_flags": []},
+ 	{"id": "school_term", "label": "霍格沃茨开学", "category": "巫师", "text": "霍格沃茨开学了，对角巷挤满了买书和买坩埚的学生。", "weight": 14, "major": false, "min_year": 990, "zones": ["hogwarts", "diagon_alley", "hogsmeade"], "requires_flags": []},
+ 	{"id": "daily_life", "label": "平静日常", "category": "巫师", "text": "没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。", "weight": 20, "major": false, "min_year": 990, "zones": ["london_muggle", "spinners_end", "the_burrow", "godrics_hollow", "grimmauld_place", "st_mungos", "gringotts", "room_of_requirement", "beauxbatons", "durmstrang", "ilvermorny", "malfoy_manor"], "requires_flags": []},
+ 	{"id": "major_azkaban_break", "label": "阿兹卡班越狱", "category": "战争", "text": "阿兹卡班发生了大规模越狱，魔法部承认这是一次严重的失败。", "weight": 1, "major": true, "min_year": 1692, "zones": ["diagon_alley", "ministry_of_magic", "knockturn_alley", "azkaban"], "requires_flags": []},
+ 	{"id": "major_ministry_coup", "label": "魔法部政变传闻", "category": "战争", "text": "有消息说魔法部内部正在发生政变，几个司的入口被封锁了。", "weight": 1, "major": true, "min_year": 1692, "zones": ["ministry_of_magic", "diagon_alley"], "requires_flags": []},
+ 	{"id": "major_gringotts_crisis", "label": "古灵阁停摆", "category": "经济", "text": "古灵阁宣布暂停部分金库业务，恐慌在纯血家族之间蔓延。", "weight": 1, "major": true, "min_year": 990, "zones": ["gringotts", "diagon_alley", "knockturn_alley"], "requires_flags": []},
+-	{"id": "major_hogwarts_occupied", "label": "霍格沃茨异变", "category": "战争", "text": "霍格沃茨上空笼罩着不寻常的沉默，猫头鹰邮件停了两天。", "weight": 1, "major": true, "min_year": 1970, "zones": ["hogwarts", "hogsmeade"], "requires_flags": []}
++	{"id": "major_hogwarts_occupied", "label": "霍格沃茨异变", "category": "战争", "text": "霍格沃茨上空笼罩着不寻常的沉默，猫头鹰邮件停了两天。", "weight": 1, "major": true, "min_year": 1970, "zones": ["hogwarts", "hogsmeade"], "requires_flags": []},
++	{"id": "rumor_malfoy_block", "label": "古老姓氏抱团", "category": "政治", "text": "听说几个古老姓氏在威森加摩里抱团，把持着席位不肯松手。", "weight": 8, "major": false, "min_year": 0, "zones": ["diagon_alley", "london_muggle"], "requires_flags": [], "reveals_faction": "sacred_twenty_eight"},
++	{"id": "rumor_marked_ones", "label": "袖口下的记号", "category": "政治", "text": "有人在翻倒巷低声说，那些人又聚起来了，袖口下面有记号。", "weight": 8, "major": false, "min_year": 0, "zones": ["knockturn_alley", "diagon_alley"], "requires_flags": [], "reveals_faction": "death_eaters"},
++	{"id": "rumor_phoenix_network", "label": "不挂名的联络网", "category": "政治", "text": "有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。", "weight": 8, "major": false, "min_year": 0, "zones": ["hogsmeade", "london_muggle"], "requires_flags": [], "reveals_faction": "order_of_phoenix"},
++	{"id": "rumor_continental_pureblood", "label": "欧陆联姻", "category": "政治", "text": "《预言家日报》角落里提到欧陆几家的联姻，说那才是真正的权力网络。", "weight": 6, "major": false, "min_year": 0, "zones": ["diagon_alley", "london_muggle"], "requires_flags": [], "reveals_faction": "continental_pureblood"}
+ ]
+diff --git a/src/core/registry.gd b/src/core/registry.gd
+index 57e6cbe..9713ddd 100644
+--- a/src/core/registry.gd
++++ b/src/core/registry.gd
+@@ -118,20 +118,23 @@ func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedSt
+ 		elif float(e["base_power"]) < 0.0 or float(e["base_power"]) > 1.0:
+ 			errors.append("%s: base_power 超值域（%s）" % [where, str(e["base_power"])])
+ 		for field in ["institutions", "rivals", "allies"]:
+ 			if not e.has(field):
+ 				errors.append("%s: 缺少 %s" % [where, field])
+ 			elif typeof(e[field]) != TYPE_ARRAY:
+ 				errors.append("%s: %s 必须是数组" % [where, field])
+ 		for inst in (e.get("institutions", []) as Array):
+ 			if not _INSTITUTIONS.has(str(inst)):
+ 				errors.append("%s: 机构非法（%s）" % [where, str(inst)])
++	if table_name == "rumors":
++		if e.has("reveals_faction") and typeof(e["reveals_faction"]) != TYPE_STRING:
++			errors.append("%s: reveals_faction 必须是字符串" % where)
+ 	if table_name == "governments":
+ 		if str(e.get("summary", "")).is_empty():
+ 			errors.append("%s: 缺少 summary" % where)
+ 	if table_name == "political_events":
+ 		if not ["politics", "economy", "law"].has(str(e.get("category", ""))):
+ 			errors.append("%s: category 非法" % where)
+ 		if str(e.get("text", "")).is_empty():
+ 			errors.append("%s: 缺少 text" % where)
+ 		if str(e.get("condition", "")).is_empty():
+ 			errors.append("%s: 缺少 condition" % where)
+diff --git a/src/rules/factions.gd b/src/rules/factions.gd
+index b61f986..3295ab6 100644
+--- a/src/rules/factions.gd
++++ b/src/rules/factions.gd
+@@ -78,20 +78,24 @@ static func validate_content(registry: Registry) -> PackedStringArray:
+ 		elif (e["aliases"] as Array).is_empty():
+ 			errors.append("factions/%s: aliases 为空" % id)
+ 		else:
+ 			for alias in (e["aliases"] as Array):
+ 				if str(alias).strip_edges().is_empty():
+ 					errors.append("factions/%s: alias 为空（第 %d 项）" % [id, (e["aliases"] as Array).find(alias)])
+ 		if not e.has("base_power"):
+ 			errors.append("factions/%s: base_power 缺失" % id)
+ 		elif typeof(e["base_power"]) != TYPE_INT and typeof(e["base_power"]) != TYPE_FLOAT:
+ 			errors.append("factions/%s: base_power 类型非法（%s）" % [id, str(e["base_power"])])
++	for rid in registry.ids("rumors"):
++		var target := str(registry.entry("rumors", str(rid)).get("reveals_faction", ""))
++		if not target.is_empty() and not registry.has("factions", target):
++			errors.append("rumors/%s: reveals_faction 引用不存在的派系（%s）" % [str(rid), target])
+ 	return errors
+ 
+ # ---------- 初始化与读取 ----------
+ 
+ # 幂等：只为「还没有状态」的派系建状态；旧存档/已演化的值一律不动。
+ # clock 为 null 时直接返回：畸形载荷的负例路径（save_test 的毒对象用例）会让 `GameClock.from_dict` 失败并留下 null clock，
+ # 此时不能再去读 `clock.turn`（会往 stderr 喷 17 条 SCRIPT ERROR）。
+ static func initialize(world: WorldState) -> void:
+ 	if world == null or world.registry == null or world.clock == null:
+ 		return
+@@ -369,21 +373,21 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
+ 		"lawlessness":
+ 			return float(v.get("corruption", 0.3)) >= 0.65 \
+ 				or government_type(world) == "death_eater_dictatorship"
+ 		"war_exhaustion":
+ 			return float(v.get("war_pressure", 0.2)) >= 0.65
+ 		"secrecy_crisis":
+ 			return float(v.get("secrecy_integrity", 0.8)) <= 0.30
+ 		_:
+ 			return false
+ 
+-# 选举本月政治事件：必须同时满足「tension 过阀」「条件成立」「重大事件配额可用」（第六十八章）。
++# 选举本月政治事件：必须同时满足「tension 过隘」「条件成立」「重大事件配额可用」（第六十八章）。
+ # 注意：本函数有副作用（命中时写 history 并占用 last_major_turn 配额），不是纯查询；请勿用于预览/面板。
+ static func pick_political_event(world: WorldState) -> Dictionary:
+ 	if tension_of(world) < TENSION_THRESHOLD:
+ 		return {}
+ 	var last_major := int(world.flags.get("last_major_turn", -WorldState.MAJOR_EVENT_GAP))
+ 	if world.clock.turn - last_major < WorldState.MAJOR_EVENT_GAP:
+ 		return {}
+ 	var candidates: Array = []
+ 	for eid in world.registry.ids("political_events"):
+ 		var entry := world.registry.entry("political_events", str(eid))
+@@ -400,23 +404,51 @@ static func pick_political_event(world: WorldState) -> Dictionary:
+ 		"kind": "faction",
+ 		"category": str(picked.get("category", "politics")),
+ 		"text": str(picked.get("text", "")),
+ 		"major": bool(picked.get("major", true)),
+ 		"turn": world.clock.turn,
+ 		"event_id": str(picked.get("id", "")),
+ 	}
+ 	world.add_fact("major", str(picked.get("text", "")))
+ 	return ev
+ 
+-# Task 6 填实：把传闻事件里指向的派系标记为已揭示
+-static func apply_rumor_reveals(world: WorldState, _events: Array) -> void:
+-	pass
++# 揭示一个派系。约束：来源必须非空且不是 system（与 StateOps.know_fact 同源，第四十三/五十七章）。
++# 已揭示时返回 false（幂等），调用方可据此跳过重复叙事。
++static func reveal(world: WorldState, faction_id: String, source: String) -> bool:
++	var src := source.strip_edges()
++	if src.is_empty() or src == "system":
++		return false
++	if not world.registry.has("factions", faction_id):
++		return false
++	var st := ensure_state(world, faction_id)
++	if st.is_empty() or bool(st.get("revealed", false)):
++		return false
++	st["revealed"] = true
++	st["last_change_turn"] = world.clock.turn
++	world.add_fact("faction_revealed", "你得知了「%s」的存在（来源：%s）。" % [
++		str(entry_of(world, faction_id).get("label", faction_id)), src])
++	return true
++
++# 传闻揭示（第四十三/五十七章）：内容表里带 reveals_faction 的传闻被玩家听到时，该派系转为已知。
++# 事件由 WorldState.tick() 的传闻阶段产出，字典里带 "rumor_id"；无效/无指向的事件直接跳过。
++static func apply_rumor_reveals(world: WorldState, events: Array) -> void:
++	for ev in events:
++		if typeof(ev) != TYPE_DICTIONARY:
++			continue
++		var rumor_id := str((ev as Dictionary).get("rumor_id", ""))
++		if rumor_id.is_empty():
++			continue
++		var entry := world.registry.entry("rumors", rumor_id)
++		var target := str(entry.get("reveals_faction", ""))
++		if target.is_empty():
++			continue
++		reveal(world, target, "传闻：%s" % str((ev as Dictionary).get("category", "街谈巷议")))
+ 
+ # ---------- 政体推导（第十一章 + 第十二章） ----------
+ 
+ static func government_type(world: WorldState) -> String:
+ 	# 1) 凤凰社抵抗：战争压力高 + 抵抗组织强于魔法部（第十一章第 4 条）
+ 	if float(world.world_vars.get("war_pressure", 0.0)) >= 0.6 \
+ 			and power_of(world, RESISTANCE_ID) > power_of(world, MINISTRY_ID):
+ 		return "order_resistance"
+ 	# 2) 食死徒独裁：黑暗势力掌握执法与司法（第十一章第 3 条）
+ 	# 缺失键按 0 计（Task 2 审查 Minor 1）：旧实现回退到「全局归并持有值」，会把「非黑暗派系控制执法司」
+diff --git a/tests/factions_test.gd b/tests/factions_test.gd
+index 17fa793..b3b1145 100644
+--- a/tests/factions_test.gd
++++ b/tests/factions_test.gd
+@@ -643,11 +643,98 @@ func run() -> int:
+ 			var sid := str(fid)
+ 			var after_q := WorldFactions.quantize(WorldFactions.power_of(stale, sid))
+ 			var persisted_changed := not is_equal_approx(after_q, float(before_q[sid]))
+ 			var marked := int(WorldFactions.state_of(stale, sid).get("last_change_turn", -1)) == stale.clock.turn
+ 			mark_samples += 1
+ 			if persisted_changed != marked:
+ 				mark_mismatch += 1
+ 	a.eq(mark_mismatch, 0, "last_change_turn 与「量化持久值是否真的变了」双向一致（%d 个样本）" % mark_samples)
+ 	a.is_true(mark_samples == 510, "样本数应为 30 回合 × 17 派系 = 510（实际=%d，防循环写错导致空转）" % mark_samples)
+ 
++	# ---- 信息保护与揭示（Task 6） ----
++	var rw := make_world("modern")
++	WorldFactions.initialize(rw)
++	a.is_false(WorldFactions.reveal(rw, "death_eaters", ""), "空来源不能揭示")
++	a.is_false(WorldFactions.reveal(rw, "death_eaters", "system"), "system 来源不能揭示（第四十三/五十七章）")
++	a.is_false(bool(WorldFactions.state_of(rw, "death_eaters")["revealed"]), "被拒的揭示不写状态")
++	a.is_false(WorldFactions.reveal(rw, "不存在的派系", "破釜酒吧传闻"), "未知派系不能揭示")
++	a.is_true(WorldFactions.reveal(rw, "death_eaters", "破釜酒吧传闻"), "合法来源可以揭示")
++	a.is_true(bool(WorldFactions.state_of(rw, "death_eaters")["revealed"]), "揭示后 revealed=true")
++	a.is_true(WorldFactions.visible_faction_ids(rw).has("death_eaters"), "揭示后进入可见列表")
++	a.is_true(rw.history.size() >= 1, "揭示写入 history（可追溯）")
++	a.is_false(WorldFactions.reveal(rw, "death_eaters", "破釜酒吧传闻"), "重复揭示返回 false（幂等）")
++	a.is_false(WorldFactions.visible_faction_ids(rw).has("order_of_phoenix"), "未揭示派系不在可见列表")
++
++	# 来源必须原样记录在 fact 文案里（可追溯性）
++	var reveal_fact_text := ""
++	for fact in rw.history:
++		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
++			reveal_fact_text = str((fact as Dictionary).get("text", ""))
++	a.is_true(reveal_fact_text.contains("破釜酒吧传闻"), "揭示记录里带来源")
++	a.is_true(reveal_fact_text.contains("食死徒"), "揭示记录里带派系 label")
++
++	# 传闻揭示：只有带 reveals_faction 的传闻才揭示
++	var secret_before := WorldFactions.visible_faction_ids(rw).size()
++	WorldFactions.apply_rumor_reveals(rw, [{"rumor_id": "不存在的传闻", "category": "政治", "text": "x"}])
++	WorldFactions.apply_rumor_reveals(rw, ["不是字典"])
++	WorldFactions.apply_rumor_reveals(rw, [{"category": "政治", "text": "没有 rumor_id"}])
++	a.eq(WorldFactions.visible_faction_ids(rw).size(), secret_before, "无效事件不揭示任何派系")
++	a.is_false(WorldFactions.visible_faction_ids(rw).has("order_of_phoenix"), "无 reveals_faction 的传闻不揭示")
++
++	var rumor_with_reveal := ""
++	for rid in rw.registry.ids("rumors"):
++		var reveal_target := str(rw.registry.entry("rumors", str(rid)).get("reveals_faction", ""))
++		if reveal_target.is_empty():
++			continue
++		if WorldFactions.visible_faction_ids(rw).has(reveal_target):
++			continue
++		if rumor_with_reveal.is_empty():
++			rumor_with_reveal = str(rid)
++	a.is_true(not rumor_with_reveal.is_empty(), "内容表里至少有一条带 reveals_faction 的未揭示传闻")
++	if not rumor_with_reveal.is_empty():
++		var target := str(rw.registry.entry("rumors", rumor_with_reveal).get("reveals_faction", ""))
++		WorldFactions.apply_rumor_reveals(rw, [{"rumor_id": rumor_with_reveal, "category": "政治", "text": "传闻"}])
++		a.is_true(WorldFactions.visible_faction_ids(rw).has(target), "被抽中的传闻揭示对应派系（%s）" % target)
++
++	# ---- 端到端（确定性，不依赖随机抽中）：真实传闻被 tick() 处理 → 该派系进入可见列表 ----
++	# 做法：用 Registry.from_tables 造一份「rumors 表只留一条带 reveals_faction 的传闻」的注册表，
++	# 于是该传闻是唯一候选（PlayerState 的 location_id 落在它的 zones 里）→ 每次 tick 必被抽中。
++	var tables := {}
++	for table_name in Registry.TABLE_FILES.keys():
++		var entries: Array = []
++		for eid in reg.ids(table_name):
++			entries.append(reg.entry(table_name, str(eid)))
++		tables[table_name] = entries
++	var only_rumor: Dictionary = {}
++	for e in (tables["rumors"] as Array):
++		if str((e as Dictionary).get("id", "")) == "rumor_marked_ones":
++			only_rumor = e
++	a.is_true(not only_rumor.is_empty(), "内容表里存在 rumor_marked_ones（E2E 前置）")
++	a.eq(str(only_rumor.get("reveals_faction", "")), "death_eaters", "rumor_marked_ones 揭示食死徒")
++	tables["rumors"] = [only_rumor]
++	var e2e_reg := Registry.from_tables(tables)
++	var e2e_p := PlayerState.new_default()
++	e2e_p.name_text = "测试者"
++	e2e_p.location_id = "knockturn_alley"
++	var e2e := WorldState.create("modern", e2e_p, 777, e2e_reg)
++	a.is_false(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E 前置：食死徒初始不可见")
++	var e2e_events := e2e.tick()
++	var saw_rumor := false
++	for ev in e2e_events:
++		if str(ev.get("rumor_id", "")) == "rumor_marked_ones":
++			saw_rumor = true
++	a.is_true(saw_rumor, "tick 处理了带 reveals_faction 的传闻（最小 rumors 表 ⇒ 确定）")
++	a.is_true(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E：tick 后该派系进入可见列表")
++	var reveal_facts := 0
++	for fact in e2e.history:
++		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
++			reveal_facts += 1
++	a.eq(reveal_facts, 1, "E2E：第一次 tick 写一条揭示记录")
++	e2e.tick()
++	var reveal_facts_after := 0
++	for fact in e2e.history:
++		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
++			reveal_facts_after += 1
++	a.eq(reveal_facts_after, 1, "E2E：第二次 tick 走幂等路径，不重复写揭示记录")
++	a.is_true(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E：已揭示后仍可见")
++
+ 	return a.report("factions")
+diff --git a/tests/registry_test.gd b/tests/registry_test.gd
+index 3704dfd..ed1a323 100644
+--- a/tests/registry_test.gd
++++ b/tests/registry_test.gd
+@@ -138,11 +138,34 @@ func run() -> int:
+ 		"factions": [{"id": "x", "label": "派", "kind": "dark", "legal_status": "legal",
+ 			"secrecy": "public", "base_power": 0.5, "institutions": [], "rivals": [], "allies": []}],
+ 		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+ 		"political_events": [{"id": "bad", "label": "坏事件", "category": "bogus", "condition": "", "text": ""}],
+ 	})
+ 	var bad_event_errors := " | ".join(bad_event.validate())
+ 	a.is_true(bad_event_errors.contains("category 非法"), "政治事件坏 category 必须报错")
+ 	a.is_true(bad_event_errors.contains("缺少 text"), "政治事件缺 text 必须报错")
+ 	a.is_true(bad_event_errors.contains("缺少 condition"), "政治事件缺 condition 必须报错")
+ 
++	# ---- 计划 03a Task 6：reveals_faction 的引用完整性 ----
++	var reveal_count := 0
++	for rid in reg.ids("rumors"):
++		var re := reg.entry("rumors", str(rid))
++		var reveal_target := str(re.get("reveals_faction", ""))
++		if not reveal_target.is_empty():
++			reveal_count += 1
++			a.is_true(reg.has("factions", reveal_target), "传闻 %s 的 reveals_faction 存在（%s）" % [str(rid), reveal_target])
++	a.is_true(reveal_count >= 3, "至少 3 条传闻用于揭示派系（实际 %d）" % reveal_count)
++
++	# 内容校验：坏类型与坏引用都要被拦（不能只看正向）
++	var bad_reveal := Registry.from_tables({
++		"eras": [{"id": "a", "label": "甲"}],
++		"factions": [{"id": "x", "label": "派", "kind": "dark", "legal_status": "legal", "secrecy": "public",
++			"base_power": 0.5, "institutions": [], "rivals": [], "allies": []}],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++		"rumors": [{"id": "r", "label": "传闻", "text": "t", "reveals_faction": 123}],
++	})
++	a.is_true(" | ".join(bad_reveal.validate()).contains("reveals_faction 必须是字符串"),
++		"rumors 表坏类型的 reveals_faction 必须报错")
++	a.is_true(" | ".join(WorldFactions.validate_content(bad_reveal)).contains("引用不存在的派系"),
++		"validate_content 必须拦下 reveals_faction 的坏引用")
++
+ 	return a.report("registry")
+diff --git a/tests/world_tick_test.gd b/tests/world_tick_test.gd
+index 857171e..5a819db 100644
+--- a/tests/world_tick_test.gd
++++ b/tests/world_tick_test.gd
+@@ -111,31 +111,31 @@ func run() -> int:
+ 		a.has_key(e, "kind", "传闻事件含 kind")
+ 		a.has_key(e, "category", "传闻事件含 category")
+ 		a.has_key(e, "text", "传闻事件含 text")
+ 		a.has_key(e, "major", "传闻事件含 major")
+ 		a.has_key(e, "turn", "传闻事件含 turn")
+ 		a.has_key(e, "rumor_id", "传闻事件含 rumor_id（Task 6 揭示用）")
+ 		# 用 .get() 而非 e["rumor_id"]：缺键时要得到一条干净的断言失败，不能用下标访问把整个套件搞崩（§8#56 同类陷阱）
+ 		a.is_true(rumor_w.registry.has("rumors", str(e.get("rumor_id", ""))), "rumor_id 是内容表里的真实传闻")
+ 
+ 	# ---- 计划 03a：政治事件真的会触发，且与传闻共用 12 个月重大事件配额 ----
+-	# 高张力夹具：**每月重置**极端 world_vars（模拟持续紧张的世界），使 tension 恒过阀、条件恒成立，
++	# 高张力夹具：**每月重置**极端 world_vars（模拟持续紧张的世界），使 tension 恒过阈、条件恒成立，
+ 	# 于是「事件是否触发」只由配额（MAJOR_EVENT_GAP）决定；玩家无地点 ⇒ 传闻候选集为空 ⇒ 配额纯归政治事件。
+ 	# （旧版这段用 modern 默认格局，tension≈0.33 < 0.55 ⇒ 40 回合内事件恒 0 条，是一条永真/永绿噪声；修复轮 1 I1）
+ 	var tense := WorldState.create("modern", PlayerState.new_default(), 777, pre_reg)
+ 	for key in ["corruption", "pureblood_influence", "war_pressure"]:
+ 		tense.world_vars[key] = 0.99
+ 	tense.world_vars["muggle_relations"] = 0.01
+ 	tense.world_vars["economy_index"] = 0.01
+ 	tense.world_vars["secrecy_integrity"] = 0.01
+ 	a.is_true(WorldFactions.compute_tension(tense) >= WorldFactions.TENSION_THRESHOLD,
+-		"前置：夹具的 tension 过阀（否则本块会静默空转——旧版就是死在这里）")
++		"前置：夹具的 tension 过阈（否则本块会静默空转——旧版就是死在这里）")
+ 	a.is_true(WorldFactions.event_condition_met(tense, "lawlessness")
+ 		and WorldFactions.event_condition_met(tense, "war_exhaustion")
+ 		and WorldFactions.event_condition_met(tense, "economic_slump"),
+ 		"前置：至少三个事件条件成立（否则本块会静默空转）")
+ 	var faction_events := 0
+ 	var political_gap := 9999
+ 	var political_last := -1000
+ 	for i in 40:
+ 		for key in ["corruption", "pureblood_influence", "war_pressure"]:
+ 			tense.world_vars[key] = 0.99

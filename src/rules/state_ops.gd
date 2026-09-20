@@ -76,6 +76,40 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
 					rel["hostility"] = int(rel.get("hostility", 0)) + int(raw.get("hostility", 0))
 					rel["interest"] = int(rel.get("interest", 0)) + int(raw.get("interest", 0))
 					world.player.relations[npc_id] = rel
+			"join_faction":
+				var join_id := str(raw.get("faction_id", ""))
+				if not world.registry.has("factions", join_id):
+					errors.append("未知派系: %s" % join_id)
+				elif not WorldFactions.visible_faction_ids(world).has(join_id):
+					errors.append("该派系尚未揭示，无法加入: %s" % join_id)
+				else:
+					world.player.faction_id = join_id
+					if str(world.registry.entry("factions", join_id).get("legal_status", "legal")) == "outlaw":
+						world.flags["illegal_affiliation"] = join_id
+						errors.append("警告：加入非法组织（%s），法律后果留待后续结算" % join_id)
+			"leave_faction":
+				# Task 9 审查 M3 的第二道门（LLM 路径也走这里）：携带 faction_id 时只在真的是成员时才清空。
+				var leave_id := str(raw.get("faction_id", ""))
+				if not leave_id.is_empty() and leave_id != world.player.faction_id:
+					errors.append("你不是该派系成员: %s" % leave_id)
+				else:
+					world.player.faction_id = ""
+			"faction_standing_delta":
+				var standing_id := str(raw.get("faction_id", ""))
+				if not world.registry.has("factions", standing_id):
+					errors.append("未知派系: %s" % standing_id)
+				# Task 9 审查 M8：与 join_faction 同门——未揭示的派系玩家根本不知道其存在，
+				# 不该被"支持/反对"（第四十三/五十七章）。normal 路径的识别层已限定 visible，
+				# 但 LLM/OpGuard 路径只有提示词层保护，故在这里补第二道门。
+				elif not WorldFactions.visible_faction_ids(world).has(standing_id):
+					errors.append("该派系尚未揭示，无法表态: %s" % standing_id)
+				else:
+					var raw_delta = raw.get("delta", 0)
+					var delta := int(raw_delta) if (typeof(raw_delta) == TYPE_INT or typeof(raw_delta) == TYPE_FLOAT) else 0
+					world.player.add_standing(standing_id, delta)
+					var fstate := WorldFactions.ensure_state(world, standing_id)
+					if not fstate.is_empty():
+						fstate["stance_to_player"] = clampi(int(fstate.get("stance_to_player", 0)) + delta / 2, -100, 100)
 			"set_magic_tier":
 				world.player.magic_tier = clampi(int(raw.get("tier", world.player.magic_tier)), 0, MagicLevel.LABELS.size() - 1)
 			"cast_spell":

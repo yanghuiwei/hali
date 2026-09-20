@@ -1,0 +1,481 @@
+# Review package: 19654f0..f6bc495
+
+## Commits
+f6bc495 feat(factions): 玩家所属/立场与加入退出 op + 守卫与存档校验（计划 03a Task 3）
+
+## Files changed
+ src/gm/op_guard.gd        | 17 +++++++++++++++++
+ src/model/player_state.gd | 15 ++++++++++++++-
+ src/persist/save_codec.gd |  5 +++++
+ src/rules/factions.gd     |  9 +++++++++
+ src/rules/state_ops.gd    | 24 ++++++++++++++++++++++++
+ tests/factions_test.gd    | 38 ++++++++++++++++++++++++++++++++++++++
+ tests/gm_test.gd          | 14 ++++++++++++++
+ tests/llm_test.gd         | 15 +++++++++++++++
+ tests/save_test.gd        | 21 +++++++++++++++++++++
+ 9 files changed, 157 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/src/gm/op_guard.gd b/src/gm/op_guard.gd
+index 574648c..6610dd9 100644
+--- a/src/gm/op_guard.gd
++++ b/src/gm/op_guard.gd
+@@ -1,16 +1,17 @@
+ class_name OpGuard
+ extends RefCounted
+ 
+ const MAX_OPS := 20
+ const MAX_MONEY_GAIN := 1000
+ const MAX_RELATION_DELTA := 20
++const MAX_STANDING_DELTA := 20
+ const TRAIN_BASE_GAIN := 4
+ 
+ class Result:
+ 	var ops: Array = []
+ 	var warnings: PackedStringArray = PackedStringArray()
+ 
+ # LLM 输出不可信：字段类型错时返回 fallback，绝不在 int() 处崩。
+ static func _to_int(value, fallback: int = 0) -> int:
+ 	if typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT:
+ 		return int(value)
+@@ -59,20 +60,36 @@ static func sanitize_detailed(world: WorldState, raw_ops: Array) -> Result:
+ 				var npc_id := str(raw.get("npc_id", ""))
+ 				if npc_id.is_empty():
+ 					out.warnings.append("忽略缺 npc_id 的 relation_delta")
+ 					continue
+ 				out.ops.append({
+ 					"op": "relation_delta", "npc_id": npc_id,
+ 					"trust": clampi(_to_int(raw.get("trust", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
+ 					"interest": clampi(_to_int(raw.get("interest", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
+ 					"hostility": clampi(_to_int(raw.get("hostility", 0)), -MAX_RELATION_DELTA, MAX_RELATION_DELTA),
+ 				})
++			"join_faction", "leave_faction":
++				if op == "join_faction":
++					var fid := str(raw.get("faction_id", ""))
++					if fid.is_empty():
++						out.warnings.append("忽略缺 faction_id 的 join_faction")
++						continue
++					out.ops.append({"op": "join_faction", "faction_id": fid})
++				else:
++					out.ops.append({"op": "leave_faction"})
++			"faction_standing_delta":
++				var sid := str(raw.get("faction_id", ""))
++				if sid.is_empty():
++					out.warnings.append("忽略缺 faction_id 的 faction_standing_delta")
++					continue
++				out.ops.append({"op": "faction_standing_delta", "faction_id": sid,
++					"delta": clampi(_to_int(raw.get("delta", 0)), -MAX_STANDING_DELTA, MAX_STANDING_DELTA)})
+ 			"set_flag", "set_player_flag":
+ 				var key := str(raw.get("key", ""))
+ 				if key.is_empty() or key.begins_with("_"):
+ 					out.warnings.append("拒绝保留/空 flag key: %s" % key)
+ 					continue
+ 				out.ops.append({"op": op, "key": key, "value": raw.get("value", true)})
+ 			"know_fact":
+ 				var fact_id := str(raw.get("fact_id", ""))
+ 				var source := str(raw.get("source", ""))
+ 				if fact_id.is_empty() or source.is_empty() or source == "system":
+diff --git a/src/model/player_state.gd b/src/model/player_state.gd
+index 3f3805d..40da269 100644
+--- a/src/model/player_state.gd
++++ b/src/model/player_state.gd
+@@ -18,20 +18,21 @@ var personality: Array = []
+ var life_goal: String = ""
+ var sim_style_id: String = "mixed"
+ var wand: Dictionary = {}
+ var magic_tier: int = MagicLevel.Tier.PRE_SCHOOL
+ var money_knuts: int = 0
+ var reputation: int = 0
+ var skills: Dictionary = {}
+ var magic: Dictionary = {}
+ var relations: Dictionary = {}
+ var faction_id: String = ""
++var standing: Dictionary = {}      # 计划 03a：faction_id -> 玩家立场/声望 -100..100
+ var current_goal: String = ""
+ var location_id: String = ""
+ var job: String = ""
+ var alive: bool = true
+ var flags: Dictionary = {}
+ var known_facts: Dictionary = {}
+ var next_id: int = 1
+ 
+ static func new_default() -> PlayerState:
+ 	var p := PlayerState.new()
+@@ -50,40 +51,51 @@ func money() -> Money:
+ 
+ func set_money(m: Money) -> void:
+ 	money_knuts = m.total_knuts()
+ 
+ func skill(skill_id: String) -> int:
+ 	return int(skills.get(skill_id, 0))
+ 
+ func add_skill(skill_id: String, amount: int) -> void:
+ 	skills[skill_id] = clampi(skill(skill_id) + amount, 0, SKILL_MAX)
+ 
++const STANDING_MIN := -100
++const STANDING_MAX := 100
++
+ func knows_spell(spell_id: String) -> bool:
+ 	return (magic.get("known_spells", []) as Array).has(spell_id)
+ 
+ func learn_spell(spell_id: String) -> void:
+ 	var known: Array = magic.get("known_spells", [])
+ 	if not known.has(spell_id):
+ 		known.append(spell_id)
+ 	magic["known_spells"] = known
+ 
++func standing_of(faction_id: String) -> int:
++	return clampi(int(standing.get(faction_id, 0)), STANDING_MIN, STANDING_MAX)
++
++func add_standing(faction_id: String, delta: int) -> int:
++	var value := clampi(standing_of(faction_id) + delta, STANDING_MIN, STANDING_MAX)
++	standing[faction_id] = value
++	return value
++
+ func to_dict() -> Dictionary:
+ 	return JsonUtil.normalize({
+ 		"name_text": name_text, "gender": gender, "age_months": age_months,
+ 		"bloodline_id": bloodline_id, "birth_identity_id": birth_identity_id,
+ 		"birthplace": birthplace, "family_status": family_status,
+ 		"aptitude_id": aptitude_id, "aptitude_special": aptitude_special,
+ 		"house_id": house_id, "political_leaning_id": political_leaning_id,
+ 		"personality": personality, "life_goal": life_goal, "sim_style_id": sim_style_id,
+ 		"wand": wand, "magic_tier": magic_tier, "money_knuts": money_knuts,
+ 		"reputation": reputation, "skills": skills, "magic": magic,
+-		"relations": relations, "faction_id": faction_id, "current_goal": current_goal,
++		"relations": relations, "faction_id": faction_id, "standing": standing, "current_goal": current_goal,
+ 		"location_id": location_id, "job": job, "alive": alive,
+ 		"flags": flags, "known_facts": known_facts, "next_id": next_id,
+ 	})
+ 
+ static func from_dict(d: Dictionary) -> PlayerState:
+ 	var p := PlayerState.new_default()
+ 	p.name_text = str(d.get("name_text", ""))
+ 	p.gender = str(d.get("gender", ""))
+ 	p.age_months = int(d.get("age_months", 0))
+ 	p.bloodline_id = str(d.get("bloodline_id", ""))
+@@ -98,18 +110,19 @@ static func from_dict(d: Dictionary) -> PlayerState:
+ 	p.life_goal = str(d.get("life_goal", ""))
+ 	p.sim_style_id = str(d.get("sim_style_id", "mixed"))
+ 	p.wand = JsonUtil.normalize(d.get("wand", {}))
+ 	p.magic_tier = int(d.get("magic_tier", MagicLevel.Tier.PRE_SCHOOL))
+ 	p.money_knuts = int(d.get("money_knuts", 0))
+ 	p.reputation = int(d.get("reputation", 0))
+ 	p.skills = JsonUtil.normalize(d.get("skills", {}))
+ 	p.magic = JsonUtil.normalize(d.get("magic", p.magic))
+ 	p.relations = JsonUtil.normalize(d.get("relations", {}))
+ 	p.faction_id = str(d.get("faction_id", ""))
++	p.standing = JsonUtil.normalize(d.get("standing", {}))
+ 	p.current_goal = str(d.get("current_goal", ""))
+ 	p.location_id = str(d.get("location_id", ""))
+ 	p.job = str(d.get("job", ""))
+ 	p.alive = bool(d.get("alive", true))
+ 	p.flags = JsonUtil.normalize(d.get("flags", {}))
+ 	p.known_facts = JsonUtil.normalize(d.get("known_facts", {}))
+ 	p.next_id = int(d.get("next_id", 1))
+ 	return p
+diff --git a/src/persist/save_codec.gd b/src/persist/save_codec.gd
+index 9c89f85..98b790b 100644
+--- a/src/persist/save_codec.gd
++++ b/src/persist/save_codec.gd
+@@ -19,20 +19,25 @@ static func _validate_payload(parsed: Dictionary) -> String:
+ 			return "存档载荷字段类型错误：%s 应为对象" % field
+ 	var array_fields := ["history", "pending", "log"]
+ 	for field in array_fields:
+ 		if parsed.has(field) and typeof(parsed[field]) != TYPE_ARRAY:
+ 			return "存档载荷字段类型错误：%s 应为数组" % field
+ 	for field in ["save_version", "game_seed", "era_start_year"]:
+ 		if parsed.has(field) and typeof(parsed[field]) != TYPE_FLOAT and typeof(parsed[field]) != TYPE_INT:
+ 			return "存档载荷字段类型错误：%s 应为数字" % field
+ 	if parsed.has("era_id") and typeof(parsed["era_id"]) != TYPE_STRING:
+ 		return "存档载荷字段类型错误：era_id 应为字符串"
++	# 计划 03a：player.standing 必须是对象（faction_id -> 整数）
++	if parsed.has("player") and typeof(parsed["player"]) == TYPE_DICTIONARY:
++		var p: Dictionary = parsed["player"]
++		if p.has("standing") and typeof(p["standing"]) != TYPE_DICTIONARY:
++			return "存档载荷字段类型错误：player.standing 应为对象"
+ 	return ""
+ 
+ static func encode(world: WorldState) -> String:
+ 	var payload := JSON.stringify(world.to_dict(), "", true, true)
+ 	var lines: Array[String] = []
+ 	lines.append("%s v%d" % [HEADER, SAVE_VERSION])
+ 	lines.append("checksum: %s" % checksum(payload))
+ 	lines.append(MARKER_PAYLOAD)
+ 	lines.append(payload)
+ 	return "\n".join(lines)
+diff --git a/src/rules/factions.gd b/src/rules/factions.gd
+index a7ce029..917338e 100644
+--- a/src/rules/factions.gd
++++ b/src/rules/factions.gd
+@@ -129,20 +129,29 @@ static func ensure_state(world: WorldState, faction_id: String) -> Dictionary:
+ 
+ static func state_of(world: WorldState, faction_id: String) -> Dictionary:
+ 	if typeof(world.factions) != TYPE_DICTIONARY:
+ 		return {}
+ 	var st = world.factions.get(faction_id, null)
+ 	return st if typeof(st) == TYPE_DICTIONARY else {}
+ 
+ static func power_of(world: WorldState, faction_id: String) -> float:
+ 	return clampf(float(state_of(world, faction_id).get("power", 0.0)), 0.0, 1.0)
+ 
++# 信息保护（第四十三/五十七章）：只有 revealed 的派系对玩家可见。
++# 调用方注意：`PackedStringArray == Array` 是解析期错误，只能用 `.has(x)` 判断。
++static func visible_faction_ids(world: WorldState) -> PackedStringArray:
++	var out := PackedStringArray()
++	for fid in world.registry.ids("factions"):
++		if bool(state_of(world, str(fid)).get("revealed", false)):
++			out.append(str(fid))
++	return out
++
+ # ---------- 权力四角（第十二章） ----------
+ 
+ static func power_share(world: WorldState) -> Dictionary:
+ 	var totals := {"ministry": 0.0, "pureblood": 0.0, "hogwarts": 0.0, "commerce": 0.0}
+ 	for fid in world.registry.ids("factions"):
+ 		var kind := str(entry_of(world, str(fid)).get("kind", ""))
+ 		for corner in CORNERS.keys():
+ 			if (CORNERS[corner] as Array).has(kind):
+ 				totals[corner] = float(totals[corner]) + power_of(world, str(fid))
+ 	var sum := 0.0
+diff --git a/src/rules/state_ops.gd b/src/rules/state_ops.gd
+index 8d1b204..de6afe8 100644
+--- a/src/rules/state_ops.gd
++++ b/src/rules/state_ops.gd
+@@ -69,20 +69,44 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
+ 			"relation_delta":
+ 				var npc_id := str(raw.get("npc_id", ""))
+ 				if npc_id.is_empty():
+ 					errors.append("relation_delta 缺少 npc_id")
+ 				else:
+ 					var rel: Dictionary = world.player.relations.get(npc_id, {"trust": 0, "interest": 0, "hostility": 0})
+ 					rel["trust"] = int(rel.get("trust", 0)) + int(raw.get("trust", 0))
+ 					rel["hostility"] = int(rel.get("hostility", 0)) + int(raw.get("hostility", 0))
+ 					rel["interest"] = int(rel.get("interest", 0)) + int(raw.get("interest", 0))
+ 					world.player.relations[npc_id] = rel
++			"join_faction":
++				var join_id := str(raw.get("faction_id", ""))
++				if not world.registry.has("factions", join_id):
++					errors.append("未知派系: %s" % join_id)
++				elif not WorldFactions.visible_faction_ids(world).has(join_id):
++					errors.append("该派系尚未揭示，无法加入: %s" % join_id)
++				else:
++					world.player.faction_id = join_id
++					if str(world.registry.entry("factions", join_id).get("legal_status", "legal")) == "outlaw":
++						world.flags["illegal_affiliation"] = join_id
++						errors.append("警告：加入非法组织（%s），法律后果留待后续结算" % join_id)
++			"leave_faction":
++				world.player.faction_id = ""
++			"faction_standing_delta":
++				var standing_id := str(raw.get("faction_id", ""))
++				if not world.registry.has("factions", standing_id):
++					errors.append("未知派系: %s" % standing_id)
++				else:
++					var raw_delta = raw.get("delta", 0)
++					var delta := int(raw_delta) if (typeof(raw_delta) == TYPE_INT or typeof(raw_delta) == TYPE_FLOAT) else 0
++					world.player.add_standing(standing_id, delta)
++					var fstate := WorldFactions.ensure_state(world, standing_id)
++					if not fstate.is_empty():
++						fstate["stance_to_player"] = clampi(int(fstate.get("stance_to_player", 0)) + delta / 2, -100, 100)
+ 			"set_magic_tier":
+ 				world.player.magic_tier = clampi(int(raw.get("tier", world.player.magic_tier)), 0, MagicLevel.LABELS.size() - 1)
+ 			"cast_spell":
+ 				var outcome := SpellResolver.cast(world, str(raw.get("spell_id", "")), raw.get("conditions", {}), world_gm_rng(world))
+ 				world.flags["last_cast_success"] = outcome.success
+ 				world.flags["last_cast_narration"] = outcome.narration
+ 				if outcome.blocked:
+ 					errors.append(outcome.blocked_reason)
+ 			_:
+ 				errors.append("未知操作: %s" % op)
+diff --git a/tests/factions_test.gd b/tests/factions_test.gd
+index df42f36..bcb3cff 100644
+--- a/tests/factions_test.gd
++++ b/tests/factions_test.gd
+@@ -204,11 +204,49 @@ func run() -> int:
+ 	WorldFactions.ensure_state(w, "death_eaters")["control"]["law_enforcement"] = 0.0
+ 	WorldFactions.ensure_state(w, "death_eaters")["control"]["wizengamot"] = 0.0
+ 	WorldFactions.ensure_state(w, "order_of_phoenix")["power"] = 0.95
+ 	w.world_vars["war_pressure"] = 0.8
+ 	a.eq(WorldFactions.government_type(w), "order_resistance", "战争压力高 + 抵抗组织最强 → 凤凰社抵抗")
+ 
+ 	# 政体 id 必须都能在内容表里查到（面板/Task 7 依赖）
+ 	for gov_id in ["ministry_bureaucracy", "pureblood_oligarchy", "death_eater_dictatorship", "order_resistance"]:
+ 		a.is_true(reg.has("governments", gov_id), "政体 id 在内容表里：%s" % gov_id)
+ 
++	# ---- 玩家立场与加入/退出（Task 3） ----
++	var pw := make_world("modern")
++	WorldFactions.initialize(pw)
++	a.eq(pw.player.standing, {}, "初始无立场记录")
++	a.eq(pw.player.standing_of("ministry"), 0, "未记录即 0")
++
++	var errs := StateOps.apply(pw, [
++		{"op": "join_faction", "faction_id": "不存在的派系"},
++	])
++	a.is_true(" | ".join(errs).contains("未知派系"), "加入未知派系被拒")
++	a.eq(pw.player.faction_id, "", "被拒的加入不写状态")
++
++	errs = StateOps.apply(pw, [{"op": "join_faction", "faction_id": "death_eaters"}])
++	a.is_true(" | ".join(errs).contains("未揭示"), "未揭示的派系不能加入")
++	a.eq(pw.player.faction_id, "", "未揭示派系的加入不写状态")
++
++	errs = StateOps.apply(pw, [{"op": "join_faction", "faction_id": "ministry"}])
++	a.eq(errs.size(), 0, "加入已揭示派系无错误")
++	a.eq(pw.player.faction_id, "ministry", "所属写入")
++
++	errs = StateOps.apply(pw, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 500}])
++	a.eq(errs.size(), 0, "立场调整无错误")
++	a.eq(pw.player.standing_of("ministry"), 100, "立场钳到 100")
++	a.is_true(int(WorldFactions.state_of(pw, "ministry").get("stance_to_player", 0)) > 0,
++		"玩家立场反向影响派系对玩家的态度")
++
++	errs = StateOps.apply(pw, [{"op": "leave_faction"}])
++	a.eq(errs.size(), 0, "退出无错误")
++	a.eq(pw.player.faction_id, "", "退出后无所属")
++	a.eq(pw.player.standing_of("ministry"), 100, "退出不清立场")
++
++	# outlaw 派系：先揭示才能加入；加入成功但要留痕（正典第五十章允许，代价留 03c）
++	WorldFactions.ensure_state(pw, "death_eaters")["revealed"] = true
++	errs = StateOps.apply(pw, [{"op": "join_faction", "faction_id": "death_eaters"}])
++	a.eq(pw.player.faction_id, "death_eaters", "已揭示的 outlaw 派系可以加入")
++	a.eq(str(pw.flags.get("illegal_affiliation", "")), "death_eaters", "非法所属被记录进 flags")
++	a.is_true(" | ".join(errs).contains("非法"), "非法所属给出警告")
++
+ 	return a.report("factions")
+diff --git a/tests/gm_test.gd b/tests/gm_test.gd
+index eaf5706..f43dabb 100644
+--- a/tests/gm_test.gd
++++ b/tests/gm_test.gd
+@@ -190,11 +190,25 @@ func run() -> int:
+ 	StateOps.apply(wt, [{"op": "train_skill", "skill_id": "potions", "base_gain": 4}])
+ 	var first_gain := wt.player.skill("potions") - before_skill
+ 	a.eq(first_gain, 4, "首次训练满额（经 StateOps）")
+ 	StateOps.apply(wt, [{"op": "train_skill", "skill_id": "potions", "base_gain": 4}])
+ 	var second_gain := wt.player.skill("potions") - before_skill - first_gain
+ 	a.is_true(second_gain < first_gain, "同地点重复训练收益下降")
+ 	a.is_true(wt.flags.has("recent_training"), "反刷记账写入 world.flags")
+ 	var bad_train := StateOps.apply(wt, [{"op": "train_skill", "skill_id": "不存在", "base_gain": 4}])
+ 	a.eq(bad_train.size(), 1, "未知技能报错")
+ 
++	# ---- 计划 03a：派系 op 的守卫与端到端 ----
++	var fe := StateOps.apply(w, [{"op": "join_faction", "faction_id": "nope"}])
++	a.is_true(" | ".join(fe).contains("未知派系"), "join_faction 未知 id 被拒")
++	a.eq(w.player.faction_id, "", "被拒的加入不写状态")
++	var fe2 := StateOps.apply(w, [{"op": "join_faction", "faction_id": "death_eaters"}])
++	a.is_true(" | ".join(fe2).contains("未揭示"), "未揭示的派系不能加入（第四十三/五十七章）")
++	var fe3 := StateOps.apply(w, [{"op": "join_faction", "faction_id": "ministry"}])
++	a.eq(fe3.size(), 0, "加入公开派系无错误")
++	a.eq(w.player.faction_id, "ministry", "所属写入")
++	var fe4 := StateOps.apply(w, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 5}])
++	a.eq(fe4.size(), 0, "立场调整无错误")
++	a.eq(w.player.standing_of("ministry"), 5, "立场累加")
++	a.is_true(int(WorldFactions.state_of(w, "ministry").get("stance_to_player", 0)) > 0, "派系态度反向变化")
++
+ 	return a.report("gm")
+diff --git a/tests/llm_test.gd b/tests/llm_test.gd
+index 5e951e1..bc2adb2 100644
+--- a/tests/llm_test.gd
++++ b/tests/llm_test.gd
+@@ -99,20 +99,35 @@ func run() -> int:
+ 	a.is_false(gres.ops.has({"op": "know_fact", "fact_id": "f1", "source": "system"}), "system 来源被拒")
+ 	a.is_true(gres.warnings.size() >= 3, "产生警告")
+ 	var many: Array = []
+ 	for i in 50:
+ 		many.append({"op": "set_job", "job": "x"})
+ 	a.eq(OpGuard.sanitize(gworld, many).size(), OpGuard.MAX_OPS, "ops 数量截断")
+ 	var weird := OpGuard.sanitize_detailed(gworld, [{"op": "add_money", "knuts": {}}, {"op": "relation_delta", "npc_id": "n", "trust": "x"}])
+ 	a.eq(weird.ops[0]["knuts"], 0, "畸形 knuts 视为 0，不崩")
+ 	a.eq(weird.ops[1]["trust"], 0, "畸形 trust 视为 0，不崩")
+ 
++	# ---- 计划 03a：OpGuard 只允许 LLM 动 membership/standing，不允许任何 set_faction_* ----
++	var fguard := OpGuard.sanitize_detailed(gworld, [
++		{"op": "join_faction", "faction_id": "ministry"},
++		{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 999},
++		{"op": "set_faction_power", "faction_id": "ministry", "power": 1.0},
++	])
++	a.eq(fguard.ops[0]["op"], "join_faction", "join_faction 进入净化结果")
++	a.eq(int(fguard.ops[1]["delta"]), OpGuard.MAX_STANDING_DELTA, "standing 增量被钳到上限")
++	var faction_kinds := ""
++	for o in fguard.ops:
++		faction_kinds += str(o.get("op", "")) + ","
++	a.is_true(faction_kinds.contains("set_faction_power"), "未知 set_faction_* 透传给 StateOps 拒绝，不静默丢弃")
++	a.is_true(" | ".join(StateOps.apply(gworld, fguard.ops)).contains("未知操作"),
++		"StateOps 最终拒绝 set_faction_power")
++
+ 	# ---- LlmGameMaster ----
+ 	var mworld := Registry.load_default()
+ 	var mp := PlayerState.new_default()
+ 	mp.name_text = "李雷"
+ 	mp.location_id = "hogwarts"
+ 	var lw := WorldState.create("modern", mp, 3, mworld)
+ 	var provider := MockLlmProvider.new()
+ 	provider.queue = [
+ 		"不是 JSON",
+ 		'{"narration":"你在城堡里练了一晚魔药。","ops":[{"op":"gain_skill","skill_id":"potions","amount":99}],"tags":["train"]}',
+diff --git a/tests/save_test.gd b/tests/save_test.gd
+index cbd8349..cbf6981 100644
+--- a/tests/save_test.gd
++++ b/tests/save_test.gd
+@@ -64,30 +64,38 @@ func run() -> int:
+ 		'{"save_version":1,"player":null}',
+ 		'{"save_version":1,"clock":123}',
+ 		'{"save_version":1,"world_vars":[]}',
+ 		'{"save_version":1,"npcs":123}',
+ 		'{"save_version":1,"history":{}}',
+ 		'{"save_version":1,"flags":[]}',
+ 		'{"save_version":1,"rng_state":[]}',
+ 		'{"save_version":null}',
+ 		'{"save_version":[]}',
+ 		'{"save_version":1,"player":{"personality":123}}',
++		'{"save_version":1,"player":{"standing":123}}',
+ 		'{"save_version":1,"clock":{"year":[]}}',
+ 	]
+ 	for i in malformed_payloads.size():
+ 		var payload: String = malformed_payloads[i]
+ 		var crafted := "%s v1\nchecksum: %s\npayload:\n%s" % [SaveCodec.HEADER, SaveCodec.checksum(payload), payload]
+ 		var res := SaveCodec.decode(crafted, reg)
+ 		a.is_true(res.has("ok"), "畸形载荷 #%d 必须返回结构化结果（不能是空字典）" % i)
+ 		a.is_false(bool(res.get("ok", true)), "畸形载荷 #%d 必须被拒绝" % i)
+ 		a.is_true(res.get("world", null) == null, "畸形载荷 #%d 不得返回半成品世界" % i)
+ 
++	# 计划 03a：standing 类型错的拒绝理由必须指向 standing（否则可能是碰巧被别的分支拒了）
++	var standing_payload := '{"save_version":1,"player":{"standing":123}}'
++	var standing_crafted := "%s v1\nchecksum: %s\npayload:\n%s" % [SaveCodec.HEADER, SaveCodec.checksum(standing_payload), standing_payload]
++	var standing_res := SaveCodec.decode(standing_crafted, reg)
++	a.is_false(bool(standing_res["ok"]), "standing 非对象必须被拒")
++	a.is_true(str(standing_res["error"]).contains("standing"), "拒绝理由指向 standing：%s" % str(standing_res["error"]))
++
+ 	# ---- 读写槽（真实 IO，测试目录独立，避免污染正式存档） ----
+ 	var test_dir := "user://test_saves"
+ 	for slot in SaveStore.list_slots(test_dir):
+ 		SaveStore.delete_slot(str(slot), test_dir)
+ 	var saved := SaveStore.save("slot1", w, test_dir)
+ 	a.is_true(bool(saved["ok"]), "保存成功: %s" % str(saved.get("error", "")))
+ 	a.is_true(str(saved["path"]).contains("slot1"), "返回保存路径")
+ 	a.eq(SaveStore.list_slots(test_dir).size(), 1, "列出 1 个存档")
+ 	var loaded := SaveStore.load_slot("slot1", reg, test_dir)
+ 	a.is_true(bool(loaded["ok"]), "读取成功")
+@@ -158,11 +166,24 @@ func run() -> int:
+ 	var r_copy := engine3r.submit("我要去对角巷打工赚钱")
+ 	a.eq(r_copy.narration, r_orig.narration, "读档后重建引擎续跑：叙事一致")
+ 	a.eq(w3r.to_dict(), w3.to_dict(), "读档后重建引擎续跑：世界状态一致")
+ 
+ 	# §11：RNG 计数器必须随存档往返（决定同回合施法掷骰）
+ 	var wc := make_world()
+ 	wc.flags["_gm_rng_counter"] = 7
+ 	var restored_c: WorldState = SaveCodec.decode(SaveCodec.encode(wc), reg)["world"]
+ 	a.eq(int(restored_c.flags.get("_gm_rng_counter", 0)), 7, "RNG 计数器存读档往返")
+ 
++	# ---- 计划 03a：standing 与 factions 必须往返一致 ----
++	w.player.faction_id = "ministry"
++	w.player.add_standing("ministry", 42)
++	w.flags["government_type"] = "ministry_bureaucracy"
++	var f_text := SaveCodec.encode(w)
++	var f_back := SaveCodec.decode(f_text, reg)
++	a.is_true(bool(f_back["ok"]), "含 standing 的存档可解码")
++	var f_world: WorldState = f_back["world"]
++	a.eq(f_world.player.faction_id, "ministry", "faction_id 往返一致")
++	a.eq(f_world.player.standing_of("ministry"), 42, "standing 往返一致")
++	a.eq(f_world.flags.get("government_type", ""), "ministry_bureaucracy", "政体缓存往返一致")
++	a.eq(f_world.factions.size(), 17, "factions 往返一致（17 条）")
++
+ 	return a.report("save")

@@ -1,0 +1,16 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+新实现（无向对键）seen 键数 = 11
+   kept    auror_office|black_market   ← 旧实现会丢
+   kept    auror_office|death_eaters
+   kept    black_market|diagon_merchants   ← 旧实现会丢
+   kept    common_folk|sacred_twenty_eight   ← 旧实现会丢
+   kept    continental_pureblood|international_confederation
+   kept    death_eaters|hogwarts
+   kept    death_eaters|ministry
+   kept    death_eaters|mysteries   ← 旧实现会丢
+   kept    death_eaters|order_of_phoenix
+   kept    death_eaters|wizengamot   ← 旧实现会丢
+   kept    reformist_pureblood|sacred_twenty_eight
+旧实现（oid <= id）处理的对数 = 6
+旧实现静默丢弃的对数 = 5

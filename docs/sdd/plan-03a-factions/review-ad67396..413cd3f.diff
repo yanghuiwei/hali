@@ -1,0 +1,265 @@
+# Review package: ad67396..413cd3f
+
+## Commits
+413cd3f fix(factions): 修复轮 1 —— 政治事件断言夹具（I1）+ last_change_turn 自洽（M2）+ tension_of 路径（M3）
+
+## Files changed
+ src/rules/factions.gd    | 24 +++++++++++++++++++-----
+ tests/factions_test.gd   | 46 ++++++++++++++++++++++++++++++++++++++++++++--
+ tests/world_tick_test.gd | 41 +++++++++++++++++++++++++++++++----------
+ 3 files changed, 94 insertions(+), 17 deletions(-)
+
+## Diff
+diff --git a/src/rules/factions.gd b/src/rules/factions.gd
+index 0538fb5..b61f986 100644
+--- a/src/rules/factions.gd
++++ b/src/rules/factions.gd
+@@ -285,37 +285,50 @@ static func apply_rival_pressure(world: WorldState) -> void:
+ 
+ # 单回合演化：就地更新 world.factions / world.flags，返回事件数组（结构与 tick 的 events 一致）。
+ # 随机数全部走命名流，保证同 seed + 同回合 ⇒ 同结果。
+ static func evolve(world: WorldState) -> Array:
+ 	# M3（Task 4 审查修复轮 1）：与 initialize() 同样早退——否则紧接着的 world.clock.turn 会在
+ 	# 裸世界 / 畸形载荷（registry 或 clock 为 null）上直接崩。
+ 	if world == null or world.registry == null or world.clock == null:
+ 		return []
+ 	initialize(world)
+ 	var rng := RngService.new(world.game_seed + world.clock.turn * 31337)
++	# M2（修复轮 1）：先快照本回合开始时的**量化持久值**，等本回合所有写入（回归、敌对压制、量化）
++	# 都做完后再统一判定「持久值是否真的变了」。若在回归循环里就地判定，会出现两类不自洽：
++	# ① 用未量化的 next 判定 → 持久值没变却标记变化；② 敌对压制把值改回来后标记与实际不符。
++	var power_before: Dictionary = {}
++	for fid in world.registry.ids("factions"):
++		power_before[str(fid)] = quantize(power_of(world, str(fid)))
+ 	for fid in world.registry.ids("factions"):
+ 		var id := str(fid)
+ 		var st := ensure_state(world, id)
+ 		if st.is_empty():
+ 			continue
+ 		var target := clampf(base_power(world, id) + structure_pull(world, id), 0.0, 1.0)
+ 		var current := clampf(float(st.get("power", target)), 0.0, 1.0)
+ 		var noise := rng.stream_float("faction_%s" % id) * (EVOLVE_NOISE * 2.0) - EVOLVE_NOISE
+ 		var next := clampf(current + (target - current) * EVOLVE_REGRESSION + noise, 0.0, 1.0)
+-		if not is_equal_approx(next, current):
+-			st["last_change_turn"] = world.clock.turn
+-		st["power"] = next
++		var nq := clampf(quantize(next), 0.0, 1.0)
++		st["power"] = nq
+ 		var control: Dictionary = st.get("control", {})
+ 		for inst in control.keys():
+-			control[inst] = clampf(float(control[inst]) + (next - float(control[inst])) * 0.5, 0.0, 1.0)
++			control[inst] = clampf(float(control[inst]) + (nq - float(control[inst])) * 0.5, 0.0, 1.0)
+ 	apply_rival_pressure(world)
+ 	quantize_state(world)
++	# 统一判定（M2）：本回合所有写入都结束后，只有「量化持久值真的变了」的派系才标记本月变化。
++	for fid in world.registry.ids("factions"):
++		var mark_id := str(fid)
++		var mark_state := state_of(world, mark_id)
++		if mark_state.is_empty():
++			continue
++		if not is_equal_approx(quantize(float(mark_state.get("power", 0.0))), float(power_before.get(mark_id, 0.0))):
++			mark_state["last_change_turn"] = world.clock.turn
+ 	world.flags[GOVERNMENT_FLAG] = government_type(world)
+ 	world.flags[TENSION_FLAG] = quantize(compute_tension(world))
+ 	var events: Array = []
+ 	var picked := pick_political_event(world)
+ 	if not picked.is_empty():
+ 		events.append(picked)
+ 	return events
+ 
+ # ---------- 社会矛盾与政治事件（第四十六/四十九/六十八章） ----------
+ 
+@@ -356,21 +369,22 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
+ 		"lawlessness":
+ 			return float(v.get("corruption", 0.3)) >= 0.65 \
+ 				or government_type(world) == "death_eater_dictatorship"
+ 		"war_exhaustion":
+ 			return float(v.get("war_pressure", 0.2)) >= 0.65
+ 		"secrecy_crisis":
+ 			return float(v.get("secrecy_integrity", 0.8)) <= 0.30
+ 		_:
+ 			return false
+ 
+-# 选举本月政治事件：必须同时满足「tension 过阈」「条件成立」「重大事件配额可用」（第六十八章）
++# 选举本月政治事件：必须同时满足「tension 过阀」「条件成立」「重大事件配额可用」（第六十八章）。
++# 注意：本函数有副作用（命中时写 history 并占用 last_major_turn 配额），不是纯查询；请勿用于预览/面板。
+ static func pick_political_event(world: WorldState) -> Dictionary:
+ 	if tension_of(world) < TENSION_THRESHOLD:
+ 		return {}
+ 	var last_major := int(world.flags.get("last_major_turn", -WorldState.MAJOR_EVENT_GAP))
+ 	if world.clock.turn - last_major < WorldState.MAJOR_EVENT_GAP:
+ 		return {}
+ 	var candidates: Array = []
+ 	for eid in world.registry.ids("political_events"):
+ 		var entry := world.registry.entry("political_events", str(eid))
+ 		if event_condition_met(world, str(entry.get("condition", ""))):
+diff --git a/tests/factions_test.gd b/tests/factions_test.gd
+index 3d5632e..17fa793 100644
+--- a/tests/factions_test.gd
++++ b/tests/factions_test.gd
+@@ -319,22 +319,25 @@ func run() -> int:
+ 	a.is_true(WorldFactions.power_of(asym, "black_market") < asym_before,
+ 		"非对称敌对声明（black_market 单方声明 auror_office）也必须被处理")
+ 	a.is_true(WorldFactions.power_of(asym, "auror_office") > 0.90,
+ 		"非对称敌对的胜者也获得收益")
+ 
+ 	# 可判别压制用例（M5 修复轮 1：删掉与 seed 挂钩的「< 起点」那一条，只留与 seed 无关的下限断言）：
+ 	# war/corruption 拉高黑暗势力目标值（0.45），败者起点 0.06 高于 SUPPRESS_FLOOR。
+ 	# 为何删「< 起点」：纯回归值 = 0.06 + (0.45-0.06)*0.04 + noise = 0.0756 + noise，
+ 	# 要它在「无压制」时仍 ≥ 起点需 noise > -0.0156——只差 0.0043 的余量，换 seed / 改 EVOLVE_NOISE 就会退化成恒真。
+ 	# 为何「按到下限」与 seed 无关：death_eaters 在真实内容表里同时是 6 对的败者（ministry/auror_office/
+-	# wizengamot/mysteries/hogwarts/order_of_phoenix——I1 修复后非对称声明也生效，故是 6 对不是 4 对），
+-	# 各对压制被各自的下限（max(0.05, base×0.25)）截断，实际生效的下降量合计 ≈ 0.06 ≫ noise 带宽 ±0.02 → 必被压到下限。
++	# wizengamot/mysteries/hogwarts/order_of_phoenix——I1 修复后非对称声明也生效，故是 6 对不是 4 对）。
++	# 口径订正（修复轮 1 M4）：这 6 对的**未截断潜在**压制合计 ≈ 0.09；但本夹具里压制前 power =
++	# 0.06 + (0.45−0.06)×0.04 + noise = 0.0756±0.02，下限 = max(0.05, 0.05×0.25) = 0.05，
++	# 所以**实际生效的下降量** ∈ [0.0056, 0.0456]（典型 ≈0.026），远小于潜在值——关键是它远大于 noise 带宽下的所需余量，
++	# 且下限 0.05 使终值必然落在下限。
+ 	var press2 := make_world("modern")
+ 	WorldFactions.initialize(press2)
+ 	press2.world_vars["war_pressure"] = 1.0
+ 	press2.world_vars["corruption"] = 1.0
+ 	WorldFactions.ensure_state(press2, "ministry")["power"] = 0.95
+ 	WorldFactions.ensure_state(press2, "death_eaters")["power"] = 0.06
+ 	WorldFactions.evolve(press2)
+ 	a.near(WorldFactions.power_of(press2, "death_eaters"), WorldFactions.SUPPRESS_FLOOR, 0.0001,
+ 		"压制把败者按到下限，不会归零（与 seed 无关）")
+ 
+@@ -533,20 +536,35 @@ func run() -> int:
+ 	tw.world_vars["war_pressure"] = 0.95
+ 	tw.world_vars["economy_index"] = 0.05
+ 	tw.world_vars["secrecy_integrity"] = 0.05
+ 	tw.flags["last_major_turn"] = -99
+ 	var tick_events := tw.tick()
+ 	a.is_true(tw.flags.has(WorldFactions.TENSION_FLAG), "tick 后 tension 已写入 flags")
+ 	a.is_true(tw.flags.has(WorldFactions.GOVERNMENT_FLAG), "tick 后政体缓存已写入 flags")
+ 	# 容差 2e-4：flags 里存的是量化后的 tension（同上，为存档往返稳定）
+ 	a.near(WorldFactions.tension_of(tw), WorldFactions.compute_tension(tw), 0.0002,
+ 		"tension_of 与 compute_tension 一致（tick 写的是同一口径，量化后余差 ≤1e-4）")
++
++	# ---- 修复轮 1（M3）：证明 tension_of 走的是 flags 路径，而不是每次现算 ----
++	# 上面那条 near 在 flags 缺失时会走 compute_tension 兜底（差 0 也绿），单独证明不了「读到的是存的值」。
++	var tf := make_world("modern")
++	tf.flags[WorldFactions.TENSION_FLAG] = 0.42
++	var tension_before := WorldFactions.compute_tension(tf)
++	tf.world_vars["corruption"] = 0.99
++	tf.world_vars["war_pressure"] = 0.99
++	tf.world_vars["muggle_relations"] = 0.01
++	a.is_true(WorldFactions.compute_tension(tf) > tension_before + 0.05,
++		"前置：改 world_vars 后 compute_tension 确实变了（否则下面的断言会空转）")
++	a.near(WorldFactions.tension_of(tf), 0.42, 0.0000001, "tension_of 读 flags：不随 world_vars 变")
++	tf.flags.erase(WorldFactions.TENSION_FLAG)
++	a.near(WorldFactions.tension_of(tf), WorldFactions.compute_tension(tf), 0.0000001,
++		"只有缺 flags 时才回退到现算")
+ 	var politics := 0
+ 	var in_log := 0
+ 	for ev in tick_events:
+ 		if str(ev.get("kind", "")) == "faction":
+ 			politics += 1
+ 	for ev in tw.log:
+ 		if str(ev.get("kind", "")) == "faction":
+ 			in_log += 1
+ 	a.is_true(politics >= 1, "tick 返回的 events 里含派系/政治事件")
+ 	a.eq(in_log, politics, "同一批事件也进了 world.log")
+@@ -601,11 +619,35 @@ func run() -> int:
+ 	solo_state["control"]["gringotts"] = 0.5
+ 	WorldFactions.evolve(solo)
+ 	var solo_power := float(WorldFactions.state_of(solo, "solo")["power"])
+ 	var solo_control := float((WorldFactions.state_of(solo, "solo")["control"] as Dictionary)["gringotts"])
+ 	a.is_true(solo_power < 0.9, "前置：实力向目标（0.4）回归而下降（否则滞后断言可能空转）")
+ 	# 容差 2e-4：evolve 末尾会把 power/control 量化到 1e-4（存档往返不变量，见 WorldFactions.QUANTIZE_DECIMALS），
+ 	# 因此关系式只在量化精度内成立；若把系数 0.5 改成 0.25，偏差约 0.1 ≫ 2e-4，断言仍会红。
+ 	a.near(solo_control, 0.5 + (solo_power - 0.5) * 0.5, 0.0002,
+ 		"机构控制权以 0.5 系数向新实力靠拢：control += (power − control) × 0.5")
+ 
++	# ---- 修复轮 1（M2）：last_change_turn 必须与「量化后的持久值是否真的变了」双向一致 ----
++	# 旧实现用未量化的 next 就地判定 → 「持久值没变、却标记为本月变化」；
++	# 且敌对压制（apply_rival_pressure）改值时不标记 → 「变了却没标记」。
++	# 现在 evolve 在本回合所有写入结束后统一判定，两个方向都应恰好一致。
++	var stale := make_world("modern")
++	WorldFactions.initialize(stale)
++	var mark_mismatch := 0
++	var mark_samples := 0
++	for i in 30:
++		var before_q := {}
++		for fid in stale.registry.ids("factions"):
++			before_q[str(fid)] = WorldFactions.quantize(WorldFactions.power_of(stale, str(fid)))
++		stale.tick()
++		for fid in stale.registry.ids("factions"):
++			var sid := str(fid)
++			var after_q := WorldFactions.quantize(WorldFactions.power_of(stale, sid))
++			var persisted_changed := not is_equal_approx(after_q, float(before_q[sid]))
++			var marked := int(WorldFactions.state_of(stale, sid).get("last_change_turn", -1)) == stale.clock.turn
++			mark_samples += 1
++			if persisted_changed != marked:
++				mark_mismatch += 1
++	a.eq(mark_mismatch, 0, "last_change_turn 与「量化持久值是否真的变了」双向一致（%d 个样本）" % mark_samples)
++	a.is_true(mark_samples == 510, "样本数应为 30 回合 × 17 派系 = 510（实际=%d，防循环写错导致空转）" % mark_samples)
++
+ 	return a.report("factions")
+diff --git a/tests/world_tick_test.gd b/tests/world_tick_test.gd
+index e85caf7..857171e 100644
+--- a/tests/world_tick_test.gd
++++ b/tests/world_tick_test.gd
+@@ -110,30 +110,51 @@ func run() -> int:
+ 	for e in rumor_events:
+ 		a.has_key(e, "kind", "传闻事件含 kind")
+ 		a.has_key(e, "category", "传闻事件含 category")
+ 		a.has_key(e, "text", "传闻事件含 text")
+ 		a.has_key(e, "major", "传闻事件含 major")
+ 		a.has_key(e, "turn", "传闻事件含 turn")
+ 		a.has_key(e, "rumor_id", "传闻事件含 rumor_id（Task 6 揭示用）")
+ 		# 用 .get() 而非 e["rumor_id"]：缺键时要得到一条干净的断言失败，不能用下标访问把整个套件搞崩（§8#56 同类陷阱）
+ 		a.is_true(rumor_w.registry.has("rumors", str(e.get("rumor_id", ""))), "rumor_id 是内容表里的真实传闻")
+ 
+-	# ---- 计划 03a：政治事件也必须受到 12 个月重大事件配额约束（与传闻共用 flags["last_major_turn"]） ----
++	# ---- 计划 03a：政治事件真的会触发，且与传闻共用 12 个月重大事件配额 ----
++	# 高张力夹具：**每月重置**极端 world_vars（模拟持续紧张的世界），使 tension 恒过阀、条件恒成立，
++	# 于是「事件是否触发」只由配额（MAJOR_EVENT_GAP）决定；玩家无地点 ⇒ 传闻候选集为空 ⇒ 配额纯归政治事件。
++	# （旧版这段用 modern 默认格局，tension≈0.33 < 0.55 ⇒ 40 回合内事件恒 0 条，是一条永真/永绿噪声；修复轮 1 I1）
++	var tense := WorldState.create("modern", PlayerState.new_default(), 777, pre_reg)
++	for key in ["corruption", "pureblood_influence", "war_pressure"]:
++		tense.world_vars[key] = 0.99
++	tense.world_vars["muggle_relations"] = 0.01
++	tense.world_vars["economy_index"] = 0.01
++	tense.world_vars["secrecy_integrity"] = 0.01
++	a.is_true(WorldFactions.compute_tension(tense) >= WorldFactions.TENSION_THRESHOLD,
++		"前置：夹具的 tension 过阀（否则本块会静默空转——旧版就是死在这里）")
++	a.is_true(WorldFactions.event_condition_met(tense, "lawlessness")
++		and WorldFactions.event_condition_met(tense, "war_exhaustion")
++		and WorldFactions.event_condition_met(tense, "economic_slump"),
++		"前置：至少三个事件条件成立（否则本块会静默空转）")
++	var faction_events := 0
+ 	var political_gap := 9999
+ 	var political_last := -1000
+-	var political_count := 0
+-	for e in rumor_w.log:
+-		if str(e.get("kind", "")) == "faction":
+-			political_count += 1
+-			political_gap = mini(political_gap, int(e["turn"]) - political_last)
+-			political_last = int(e["turn"])
+-	a.is_true(political_count >= 0, "政治事件计数可读（实际=%d）" % political_count)
+-	if political_count >= 2:
+-		a.is_true(political_gap >= 12, "相邻政治事件至少相隔 12 个月（实际最小间隔=%d）" % political_gap)
++	for i in 40:
++		for key in ["corruption", "pureblood_influence", "war_pressure"]:
++			tense.world_vars[key] = 0.99
++		tense.world_vars["muggle_relations"] = 0.01
++		tense.world_vars["economy_index"] = 0.01
++		tense.world_vars["secrecy_integrity"] = 0.01
++		for e in tense.tick():
++			if str(e.get("kind", "")) == "faction":
++				faction_events += 1
++				political_gap = mini(political_gap, int(e["turn"]) - political_last)
++				political_last = int(e["turn"])
++	a.is_true(faction_events >= 2, "高张力世界 40 回合内至少触发 2 次政治事件（实际=%d）" % faction_events)
++	a.is_true(political_gap >= WorldState.MAJOR_EVENT_GAP,
++		"相邻政治事件至少相隔 %d 个月（实际最小间隔=%d）" % [WorldState.MAJOR_EVENT_GAP, political_gap])
+ 
+ 	# ---- 计划 03a：tick 跑完仍不得留下畸形 world_vars / 派系状态 ----
+ 	for fid in pre_w.registry.ids("factions"):
+ 		var fstate := WorldFactions.state_of(pre_w, str(fid))
+ 		a.is_true(not fstate.is_empty(), "tick 后 %s 仍有状态" % str(fid))
+ 		a.between(float(fstate.get("power", -1.0)), 0.0, 1.0, "%s 实力在界内" % str(fid))
+ 
+ 	return a.report("world_tick")

@@ -26,6 +26,11 @@ static func _validate_payload(parsed: Dictionary) -> String:
 			return "存档载荷字段类型错误：%s 应为数字" % field
 	if parsed.has("era_id") and typeof(parsed["era_id"]) != TYPE_STRING:
 		return "存档载荷字段类型错误：era_id 应为字符串"
+	# 计划 03a：player.standing 必须是对象（faction_id -> 整数）
+	if parsed.has("player") and typeof(parsed["player"]) == TYPE_DICTIONARY:
+		var p: Dictionary = parsed["player"]
+		if p.has("standing") and typeof(p["standing"]) != TYPE_DICTIONARY:
+			return "存档载荷字段类型错误：player.standing 应为对象"
 	return ""
 
 static func encode(world: WorldState) -> String:

@@ -1,0 +1,428 @@
+# Review package: 8bc42e9..a36faab
+
+## Commits
+a36faab feat(gm): 离线替身支持加入/退出/支持/反对派系（计划 03a Task 9）
+e4c3e59 docs(plan-03a): Task 9 计划修正 —— FACTION_JOIN 去掉含省略号的死关键词「为…做事」改为「做事」
+783f8d1 docs(plan-03a): Task 8 审查 —— spec Q4 措辞勘误（政治格局≠显式四角权重）+ 计划代码块对齐实现（保留「政体：」「已知势力：」前缀）
+5aef800 docs(plan-03a): Task 8 计划修正 —— state_digest 是 Dictionary（加键而非文本行）+ 键集合断言 + 实跑教训 5 条
+
+## Files changed
+ data/factions.json                                 |  2 +-
+ .../plans/2026-09-20-hp-magic-era-03-factions.md   | 44 +++++++---
+ .../2026-09-20-hp-magic-era-03-factions-design.md  |  2 +-
+ src/gm/scripted_game_master.gd                     | 47 +++++++++++
+ tests/gm_test.gd                                   | 95 ++++++++++++++++++++++
+ 5 files changed, 177 insertions(+), 13 deletions(-)
+
+## Diff
+diff --git a/data/factions.json b/data/factions.json
+index e33057c..86c86b6 100644
+--- a/data/factions.json
++++ b/data/factions.json
+@@ -201,21 +201,21 @@
+     "base_power": 0.45,
+     "rivals": [],
+     "allies": ["ministry"],
+     "institutions": ["daily_prophet"],
+     "era_overrides": {}
+   },
+   {
+     "id": "black_market",
+     "label": "翻倒巷黑市",
+     "kind": "commerce",
+-    "aliases": ["翻倒巷黑市", "黑市", "翻倒巷"],
++    "aliases": ["翻倒巷黑市", "黑市"],
+     "legal_status": "outlaw",
+     "secrecy": "semi",
+     "domains": ["economy", "secrecy_enforcement"],
+     "agenda": "卖法律不让卖的东西，谁出价高就卖给谁",
+     "base_power": 0.25,
+     "rivals": ["auror_office"],
+     "allies": ["death_eaters"],
+     "institutions": [],
+     "era_overrides": {}
+   },
+diff --git a/docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md b/docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md
+index a40ac22..274307d 100644
+--- a/docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md
++++ b/docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md
+@@ -1723,70 +1723,88 @@ git commit -m "feat(ui): 势力面板重写——机构控制权 + 已知势力
+ - Produces: `PromptBuilder.state_digest(world)` 文本新增两行：`政体：<label>` 与 `已知势力：<label>(%.2f,立场%+d,所属) …`（无可见派系时为 `已知势力：无`）。**未揭示派系不得出现**。
+ 
+ - [ ] **Step 1: 写失败测试**
+ 
+ 在 `tests/prompt_test.gd` 的 `run()` 末尾（`return a.report("prompt")` 之前）追加：
+ 
+ ```gdscript
+ 	# ---- 计划 03a：提示词只暴露已揭示的派系（第四十三/五十七章） ----
+ 	WorldFactions.initialize(w)
+ 	var digest := PromptBuilder.state_digest(w)
+-	a.is_true(digest.contains("政体："), "摘要含政体")
+-	a.is_true(digest.contains("已知势力："), "摘要含已知势力行")
+-	a.is_true(digest.contains("魔法部"), "摘要含公开派系")
+-	a.is_false(digest.contains("食死徒"), "摘要不得含未揭示派系（信息保护）")
++	# ⚠️ `state_digest()` 返回 **Dictionary**（计划 02 spec §6.5 的键集合契约），不是文本；
++	# `build()` 用 `JSON.stringify(state_digest(world))` 把它塞进 user_prompt，所以新增内容要**加键**。
++	# 断言必须用 `.get(..., "")` 读缺失键——用 `digest["government"]` 下标访问会让缺键时抛运行期错误、
++	# 整个套件中止（§8#56 陷阱；Task 8 实跑踩到过一次）。
++	a.is_true(str(digest.get("government", "")).contains("官僚制"), "摘要含政体（label 取自内容表）")
++	a.is_true(not str(digest.get("known_factions", "")).is_empty(), "摘要含已知势力行")
++	a.is_true(str(digest.get("known_factions", "")).contains("魔法部"), "摘要含公开派系")
++	a.is_false(str(digest.get("known_factions", "")).contains("食死徒"), "摘要不得含未揭示派系（信息保护）")
+ 	WorldFactions.ensure_state(w, "death_eaters")["revealed"] = true
+ 	var digest2 := PromptBuilder.state_digest(w)
+-	a.is_true(digest2.contains("食死徒"), "揭示后才进入摘要")
++	a.is_true(str(digest2.get("known_factions", "")).contains("食死徒"), "揭示后才进入摘要")
++	# 提示词契约未破坏：键集合必须是计划 02 的 7 键 + 新增 2 键（多键/少键/改名都算破坏）
++	var keys := digest.keys()
++	keys.sort()
++	a.eq(keys, ["clock", "era", "government", "known_factions", "location", "player",
++		"recent_history", "recent_log", "world_vars"], "摘要键集合 = 既有 7 键 + 新增 2 键")
++	# 信息保护：user_prompt 全文（不只是 known_factions 行）都不得出现未揭示派系的 label
++	var up := PromptBuilder.build(w, "我要去上课").user_prompt
++	a.is_false(up.contains("翻倒巷黑市"), "user_prompt 不含未揭示派系（信息保护）")
+ ```
+ 
+ - [ ] **Step 2: 跑测试确认失败**
+ 
+ Run: `bash tools/test.sh 2>&1 | grep -E "^\[prompt\]|总计"`
+ Expected: 失败（摘要无「政体：」「已知势力：」）。
+ 
+ - [ ] **Step 3: 实现**
+ 
+ 在 `src/gm/prompt_builder.gd` 的 `state_digest()` 末尾（`return` 之前）追加：
+ 
+ ```gdscript
+ 	# 计划 03a：政治格局（只给已揭示的派系——未揭示的绝不进提示词，第四十三/五十七章）
++	# ⚠️ `state_digest()` 返回 Dictionary，`build()` 会 `JSON.stringify` 它 → 这里**加两个键**（不是 append 文本行）。
+ 	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
+ 	if gov_id.is_empty():
+ 		gov_id = WorldFactions.government_type(world)
+-	lines.append("政体：%s" % str(world.registry.entry("governments", gov_id).get("label", gov_id)))
++	out["government"] = "政体：%s" % str(world.registry.entry("governments", gov_id).get("label", gov_id))
+ 	var faction_parts: Array[String] = []
+ 	for fid in WorldFactions.visible_faction_ids(world):
+ 		var id := str(fid)
+ 		faction_parts.append("%s(%.2f,立场%+d%s)" % [
+ 			str(world.registry.entry("factions", id).get("label", id)),
+ 			WorldFactions.power_of(world, id),
+ 			world.player.standing_of(id),
+ 			",所属" if world.player.faction_id == id else ""])
+-	if faction_parts.is_empty():
+-		lines.append("已知势力：无")
+-	else:
+-		lines.append("已知势力：%s" % " ".join(faction_parts))
++	out["known_factions"] = "已知势力：无" if faction_parts.is_empty() else "已知势力：%s" % " ".join(faction_parts)
++	return out
+ ```
+ 
+ - [ ] **Step 4: 跑测试确认通过**
+ 
+ Run: `bash tools/test.sh 2>&1 | grep -E "^\[prompt\]|^\[llm\]|总计|全部通过"`
+ Expected: 全部 `失败=0`；`全部通过。`
+ 
+ - [ ] **Step 5: 提交**
+ 
+ ```bash
+ git add src/gm/prompt_builder.gd tests/prompt_test.gd
+ git commit -m "feat(gm): 提示词摘要暴露已揭示派系与政体（计划 03a Task 8）"
+ ```
+ 
++> ### ⚠️ Task 8 实跑教训（2026-09-20，控制器据实修正计划）
++> 1. **`state_digest()` 是 Dictionary 不是文本**：原稿的 `lines.append("政体：…")` 与 `digest.contains("政体：")` 都是照「文本摘要」写的，实际契约是键集合（`build()` 把整份 JSON 塞进 `user_prompt`）。已改成**加键** `government` / `known_factions`，断言用 `.get(..., "")`（下标访问缺键会中止整个套件，属 `§8#56` 陷阱）。
++> 2. **必须加一条键集合断言**（既有 7 键 + 新增 2 键，多/少/改名都算破坏）——这是「提示词契约未被重构」的唯一硬证据。
++> 3. **信息保护断言要扫全文**（`user_prompt` 整体），不能只查 `known_factions` 那一行。
++> 4. **「神圣二十八族」是公开血统 label**（`data/bloodlines.json`，建角即可见），它会出现在 `system_prompt` 的 `content_index.bloodlines` 里 —— 那是**既有内容**，不是派系泄漏。断言要写成「显式豁免 + 理由」而不是把词从断言里删掉：豁免它作为**血统名**的存在，同时断言它作为**未揭示派系**不得进 `known_factions`。
++> 5. **面板/探针里的期望值要现读 `institution_control()`**，不要硬编码 `base_power`（实跑：探针跑了 4 回合后 `auror_office` 的控制权已从 0.60 漂到 **0.62**，硬编码会假红）。
++
+ ---
+ 
+ ### Task 9: 玩家动作接线（离线替身的关键词 → 派系 op）
+ 
+ **Files:**
+ - Modify: `src/gm/scripted_game_master.gd`
+ - Test: `tests/gm_test.gd`
+ 
+ **Interfaces:**
+ - Consumes: `WorldFactions.visible_faction_ids`；Task 3 的三个 op。
+@@ -1837,24 +1855,28 @@ git commit -m "feat(gm): 提示词摘要暴露已揭示派系与政体（计划
+ - [ ] **Step 2: 跑测试确认失败**
+ 
+ Run: `bash tools/test.sh 2>&1 | grep -E "^\[gm\]|总计"`
+ Expected: 失败（「加入魔法部」目前落到 idle，`deltas` 为空）。
+ 
+ - [ ] **Step 3: 实现**
+ 
+ 在 `src/gm/scripted_game_master.gd` 的常量区加：
+ 
+ ```gdscript
+-const FACTION_JOIN: Array[String] = ["加入", "投靠", "效力", "为…做事", "入伙"]
++const FACTION_JOIN: Array[String] = ["加入", "投靠", "效力", "做事", "入伙"]
+ const FACTION_LEAVE: Array[String] = ["退出", "脱离", "叛出", "不再属于"]
+ const FACTION_SUPPORT: Array[String] = ["支持", "拥护", "声援", "捐款", "赞助"]
+ const FACTION_OPPOSE: Array[String] = ["反对", "抗议", "抨击", "揭露", "抵制"]
++
++# ⚠️ 关键词一律用**不带省略号**的普通词：原稿的「为…做事」含 U+2026 省略号，玩家几乎不可能原样输入
++# （等于死关键词）。改为「做事」——它本身很泛，但派系分支要求**同一句里同时命中了已揭示派系名**，
++# 所以「我想做点事」不会误触发（Task 9 实跑修正，2026-09-20）。
+ ```
+ 
+ 加方法：
+ 
+ ```gdscript
+ # 计划 03a：识别玩家嘴里提到的“已揭示”派系（label 或 aliases）。未揭示的一律识别为空。
+ func _detect_faction(world: WorldState, text: String) -> String:
+ 	for fid in WorldFactions.visible_faction_ids(world):
+ 		var id := str(fid)
+ 		var entry := world.registry.entry("factions", id)
+diff --git a/docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md b/docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md
+index a6b3217..1beadb1 100644
+--- a/docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md
++++ b/docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md
+@@ -45,21 +45,21 @@
+ | **D11** | 顺手项（`NEXT-STEPS §C` 裁定「不单开批次，留给计划 03」）：`§8#61`（降级原因进 `op_errors`，1 行）、`§8#64`（测试可判别性 3 条）、`§8#65`（契约文档 + 鸭子类型判定）、`§8#58`（UI 等待期超时/取消）、`§8#62`（UI 提交失败恢复：唯一出口）、`§8#63`（provider 泄漏 `HTTPRequest` + `timeout` 只生效一次）、`§8#69`（哑炮却有学院）、`§8#70`（创建界面姓名/性别）、`§8#16`/`§8#21`（`rumors.weight` / `wand_cores.rarity` 声明未生效）。 | 前 8 条用户已裁定随 03 处理；`#16/#21` 由计划 02 spec §15 与本 spec 一起收口（加权抽取是 10 行规则层改动 + 测试）。这些**不占主线任务**，作为独立小任务排在主线之后。 |
+ | **D12** | 玩家成为派系成员/领袖的路径：本计划只做**成员**（`faction_id` + `standing`），**不做领袖/夺权**（正典第四十九章「阶层流动」与「革命系统」留给后续，本计划只把 `tension` 与改革运动事件做出来）。 | YAGNI：夺权需要 NPC 组织度、选举/政变流程、法律后果（属 03c），先让「支持/反对/加入」跑通。 |
+ 
+ ### 请你裁定（4 条，可以在评审时一次性回答）
+ 
+ | 编号 | 问题 | 我的建议 |
+ | --- | --- | --- |
+ | Q1 | 派系表要不要包含**国际**实体（国际巫师联合会、外国魔法部）？ | **要**（1–2 个即可，用 `era_overrides` 与 `kind:"foreign"` 表达）。否则正典第六/八/二十六章的「国际」维度没有落点，面板「国际」指标只能造假。 |
+ | Q2 | 面板新增【已知势力】一行，接受吗？ | **接受**（见 D10）。 |
+ | Q3 | 玩家能「加入」的派系是否要限制作恶类（食死徒）？ | **不限制**，但加入 `legality:"outlaw"` 派系要产生**代价**（法律风险计数 + 关系恶化；具体后果按 03c 裁定，本计划只记录 `flags["illegal_affiliation"]`）。正典第五十章明确允许「加入食死徒」。 |
+-| Q4 | 是否要在本计划就把 `world.factions` 暴露给 LLM 提示词（`PromptBuilder.state_digest`）？ | **要**，但只暴露 revealed 部分 + 权力四角权重（防止 LLM 剧透未揭示派系，第四十三/五十七章）。 |
++| Q4 | 是否要在本计划就把 `world.factions` 暴露给 LLM 提示词（`PromptBuilder.state_digest`）？ | **要**，但只暴露 revealed 部分 + **政治格局**（防止 LLM 剧透未揭示派系，第四十三/五十七章）。<br>ℹ️ **勘误（2026-09-20，Task 8 实跑）**：原措辞「+ 权力四角权重」已改为「+ 政治格局」——实现暴露的是**每个已揭示派系的 power + 立场 + 所属**与**政体 label**；`power_share()` 的四角权重是这些 power 的**纯函数**（归一化），再单列一份会与已有信息重复。若 03b 的经济挂钩需要显式四角权重，那时再加一个键即可（成本一行）。 |
+ 
+ ## 4. 正典依据（行号指 `哈利·波特·魔法纪元.md`）
+ 
+ | 行 | 章节 | 本计划用到什么 |
+ | --- | --- | --- |
+ | 93 | 第六章 九大文明支柱 | 派系表覆盖第 2/3/5/7/8 根（魔法部 / 纯血家族 / 商业 / 黑暗势力 / 国际） |
+ | 158 | 第十一章 政体系统（四大主流政体） | `governments.json` 四个政体 + 判定规则 |
+ | 172 | 第十二章 权力四角 | 魔法部 / 纯血家族 / 霍格沃茨 / 古灵阁与商业的权重 |
+ | 182 | 第十三章 纯血家族制度 | 纯血家族作为派系 `kind:"pureblood"`（家谱留 03c） |
+ | 190 | 第十四章 傲罗与凤凰社系统 | 傲罗指挥部/凤凰社两个势力，`legality` 区分 |
+diff --git a/src/gm/scripted_game_master.gd b/src/gm/scripted_game_master.gd
+index 6ffe951..5b4c294 100644
+--- a/src/gm/scripted_game_master.gd
++++ b/src/gm/scripted_game_master.gd
+@@ -1,19 +1,26 @@
+ class_name ScriptedGameMaster
+ extends GameMaster
+ 
+ const TRAIN_KEYWORDS: Array[String] = ["练习", "学习", "训练", "钻研", "研究", "复习", "上课"]
+ const WORK_KEYWORDS: Array[String] = ["打工", "赚钱", "上班", "经商", "接活", "做生意"]
+ const SOCIAL_KEYWORDS: Array[String] = ["打听", "询问", "聊天", "结交", "社交", "谈"]
+ const REST_KEYWORDS: Array[String] = ["休息", "睡觉", "吃饭", "喝", "闲逛", "发呆", "回家"]
+ const CAST_KEYWORDS: Array[String] = ["念", "施展", "使用咒语", "施法", "用魔杖"]
+ 
++# 计划 03a（Task 9）：派系动作关键词。派系名/别名一律从内容表（data/factions.json）取，代码不硬编码中文派系名。
++# 关键词必须是**不带省略号**的普通词：「做事」而非「为…做事」（含 U+2026 的写法玩家几乎不可能原样输入，等于死关键词）。
++const FACTION_JOIN: Array[String] = ["加入", "投靠", "效力", "做事", "入伙"]
++const FACTION_LEAVE: Array[String] = ["退出", "脱离", "叛出", "不再属于"]
++const FACTION_SUPPORT: Array[String] = ["支持", "拥护", "声援", "捐款", "赞助"]
++const FACTION_OPPOSE: Array[String] = ["反对", "抗议", "抨击", "揭露", "抵制"]
++
+ const SKILL_BY_KEYWORD: Dictionary = {
+ 	"魔药": "potions", "草药": "herbology", "魔咒": "charms", "变形": "transfiguration",
+ 	"黑魔法防御": "dada", "防御": "dada", "历史": "history_of_magic", "天文": "astronomy",
+ 	"占卜": "divination", "魔文": "ancient_runes", "神奇生物": "care_of_magical_creatures",
+ 	"魁地奇": "quidditch", "治疗": "healing", "社交": "social", "口才": "social",
+ }
+ 
+ var rng: RngService = null
+ 
+ func _init(rng_: RngService = null) -> void:
+@@ -32,20 +39,34 @@ func _detect_skill(text: String) -> String:
+ 			return str(SKILL_BY_KEYWORD[keyword])
+ 	return "charms"
+ 
+ func _detect_spell(world: WorldState, text: String) -> String:
+ 	for spell_id in world.registry.ids("spells"):
+ 		var label := str(world.registry.entry("spells", spell_id).get("label", ""))
+ 		if not label.is_empty() and text.contains(label):
+ 			return str(spell_id)
+ 	return ""
+ 
++# 计划 03a：识别玩家嘴里提到的“已揭示”派系（label 或 aliases）。未揭示的一律识别为空（第四十三/五十七章）。
++# tie-break：按 `visible_faction_ids()`（id 字典序）返回**第一个**命中者 —— 同句提到多个派系时仍确定性可复现。
++func _detect_faction(world: WorldState, text: String) -> String:
++	for fid in WorldFactions.visible_faction_ids(world):
++		var id := str(fid)
++		var entry := world.registry.entry("factions", id)
++		var label := str(entry.get("label", ""))
++		if not label.is_empty() and text.contains(label):
++			return id
++		for alias in (entry.get("aliases", []) as Array):
++			if not str(alias).is_empty() and text.contains(str(alias)):
++				return id
++	return ""
++
+ func act(world: WorldState, action_text: String) -> GmResult:
+ 	var r := GmResult.new()
+ 	var text := action_text.strip_edges()
+ 
+ 	if text.is_empty():
+ 		r.narration = "你没有做任何事。世界继续向前。"
+ 		r.tags.append("idle")
+ 		return r
+ 
+ 	# 施法意图优先，避免「练习魔咒」被误判
+@@ -54,20 +75,46 @@ func act(world: WorldState, action_text: String) -> GmResult:
+ 		r.tags.append("cast")
+ 		# 这里直接调用规则层，因为它必须产出旁白；守卫与代价由 cast() 内部结算。
+ 		# 若由 StateOps 的 cast_spell 操作重放，会掷两次骰并重复结算守卫。
+ 		var outcome := SpellResolver.cast(world, spell_id, {}, rng)
+ 		r.narration = outcome.narration
+ 		if not outcome.blocked and outcome.success:
+ 			# 成功一次即算入门；重复施法不再重复记录（PlayerState.learn_spell 幂等）
+ 			r.deltas.append({"op": "learn_spell", "spell_id": spell_id})
+ 		return r
+ 
++	# 计划 03a：派系动作（第五十章「可以支持凤凰社、加入食死徒、反对魔法部」）
++	# 位置：施法分支之后、TRAIN 之前；**未命中派系时不提前 return**，继续走原有分支。
++	var faction_id := _detect_faction(world, text)
++	if not faction_id.is_empty():
++		var faction_label := str(world.registry.entry("factions", faction_id).get("label", faction_id))
++		if _contains_any(text, FACTION_LEAVE):
++			r.tags.append("faction")
++			r.deltas.append({"op": "leave_faction"})
++			r.narration = "你与%s断了关系。名字从名单上划掉，代价还看不出来。" % faction_label
++			return r
++		if _contains_any(text, FACTION_JOIN):
++			r.tags.append("faction")
++			r.deltas.append({"op": "join_faction", "faction_id": faction_id})
++			r.narration = "你向%s表明愿意效力。他们先记下你的名字，再看看你能做什么。" % faction_label
++			return r
++		if _contains_any(text, FACTION_SUPPORT):
++			r.tags.append("faction")
++			r.deltas.append({"op": "faction_standing_delta", "faction_id": faction_id, "delta": 5})
++			r.narration = "你公开支持%s。有人点头，有人把这件事记在了心里。" % faction_label
++			return r
++		if _contains_any(text, FACTION_OPPOSE):
++			r.tags.append("faction")
++			r.deltas.append({"op": "faction_standing_delta", "faction_id": faction_id, "delta": -5})
++			r.narration = "你公开反对%s。他们会记住你的立场。" % faction_label
++			return r
++
+ 	if _contains_any(text, TRAIN_KEYWORDS):
+ 		var skill_id := _detect_skill(text)
+ 		var amount := Progression.gain(world, skill_id, 4)
+ 		r.tags.append("train")
+ 		r.deltas.append({"op": "gain_skill", "skill_id": skill_id, "amount": amount})
+ 		var skill_label := str(world.registry.entry("skills", skill_id).get("label", skill_id))
+ 		if amount >= 4:
+ 			r.narration = "你花了整整一个月钻研%s，进步明显。" % skill_label
+ 		elif amount > 0:
+ 			r.narration = "你继续练%s，但收获不如从前（重复练习收益下降）。" % skill_label
+diff --git a/tests/gm_test.gd b/tests/gm_test.gd
+index f43dabb..cc35d24 100644
+--- a/tests/gm_test.gd
++++ b/tests/gm_test.gd
+@@ -204,11 +204,106 @@ func run() -> int:
+ 	var fe2 := StateOps.apply(w, [{"op": "join_faction", "faction_id": "death_eaters"}])
+ 	a.is_true(" | ".join(fe2).contains("未揭示"), "未揭示的派系不能加入（第四十三/五十七章）")
+ 	var fe3 := StateOps.apply(w, [{"op": "join_faction", "faction_id": "ministry"}])
+ 	a.eq(fe3.size(), 0, "加入公开派系无错误")
+ 	a.eq(w.player.faction_id, "ministry", "所属写入")
+ 	var fe4 := StateOps.apply(w, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 5}])
+ 	a.eq(fe4.size(), 0, "立场调整无错误")
+ 	a.eq(w.player.standing_of("ministry"), 5, "立场累加")
+ 	a.is_true(int(WorldFactions.state_of(w, "ministry").get("stance_to_player", 0)) > 0, "派系态度反向变化")
+ 
++	# ---- 计划 03a（Task 9）：离线替身也支持派系动作（第五十章）----
++	# tie-break 规则（控制器点名风险 2）：`_detect_faction()` 按 `visible_faction_ids()`（id 字典序）
++	# 返回**第一个**命中者；下面「同句两个已揭示派系」的断言把这个确定性规则钉住。
++	var sg := ScriptedGameMaster.new(RngService.new(7))
++
++	# 加入：产出 join_faction，端到端写入所属
++	var sw := make_world()
++	WorldFactions.initialize(sw)
++	var join_res := sg.act(sw, "我要加入魔法部")
++	var joined := false
++	for d in join_res.deltas:
++		if str(d.get("op", "")) == "join_faction" and str(d.get("faction_id", "")) == "ministry":
++			joined = true
++	a.is_true(joined, "关键词「加入魔法部」产出 join_faction")
++	a.is_true(join_res.tags.has("faction"), "派系动作打 faction 标签")
++	a.is_true(join_res.narration.contains("魔法部"), "加入旁白用内容表的 label（不硬编码）")
++	StateOps.apply(sw, join_res.deltas)
++	a.eq(sw.player.faction_id, "ministry", "端到端：加入后所属写入")
++
++	# 退出：产出 leave_faction，端到端清空所属
++	var leave_res := sg.act(sw, "我要退出魔法部")
++	var leaving := false
++	for d in leave_res.deltas:
++		if str(d.get("op", "")) == "leave_faction":
++			leaving = true
++	a.is_true(leaving, "关键词「退出」产出 leave_faction")
++	StateOps.apply(sw, leave_res.deltas)
++	a.eq(sw.player.faction_id, "", "端到端：退出后所属清空")
++
++	# 支持 / 反对：产出正负立场
++	var support_res := sg.act(sw, "我公开支持魔法部")
++	var support_delta := 0
++	for d in support_res.deltas:
++		if str(d.get("op", "")) == "faction_standing_delta":
++			support_delta = int(d.get("delta", 0))
++	a.eq(support_delta, 5, "关键词「支持」产出 +5 立场")
++	var oppose_res := sg.act(sw, "我要抗议魔法部")
++	var oppose_delta := 0
++	for d in oppose_res.deltas:
++		if str(d.get("op", "")) == "faction_standing_delta":
++			oppose_delta = int(d.get("delta", 0))
++	a.eq(oppose_delta, -5, "关键词「抗议」产出 -5 立场")
++
++	# 控制器点名风险 4：泛称别名「部长」映射到魔法部（有意），且仅在该派系可见时命中
++	var minister_res := sg.act(sw, "我支持部长")
++	var minister_delta := 0
++	for d in minister_res.deltas:
++		if str(d.get("op", "")) == "faction_standing_delta" and str(d.get("faction_id", "")) == "ministry":
++			minister_delta = int(d.get("delta", 0))
++	a.eq(minister_delta, 5, "泛称别名「部长」映射到魔法部")
++
++	# 控制器点名风险 3：未揭示派系（第四十三/五十七章）
++	a.eq(sg._detect_faction(sw, "我要加入食死徒"), "", "未揭示派系识别为空")
++	a.eq(sg._detect_faction(sw, "我支持那个人"), "", "未揭示派系的泛称别名也不命中")
++	var hidden_res := sg.act(sw, "我要加入食死徒")
++	a.eq(hidden_res.deltas.size(), 0, "未揭示派系的动作不产出任何 op")
++	a.is_true(hidden_res.tags.has("idle"), "未揭示派系的动作落到 idle")
++
++	# 控制器点名风险 2：同句两个已揭示派系 → 取 id 字典序第一个（gringotts < ministry）
++	var two_res := sg.act(sw, "我支持魔法部和古灵阁")
++	var two_id := ""
++	for d in two_res.deltas:
++		if str(d.get("op", "")) == "faction_standing_delta":
++			two_id = str(d.get("faction_id", ""))
++	a.eq(two_id, "gringotts", "同句多派系：确定性取 id 字典序第一个")
++
++	# 控制器点名风险 1：普通动作不得被派系分支吞掉（tags 必须走原分支，且不产出派系 op）
++	var plain_cases := {
++		"我去对角巷打工赚钱": "work",
++		"我要练习魔药学": "train",
++		"我去打听消息": "social",
++		"我要休息一下": "rest",
++		"我念出 照明咒": "cast",
++	}
++	for plain_text in plain_cases.keys():
++		var plain_res := sg.act(sw, str(plain_text))
++		a.is_true(plain_res.tags.has(str(plain_cases[plain_text])),
++			"「%s」仍走原分支 %s" % [str(plain_text), str(plain_cases[plain_text])])
++		var faction_ops := 0
++		for d in plain_res.deltas:
++			if ["join_faction", "leave_faction", "faction_standing_delta"].has(str(d.get("op", ""))):
++				faction_ops += 1
++		a.eq(faction_ops, 0, "「%s」不产出派系 op" % str(plain_text))
++
++	# 控制器裁定：黑市别名不得含裸地点名「翻倒巷」（否则「去翻倒巷」被误判成派系动作）
++	var bm_aliases: Array = sw.registry.entry("factions", "black_market").get("aliases", [])
++	a.is_false(bm_aliases.has("翻倒巷"), "black_market.aliases 不再含裸地点名「翻倒巷」")
++	a.is_true(bm_aliases.has("黑市"), "黑市简称保留")
++	a.is_true(bm_aliases.has("翻倒巷黑市"), "黑市正式别名保留")
++	a.eq(sg._detect_faction(sw, "我去翻倒巷买点材料"), "", "揭示前：裸地名不识别为派系动作")
++	WorldFactions.reveal(sw, "black_market", "破釜酒吧传闻")
++	a.eq(sg._detect_faction(sw, "我去翻倒巷买点材料"), "", "揭示后：裸地名仍不识别为派系动作")
++	a.eq(sg._detect_faction(sw, "我要加入翻倒巷黑市"), "black_market", "揭示后：正式别名「翻倒巷黑市」可识别")
++	a.eq(sg._detect_faction(sw, "我要加入黑市"), "black_market", "揭示后：简称「黑市」可识别")
++
+ 	return a.report("gm")

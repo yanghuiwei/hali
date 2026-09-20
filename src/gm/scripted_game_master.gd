@@ -7,6 +7,13 @@ const SOCIAL_KEYWORDS: Array[String] = ["打听", "询问", "聊天", "结交", 
 const REST_KEYWORDS: Array[String] = ["休息", "睡觉", "吃饭", "喝", "闲逛", "发呆", "回家"]
 const CAST_KEYWORDS: Array[String] = ["念", "施展", "使用咒语", "施法", "用魔杖"]
 
+# 计划 03a（Task 9）：派系动作关键词。派系名/别名一律从内容表（data/factions.json）取，代码不硬编码中文派系名。
+# 关键词必须是**不带省略号**的普通词：「做事」而非「为…做事」（含 U+2026 的写法玩家几乎不可能原样输入，等于死关键词）。
+const FACTION_JOIN: Array[String] = ["加入", "投靠", "效力", "做事", "入伙"]
+const FACTION_LEAVE: Array[String] = ["退出", "脱离", "叛出", "不再属于"]
+const FACTION_SUPPORT: Array[String] = ["支持", "拥护", "声援", "捐款", "赞助"]
+const FACTION_OPPOSE: Array[String] = ["反对", "抗议", "抨击", "揭露", "抵制"]
+
 const SKILL_BY_KEYWORD: Dictionary = {
 	"魔药": "potions", "草药": "herbology", "魔咒": "charms", "变形": "transfiguration",
 	"黑魔法防御": "dada", "防御": "dada", "历史": "history_of_magic", "天文": "astronomy",
@@ -39,6 +46,25 @@ func _detect_spell(world: WorldState, text: String) -> String:
 			return str(spell_id)
 	return ""
 
+# 计划 03a：识别玩家嘴里提到的“已揭示”派系（label 或 aliases）。未揭示的一律识别为空（第四十三/五十七章）。
+# tie-break：按 `visible_faction_ids()`（id 字典序）返回**第一个**命中者 —— 同句提到多个派系时仍确定性可复现。
+func _detect_faction(world: WorldState, text: String) -> String:
+	for fid in WorldFactions.visible_faction_ids(world):
+		var id := str(fid)
+		var entry := world.registry.entry("factions", id)
+		var label := str(entry.get("label", ""))
+		if not label.is_empty() and text.contains(label):
+			return id
+		# Task 9 审查 M1：内容畸形（aliases 不是数组）时 `as Array` 会**运行期报错并中止本函数**，
+		# 于是 id 字典序靠后的派系再也扫不到（静默降级为“未命中”）。这里先做类型守卫。
+		var aliases = entry.get("aliases", [])
+		if typeof(aliases) != TYPE_ARRAY:
+			continue
+		for alias in (aliases as Array):
+			if not str(alias).is_empty() and text.contains(str(alias)):
+				return id
+	return ""
+
 func act(world: WorldState, action_text: String) -> GmResult:
 	var r := GmResult.new()
 	var text := action_text.strip_edges()
@@ -60,6 +86,40 @@ func act(world: WorldState, action_text: String) -> GmResult:
 			# 成功一次即算入门；重复施法不再重复记录（PlayerState.learn_spell 幂等）
 			r.deltas.append({"op": "learn_spell", "spell_id": spell_id})
 		return r
+
+	# 计划 03a：派系动作（第五十章「可以支持凤凰社、加入食死徒、反对魔法部」）
+	# 位置：施法分支之后、TRAIN 之前；**未命中派系时不提前 return**，继续走原有分支。
+	var faction_id := _detect_faction(world, text)
+	if not faction_id.is_empty():
+		var faction_label := str(world.registry.entry("factions", faction_id).get("label", faction_id))
+		if _contains_any(text, FACTION_LEAVE):
+			r.tags.append("faction")
+			# Task 9 审查 M3：旧实现无条件清空所属，于是「已是魔法部成员时输入『我要退出古灵阁』」
+			# 会清掉魔法部却旁白说古灵阁（旁白与效果不一致）。现在只有真的属于该派系才产出 op。
+			if world.player.faction_id == faction_id:
+				r.deltas.append({"op": "leave_faction", "faction_id": faction_id})
+				r.narration = "你与%s断了关系。名字从名单上划掉，代价还看不出来。" % faction_label
+			else:
+				var current_label := "无归属"
+				if not world.player.faction_id.is_empty():
+					current_label = str(world.registry.entry("factions", world.player.faction_id).get("label", world.player.faction_id))
+				r.narration = "你并不属于%s（你当前归属：%s）。这句话没掀起任何波澜。" % [faction_label, current_label]
+			return r
+		if _contains_any(text, FACTION_JOIN):
+			r.tags.append("faction")
+			r.deltas.append({"op": "join_faction", "faction_id": faction_id})
+			r.narration = "你向%s表明愿意效力。他们先记下你的名字，再看看你能做什么。" % faction_label
+			return r
+		if _contains_any(text, FACTION_SUPPORT):
+			r.tags.append("faction")
+			r.deltas.append({"op": "faction_standing_delta", "faction_id": faction_id, "delta": 5})
+			r.narration = "你公开支持%s。有人点头，有人把这件事记在了心里。" % faction_label
+			return r
+		if _contains_any(text, FACTION_OPPOSE):
+			r.tags.append("faction")
+			r.deltas.append({"op": "faction_standing_delta", "faction_id": faction_id, "delta": -5})
+			r.narration = "你公开反对%s。他们会记住你的立场。" % faction_label
+			return r
 
 	if _contains_any(text, TRAIN_KEYWORDS):
 		var skill_id := _detect_skill(text)

@@ -1,0 +1,35 @@
+{
+	"fonts": {
+		"body": {"path": "res://assets/fonts/body_cjk.ttf", "size": 16},
+		"title": {"path": "res://assets/fonts/Cinzel-Variable.ttf", "size": 28}
+	},
+	"icons": {
+		"barn_owl": "res://assets/icons/barn-owl.svg",
+		"bolt_spell_cast": "res://assets/icons/bolt-spell-cast.svg",
+		"book_cover": "res://assets/icons/book-cover.svg",
+		"castle": "res://assets/icons/castle.svg",
+		"cauldron": "res://assets/icons/cauldron.svg",
+		"crown": "res://assets/icons/crown.svg",
+		"crystal_earrings": "res://assets/icons/crystal-earrings.svg",
+		"dragon_orb": "res://assets/icons/dragon-orb.svg",
+		"floating_ghost": "res://assets/icons/floating-ghost.svg",
+		"lunar_wand": "res://assets/icons/lunar-wand.svg",
+		"round_potion": "res://assets/icons/round-potion.svg",
+		"rune_stone": "res://assets/icons/rune-stone.svg",
+		"scroll_quill": "res://assets/icons/scroll-quill.svg",
+		"tarot_01_the_magician": "res://assets/icons/tarot-01-the-magician.svg",
+		"wizard_face": "res://assets/icons/wizard-face.svg"
+	},
+	"textures": {
+		"runic_codex": "res://assets/textures/runic_codex.png"
+	},
+	"palette": {
+		"text": "#e8e2d0",
+		"muted": "#9a917f",
+		"accent": "#c8a24a",
+		"background": "#14120f",
+		"panel_bg": "#1c1a17cc",
+		"danger": "#b04a3a",
+		"success": "#6f9c5a"
+	}
+}

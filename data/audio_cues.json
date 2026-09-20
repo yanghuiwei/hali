@@ -1,0 +1,37 @@
+{
+	"cues": {},
+	"bgm_by_era": {
+		"hogwarts_founding": "res://assets/audio/bgm/bg_fantasy_theme.ogg",
+		"witch_hunts": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"grindelwald": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"first_wizarding_war": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"second_wizarding_war": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"reconstruction": "res://assets/audio/bgm/bg_fantasy_theme.ogg",
+		"modern": "res://assets/audio/bgm/bg_woodland_fantasy.ogg",
+		"custom": "res://assets/audio/bgm/bg_main.ogg"
+	},
+	"bgm_by_location": {
+		"london_muggle": "res://assets/audio/bgm/bg_fantasy_theme.ogg",
+		"diagon_alley": "res://assets/audio/bgm/bg_woodland_fantasy.ogg",
+		"knockturn_alley": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"hogsmeade": "res://assets/audio/bgm/bg_woodland_fantasy.ogg",
+		"hogwarts": "res://assets/audio/bgm/bg_main.ogg",
+		"forbidden_forest": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"chamber_of_secrets": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"room_of_requirement": "res://assets/audio/bgm/bg_main.ogg",
+		"ministry_of_magic": "res://assets/audio/bgm/bg_fantasy_theme.ogg",
+		"st_mungos": "res://assets/audio/bgm/bg_fantasy_theme.ogg",
+		"gringotts": "res://assets/audio/bgm/bg_fantasy_theme.ogg",
+		"gringotts_deep_vaults": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"azkaban": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"godrics_gollow": "res://assets/audio/bgm/bg_woodland_fantasy.ogg",
+		"spinners_end": "res://assets/audio/bgm/bg_woodland_fantasy.ogg",
+		"the_burrow": "res://assets/audio/bgm/bg_woodland_fantasy.ogg",
+		"malfoy_manor": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"grimmauld_place": "res://assets/audio/bgm/bg_dark_winds.ogg",
+		"beauxbatons": "res://assets/audio/bgm/bg_fantasy_theme.ogg",
+		"durmstrang": "res://assets/audio/bgm/bg_fantasy_theme.ogg",
+		"ilvermorny": "res://assets/audio/bgm/bg_fantasy_theme.ogg"
+	},
+	"master_volume": 0.8
+}

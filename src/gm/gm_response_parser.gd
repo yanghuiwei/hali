@@ -2,7 +2,9 @@ class_name GmResponseParser
 extends RefCounted
 
 const MAX_NARRATION := 4000
-const TAG_WHITELIST: Array[String] = ["train", "work", "social", "rest", "cast", "idle"]
+# Task 9 审查 M2：离线替身的派系动作打 "faction" 标签，LLM 路径也必须能用同一词汇
+# （否则同一个 GameMaster 契约出现两套标签）。
+const TAG_WHITELIST: Array[String] = ["train", "work", "social", "rest", "cast", "idle", "faction"]
 
 class Result:
 	var ok: bool = false

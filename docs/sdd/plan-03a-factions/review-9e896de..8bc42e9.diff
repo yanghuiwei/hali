@@ -1,0 +1,217 @@
+# Review package: 9e896de..8bc42e9
+
+## Commits
+8bc42e9 feat(gm): 提示词摘要暴露已揭示派系与政体（计划 03a Task 8）
+
+## Files changed
+ src/gm/prompt_builder.gd  | 16 ++++++++++++++++
+ src/ui/panel_formatter.gd |  2 +-
+ tests/panel_test.gd       | 11 +++++++++++
+ tests/prompt_test.gd      | 44 ++++++++++++++++++++++++++++++++++++++++++++
+ tools/b1_acceptance.gd    | 15 ++++++++++++++-
+ 5 files changed, 86 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/src/gm/prompt_builder.gd b/src/gm/prompt_builder.gd
+index 21b2c36..dfdb5c4 100644
+--- a/src/gm/prompt_builder.gd
++++ b/src/gm/prompt_builder.gd
+@@ -61,28 +61,44 @@ static func state_digest(world: WorldState) -> Dictionary:
+ 		max_log = 5
+ 	if world.log.size() > 400:
+ 		max_log = 0
+ 	if world.log.size() > 800:
+ 		max_history = 2
+ 	if world.log.size() > 1600:
+ 		max_history = 0
+ 	var log_tail: Array = world.log.slice(maxi(0, world.log.size() - max_log))
+ 	var history_tail: Array = world.history.slice(maxi(0, world.history.size() - max_history))
+ 	var location := world.current_location()
++	# 计划 03a Task 8：政治格局两行。**只给已揭示（revealed）的派系**——未揭示的绝不进提示词（第四十三/五十七章）。
++	# 注：`state_digest()` 返回 Dictionary（计划 02 spec §6.5 的键集合契约），故两行以两个字符串键承载。
++	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
++	if gov_id.is_empty():
++		gov_id = WorldFactions.government_type(world)
++	var faction_parts: Array[String] = []
++	for fid in WorldFactions.visible_faction_ids(world):
++		var id := str(fid)
++		faction_parts.append("%s(%.2f,立场%+d%s)" % [
++			str(world.registry.entry("factions", id).get("label", id)),
++			WorldFactions.power_of(world, id),
++			world.player.standing_of(id),
++			",所属" if world.player.faction_id == id else ""])
++	var known_line := "已知势力：无" if faction_parts.is_empty() else "已知势力：%s" % " ".join(faction_parts)
+ 	return JsonUtil.normalize({
+ 		"clock": {"year": world.clock.year, "month": world.clock.month, "turn": world.clock.turn},
+ 		"era": {"id": world.era_id, "start_year": world.era_start_year},
+ 		"player": {
+ 			"name": p.name_text, "gender": p.gender, "age_years": p.age_years(),
+ 			"bloodline_id": p.bloodline_id, "birth_identity_id": p.birth_identity_id,
+ 			"house_id": p.house_id, "location_id": p.location_id, "job": p.job,
+ 			"money": p.money().to_dict(), "reputation": p.reputation,
+ 			"political_leaning_id": p.political_leaning_id, "faction_id": p.faction_id,
+ 			"life_goal": p.life_goal, "current_goal": p.current_goal, "personality": p.personality,
+ 			"magic_tier": p.magic_tier, "skills": skills, "magic": p.magic,
+ 			"relations": p.relations, "flags": flags, "known_facts": p.known_facts,
+ 		},
+ 		"world_vars": world.world_vars,
+ 		"location": {"id": p.location_id, "label": location.get("label", ""), "zone": location.get("zone", ""), "danger": location.get("danger", 0), "danger_label": location.get("danger_label", "")},
+ 		"recent_log": log_tail,
+ 		"recent_history": history_tail,
++		"government": "政体：%s" % str(world.registry.entry("governments", gov_id).get("label", gov_id)),
++		"known_factions": known_line,
+ 	})
+diff --git a/src/ui/panel_formatter.gd b/src/ui/panel_formatter.gd
+index c490c4c..dd77f11 100644
+--- a/src/ui/panel_formatter.gd
++++ b/src/ui/panel_formatter.gd
+@@ -36,21 +36,21 @@ static func _top_skill(player: PlayerState, world: WorldState) -> String:
+ static func player_panel(world: WorldState) -> String:
+ 	var p := world.player
+ 	var lines: Array[String] = []
+ 	lines.append("《哈利·波特·魔法纪元·人生状态》")
+ 	lines.append("【姓名】%s" % p.name_text)
+ 	lines.append("【时间】%s 【年龄】%d岁 【血统】%s" % [world.clock.formatted(), p.age_years(), _label(world, "bloodlines", p.bloodline_id)])
+ 	lines.append("【身份】%s 【所在地】%s 【职业】%s" % [_label(world, "houses", p.house_id), _label(world, "locations", p.location_id), (p.job if not p.job.is_empty() else "无")])
+ 	lines.append("【财富】%s 【家庭】%s" % [p.money().formatted(), _label(world, "birth_identities", p.birth_identity_id)])
+ 	lines.append("【社会地位】%s 【魔法能力】%s 【战斗能力】%s" % [_label(world, "political_leanings", p.political_leaning_id), _magic_level_label(p), _top_skill(p, world)])
+ 	lines.append("【魔药/治疗】%s 【技能】%s" % [str(p.skill("potions")), _skills_line(p, world)])
+-	lines.append("【声望】%d 【重要关系】%d人 【所属势力】%s" % [p.reputation, p.relations.size(), (p.faction_id if not p.faction_id.is_empty() else "无")])
++	lines.append("【声望】%d 【重要关系】%d人 【所属势力】%s" % [p.reputation, p.relations.size(), (_label(world, "factions", p.faction_id) if not p.faction_id.is_empty() else "无")])
+ 	lines.append("【当前目标】%s" % (p.current_goal if not p.current_goal.is_empty() else UNKNOWN))
+ 	return "\n".join(lines)
+ 
+ # 第六十三章
+ static func magic_panel(world: WorldState) -> String:
+ 	var p := world.player
+ 	var lines: Array[String] = []
+ 	lines.append("《哈利·波特·魔法纪元·魔法能力》")
+ 	if p.magic_tier == MagicLevel.Tier.SQUIB or p.flags.has("no_magic"):
+ 		lines.append("【魔杖】未拥有（无魔法天赋：哑炮仍可看见魔法世界，但无法施展咒语）")
+diff --git a/tests/panel_test.gd b/tests/panel_test.gd
+index 9ef5f32..402469f 100644
+--- a/tests/panel_test.gd
++++ b/tests/panel_test.gd
+@@ -161,11 +161,22 @@ func run() -> int:
+ 	a.is_true(PanelFormatter.power_panel(w_flag).contains("政体：纯血寡头制"),
+ 		"有缓存时以 flags 为准（若忽略缓存而现算，这里会是官僚制 → 必红）")
+ 
+ 	# ---- 全部派系都未揭示时，已知势力行为占位文案 ----
+ 	var w_dark := make_world()
+ 	WorldFactions.initialize(w_dark)
+ 	for fid in w_dark.registry.ids("factions"):
+ 		WorldFactions.ensure_state(w_dark, str(fid))["revealed"] = false
+ 	a.is_true(PanelFormatter.power_panel(w_dark).contains("【已知势力】暂无已知势力"), "全隐藏时显示占位文案")
+ 
++	# ---- 计划 03a Task 8（Task 7 审查 M5）：【所属势力】必须显示中文 label ----
++	var member := PlayerState.new_default()
++	member.name_text = "李四"
++	member.location_id = "london_muggle"
++	member.faction_id = "ministry"
++	var w_member := WorldState.create("modern", member, 7, reg)
++	var member_panel := PanelFormatter.player_panel(w_member)
++	a.is_true(member_panel.contains("【所属势力】魔法部"), "所属势力显示中文 label")
++	a.is_false(member_panel.contains("【所属势力】ministry"), "不再显示原始 faction_id")
++	a.is_true(PanelFormatter.player_panel(w_empty).contains("【所属势力】无"), "无所属仍显示「无」")
++
+ 	return a.report("panel")
+diff --git a/tests/prompt_test.gd b/tests/prompt_test.gd
+index 1842063..014b56e 100644
+--- a/tests/prompt_test.gd
++++ b/tests/prompt_test.gd
+@@ -33,11 +33,55 @@ func run() -> int:
+ 	a.is_false(req1.user_prompt.contains("secret_internal"), "摘要剔除玩家内部 flag")
+ 	a.is_true(req1.system_prompt.contains("potions"), "内容索引含技能 id")
+ 	# 截断顺序：先砍 log 再砍 history
+ 	for i in 500:
+ 		w.log.append({"turn": i, "kind": "mundane", "text": "x"})
+ 	var big := PromptBuilder.state_digest(w)
+ 	a.eq((big["recent_log"] as Array).size(), 0, "超大 log 被完全截断")
+ 	a.is_true((big["recent_history"] as Array).size() >= 1, "history 仍有保留")
+ 	var repair := PromptBuilder.build_repair(w, "行动", "缺少 narration")
+ 	a.is_true(repair.system_prompt.contains("缺少 narration"), "修复提示带错误原因")
++
++	# ---- 计划 03a Task 8：提示词只暴露已揭示的派系（第四十三/五十七章，spec Q4） ----
++	# 适配说明：`state_digest()` 返回的是 **Dictionary**（计划 02 spec §6.5 的键集合契约），不是文本行数组；
++	# 因此新增的两行以两个字符串键承载：`government` / `known_factions`。
++	var fw := make_world()
++	WorldFactions.initialize(fw)
++	var fdigest := PromptBuilder.state_digest(fw)
++	var fkeys: Array = fdigest.keys()
++	fkeys.sort()
++	a.eq(fkeys, ["clock", "era", "government", "known_factions", "location", "player",
++		"recent_history", "recent_log", "world_vars"],
++		"摘要键集合 = 计划 02 既有 7 键 + 本计划新增 2 键（提示词契约未被重构）")
++	a.is_true(str(fdigest.get("government", "")).contains("政体：魔法部官僚制"), "摘要含政体（label 取自内容表）")
++	a.is_true(str(fdigest.get("known_factions", "")).contains("已知势力："), "摘要含已知势力行")
++	a.is_true(str(fdigest.get("known_factions", "")).contains("魔法部"), "摘要含已揭示派系")
++
++	# 信息保护：未揭示派系一个字都不许进提示词（含 LLM 真正看到的 system/user prompt 全文）
++	var freq := PromptBuilder.build(fw, "我要练习魔药学")
++	# 逐词清单里有一个**必须写明的例外**：「神圣二十八族」同时是 data/bloodlines.json 的**血统 label**，
++	# 建角时就是公开选项，故它出现在 system_prompt 只能来自 content_index.bloodlines —— 不是派系泄漏。
++	for hidden in ["食死徒", "凤凰社", "神秘事务司", "翻倒巷黑市", "欧陆纯血网络"]:
++		a.is_false(freq.user_prompt.contains(str(hidden)), "user_prompt 不含未揭示派系 %s" % str(hidden))
++		a.is_false(freq.system_prompt.contains(str(hidden)), "system_prompt 不含未揭示派系 %s" % str(hidden))
++	var ci := PromptBuilder.content_index(fw)
++	a.eq(str((ci.get("bloodlines", {}) as Dictionary).get("sacred_twenty_eight", "")), "神圣二十八族",
++		"豁免理由：「神圣二十八族」是公开血统 label（建角可见）")
++	a.is_false(str(fdigest.get("known_factions", "")).contains("神圣二十八族"),
++		"但未揭示的该派系本身不得进已知势力行")
++	a.is_false(str(fdigest.get("known_factions", "")).contains("食死徒"), "已知势力行不含未揭示派系")
++
++	# 揭示之后才进入摘要，且不多带其它未揭示派系；键集合不变
++	WorldFactions.reveal(fw, "death_eaters", "破釜酒吧传闻")
++	var fdigest2 := PromptBuilder.state_digest(fw)
++	a.is_true(str(fdigest2.get("known_factions", "")).contains("食死徒"), "揭示后进入已知势力行")
++	a.is_false(str(fdigest2.get("known_factions", "")).contains("凤凰社"), "未揭示的其它派系仍不出现")
++	a.eq((fdigest2.keys() as Array).size(), fkeys.size(), "揭示不改变摘要键集合")
++
++	# 玩家所属标记与立场随派系一起给出（供 LLM 叙事时保持一致）
++	fw.player.faction_id = "ministry"
++	fw.player.add_standing("ministry", 30)
++	var fdigest3 := PromptBuilder.state_digest(fw)
++	a.is_true(str(fdigest3.get("known_factions", "")).contains("魔法部(0.75,立场+30,所属)"),
++		"所属与立场随派系一起标注（格局未演化时 power = base_power）")
++
+ 	return a.report("prompt")
+diff --git a/tools/b1_acceptance.gd b/tools/b1_acceptance.gd
+index e1f1161..68430ab 100644
+--- a/tools/b1_acceptance.gd
++++ b/tools/b1_acceptance.gd
+@@ -259,21 +259,34 @@ func _part5_panels(node: Node) -> void:
+ 
+ 	before = _log_len(node)
+ 	node.call("_on_relation")
+ 	var rel := _log_of(node).substr(before)
+ 	check(rel.contains("《哈利·波特·魔法纪元·社会关系》"), "关系面板有标题")
+ 
+ 	before = _log_len(node)
+ 	node.call("_on_power")
+ 	var power := _log_of(node).substr(before)
+ 	check(power.contains("《哈利·波特·魔法纪元·势力面板》"), "势力面板有标题")
+-	note("观察（§8#7）：势力面板 7 个标签映射到 4 个 world_vars（纯显示，已登记）")
++	# §8#7 已由计划 03a Task 7 修复：机构级指标（法律执行/傲罗/威森加摩/国际）= 派系对该机构的 control
++	# 最大值 + holder；world_vars 里已经没有机构键，不再存在「7 个标签映射到 4 个 world_vars」。
++	var w_panel := _world(node)
++	check(not w_panel.world_vars.has("auror_office"), "world_vars 没有机构键（指标不来自标量，§8#7 已修）")
++	var auror_before := float(((WorldFactions.institution_control(w_panel)["auror_office"]) as Dictionary)["value"])
++	check(power.contains("傲罗：%.2f（傲罗指挥部）" % auror_before),
++		"势力面板傲罗指标 = 派系控制权 %.2f" % auror_before)
++	WorldFactions.ensure_state(w_panel, "auror_office")["control"]["auror_office"] = 0.93
++	before = _log_len(node)
++	node.call("_on_power")
++	var power2 := _log_of(node).substr(before)
++	check(power2.contains("傲罗：0.93（傲罗指挥部）"), "改控制权后面板随之变化（§8#7 的行为型证据）")
++	check(power2.contains("【已知势力】"), "含【已知势力】行")
++	note("观察：机构级指标（法律执行/傲罗/威森加摩/国际）取自派系机构控制权 + holder；§8#7 的「7 标签→4 world_vars」错映射已在本计划修好")
+ 
+ 	before = _log_len(node)
+ 	node.call("_on_status")
+ 	check(_log_of(node).substr(before).contains("《哈利·波特·魔法纪元·人生状态》"), "状态面板可读")
+ 
+ # 清单 6：存档 / 读档（同一实例）
+ func _part6_save_load_same_instance(node: Node) -> void:
+ 	part("清单 6 · 存档成功；读档后回合数与存档前一致")
+ 	var before := _log_len(node)
+ 	node.call("_on_save")

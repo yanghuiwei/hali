@@ -1,8 +1,8 @@
 [
-	{"id": "unicorn_hair", "label": "独角兽尾毛", "rarity": "common"},
-	{"id": "dragon_heartstring", "label": "龙心弦", "rarity": "common"},
-	{"id": "phoenix_feather", "label": "凤凰羽毛", "rarity": "rare"},
-	{"id": "thestral_tail_hair", "label": "夜骐尾羽", "rarity": "rare"},
-	{"id": "veela_hair", "label": "媚娃头发", "rarity": "rare"},
-	{"id": "troll_whisker", "label": "巨怪胡须", "rarity": "common"}
+	{"id": "unicorn_hair", "label": "独角兽尾毛", "rarity": "common", "weight": 6},
+	{"id": "dragon_heartstring", "label": "龙心弦", "rarity": "common", "weight": 6},
+	{"id": "phoenix_feather", "label": "凤凰羽毛", "rarity": "rare", "weight": 1},
+	{"id": "thestral_tail_hair", "label": "夜骐尾羽", "rarity": "rare", "weight": 1},
+	{"id": "veela_hair", "label": "媚娃头发", "rarity": "rare", "weight": 1},
+	{"id": "troll_whisker", "label": "巨怪胡须", "rarity": "common", "weight": 6}
 ]

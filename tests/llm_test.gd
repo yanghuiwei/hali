@@ -106,6 +106,21 @@ func run() -> int:
 	a.eq(weird.ops[0]["knuts"], 0, "畸形 knuts 视为 0，不崩")
 	a.eq(weird.ops[1]["trust"], 0, "畸形 trust 视为 0，不崩")
 
+	# ---- 计划 03a：OpGuard 只允许 LLM 动 membership/standing，不允许任何 set_faction_* ----
+	var fguard := OpGuard.sanitize_detailed(gworld, [
+		{"op": "join_faction", "faction_id": "ministry"},
+		{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 999},
+		{"op": "set_faction_power", "faction_id": "ministry", "power": 1.0},
+	])
+	a.eq(fguard.ops[0]["op"], "join_faction", "join_faction 进入净化结果")
+	a.eq(int(fguard.ops[1]["delta"]), OpGuard.MAX_STANDING_DELTA, "standing 增量被钳到上限")
+	var faction_kinds := ""
+	for o in fguard.ops:
+		faction_kinds += str(o.get("op", "")) + ","
+	a.is_true(faction_kinds.contains("set_faction_power"), "未知 set_faction_* 透传给 StateOps 拒绝，不静默丢弃")
+	a.is_true(" | ".join(StateOps.apply(gworld, fguard.ops)).contains("未知操作"),
+		"StateOps 最终拒绝 set_faction_power")
+
 	# ---- LlmGameMaster ----
 	var mworld := Registry.load_default()
 	var mp := PlayerState.new_default()
@@ -133,7 +148,14 @@ func run() -> int:
 	# 无 provider → 降级
 	var gm3 := LlmGameMaster.new(null, ScriptedGameMaster.new(RngService.new(3)))
 	var res3: GameMaster.GmResult = await gm3.act(lw, "我要去上课")
-	a.is_true(res3.narration.length() > 0, "无 provider 也有叙事")
+	# §8#64②：原断言 `narration.length() > 0` 在 fallback != null 时准恒真（无法判别降级文案是否还在）
+	a.is_true(res3.narration.contains("本地规则结算"), "无 provider 时明确告知用本地规则结算")
+	# 注意：有 fallback 时原因**不进叙事**（叙事由本地替身产出 + 一句降级说明），而是走 warnings → UI 的 op_errors
+	# （§8#61 的既定修法；只有 fallback == null 的分支才把原因拼进叙事）。
+	var res3_warned := ""
+	for w in res3.warnings:
+		res3_warned += str(w) + " | "
+	a.is_true(res3_warned.contains("provider 未配置"), "有 fallback 时降级原因走 warnings 透出")
 
 	# ---- §8#66：settings 的 temperature/max_tokens/timeout 必须真的进入请求 ----
 	var cfg := LlmSettings.new()
@@ -232,5 +254,64 @@ func run() -> int:
 	a.eq(null_content.text, "", "content=null 时 text 为空（不再是 <null>）")
 	var num_content := OpenAiCompatProvider._parse_http(200, '{"choices":[{"message":{"content":123}}]}')
 	a.is_false(num_content.ok, "content 为数字同样失败")
+
+	# ---- 计划 03a（§8#63）：HTTPRequest 复用、timeout 每请求更新、dispose 不泄漏 ----
+	var host := Node.new()
+	Engine.get_main_loop().root.add_child(host)
+	var prov := OpenAiCompatProvider.new(host, "https://example.invalid/v1", "m", "k")
+	prov.ensure_http(30000)
+	a.eq(host.get_child_count(), 1, "懒建一个 HTTPRequest")
+	prov.ensure_http(60000)
+	a.eq(host.get_child_count(), 1, "第二次不重复建（不泄漏）")
+	a.near(prov.http_timeout_sec(), 60.0, 0.001, "timeout 每次请求都更新（不再只生效一次）")
+	prov.dispose()
+	await Engine.get_main_loop().process_frame
+	a.eq(host.get_child_count(), 0, "dispose 释放节点")
+
+	# ---- 计划 03a（§8#64③）：错误串脱敏的负向断言 ----
+	var masked := OpenAiCompatProvider.mask("HTTP 401（boom sk-secret end）", "sk-secret")
+	a.is_false(masked.contains("sk-secret"), "脱敏后不含 api_key")
+	a.is_true(masked.contains("***"), "脱敏后出现掩码")
+	a.eq(OpenAiCompatProvider.mask("nothing", ""), "nothing", "空 key 不替换")
+
+	# ---- 计划 03a（Task 9 审查 M2）：faction 必须在两条 GM 路径的标签白名单里 ----
+	var faction_tag := GmResponseParser.parse('{"narration":"你在部里走动","ops":[],"tags":["faction"]}')
+	a.is_true(faction_tag.ok, "含 faction tag 的响应可解析")
+	a.eq(faction_tag.tags, PackedStringArray(["faction"]), "faction tag 不再被白名单过滤")
+
+	# ---- 计划 03a Task 11 · §8#61：降级原因必须透出给调用方（原本只有 last_error 这个 write-only 字段）----
+	# 夹具注意：`LlmGameMaster` 最多尝试 2 次（MAX_ATTEMPTS），而 MockLlmProvider 在 errors 用尽后会
+	# 回落到「mock 队列为空」——只给 1 条错误，最终透出的原因就是后者而不是我们想验的病因。故给 2 条。
+	var fmock := MockLlmProvider.new()
+	fmock.errors = ["网络抖动", "网络抖动"]
+	var fgm := LlmGameMaster.new(fmock, ScriptedGameMaster.new(RngService.new(3)), null)
+	var fres: GameMaster.GmResult = await fgm.act(lw, "我要去上课")
+	var warned := ""
+	for w in fres.warnings:
+		warned += str(w) + " | "
+	a.is_true(warned.contains("降级"), "降级事件写进 warnings")
+	a.is_true(warned.contains("网络抖动"), "降级原因（原始错误串）进 warnings")
+	a.is_true(fgm.last_error == "网络抖动", "last_error 仍保留原始原因")
+	# 无 fallback 分支同样要透出（否则玩家只能看到一句笼统的「暂不可用」）
+	var null_mock := MockLlmProvider.new()
+	null_mock.errors = ["网络抖动", "网络抖动"]
+	var null_fb := LlmGameMaster.new(null_mock, null, null)
+	var null_res: GameMaster.GmResult = await null_fb.act(lw, "我要去上课")
+	var null_warned := ""
+	for w in null_res.warnings:
+		null_warned += str(w) + " | "
+	a.is_true(null_warned.contains("网络抖动"), "无 fallback 时降级原因也进 warnings")
+
+	# ---- 计划 03a Task 11 · §8#64①：重试请求必须带修复提示（否则把 build_repair 换成 build 也能绿）----
+	var rrepair := MockLlmProvider.new()
+	rrepair.queue = ["不是 JSON", '{"narration":"修好了","ops":[],"tags":[]}']
+	var rgm := LlmGameMaster.new(rrepair, null, null)
+	var rres: GameMaster.GmResult = await rgm.act(lw, "我要去上课")
+	a.eq(rres.narration, "修好了", "二次尝试成功")
+	a.eq(rrepair.requests.size(), 2, "确实重试了一次")
+	a.is_true(str(rrepair.requests[1].system_prompt).contains("上一次输出无法解析"),
+		"第二次请求带修复提示（build_repair 而非 build）")
+	a.is_false(str(rrepair.requests[0].system_prompt).contains("上一次输出无法解析"),
+		"第一次请求不得提前带修复提示")
 
 	return a.report("llm")

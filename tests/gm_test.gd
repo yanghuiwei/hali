@@ -197,4 +197,209 @@ func run() -> int:
 	var bad_train := StateOps.apply(wt, [{"op": "train_skill", "skill_id": "不存在", "base_gain": 4}])
 	a.eq(bad_train.size(), 1, "未知技能报错")
 
+	# ---- 计划 03a：派系 op 的守卫与端到端 ----
+	var fe := StateOps.apply(w, [{"op": "join_faction", "faction_id": "nope"}])
+	a.is_true(" | ".join(fe).contains("未知派系"), "join_faction 未知 id 被拒")
+	a.eq(w.player.faction_id, "", "被拒的加入不写状态")
+	var fe2 := StateOps.apply(w, [{"op": "join_faction", "faction_id": "death_eaters"}])
+	a.is_true(" | ".join(fe2).contains("未揭示"), "未揭示的派系不能加入（第四十三/五十七章）")
+	var fe3 := StateOps.apply(w, [{"op": "join_faction", "faction_id": "ministry"}])
+	a.eq(fe3.size(), 0, "加入公开派系无错误")
+	a.eq(w.player.faction_id, "ministry", "所属写入")
+	var fe4 := StateOps.apply(w, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 5}])
+	a.eq(fe4.size(), 0, "立场调整无错误")
+	a.eq(w.player.standing_of("ministry"), 5, "立场累加")
+	a.is_true(int(WorldFactions.state_of(w, "ministry").get("stance_to_player", 0)) > 0, "派系态度反向变化")
+
+	# ---- 计划 03a（Task 9）：离线替身也支持派系动作（第五十章）----
+	# tie-break 规则（控制器点名风险 2）：`_detect_faction()` 按 `visible_faction_ids()`（id 字典序）
+	# 返回**第一个**命中者；下面「同句两个已揭示派系」的断言把这个确定性规则钉住。
+	var sg := ScriptedGameMaster.new(RngService.new(7))
+
+	# 加入：产出 join_faction，端到端写入所属
+	var sw := make_world()
+	WorldFactions.initialize(sw)
+	var join_res := sg.act(sw, "我要加入魔法部")
+	var joined := false
+	for d in join_res.deltas:
+		if str(d.get("op", "")) == "join_faction" and str(d.get("faction_id", "")) == "ministry":
+			joined = true
+	a.is_true(joined, "关键词「加入魔法部」产出 join_faction")
+	a.is_true(join_res.tags.has("faction"), "派系动作打 faction 标签")
+	a.is_true(join_res.narration.contains("魔法部"), "加入旁白用内容表的 label（不硬编码）")
+	StateOps.apply(sw, join_res.deltas)
+	a.eq(sw.player.faction_id, "ministry", "端到端：加入后所属写入")
+
+	# 退出：产出 leave_faction，端到端清空所属
+	var leave_res := sg.act(sw, "我要退出魔法部")
+	var leaving := false
+	for d in leave_res.deltas:
+		if str(d.get("op", "")) == "leave_faction":
+			leaving = true
+	a.is_true(leaving, "关键词「退出」产出 leave_faction")
+	StateOps.apply(sw, leave_res.deltas)
+	a.eq(sw.player.faction_id, "", "端到端：退出后所属清空")
+
+	# 支持 / 反对：产出正负立场
+	var support_res := sg.act(sw, "我公开支持魔法部")
+	var support_delta := 0
+	for d in support_res.deltas:
+		if str(d.get("op", "")) == "faction_standing_delta":
+			support_delta = int(d.get("delta", 0))
+	a.eq(support_delta, 5, "关键词「支持」产出 +5 立场")
+	var oppose_res := sg.act(sw, "我要抗议魔法部")
+	var oppose_delta := 0
+	for d in oppose_res.deltas:
+		if str(d.get("op", "")) == "faction_standing_delta":
+			oppose_delta = int(d.get("delta", 0))
+	a.eq(oppose_delta, -5, "关键词「抗议」产出 -5 立场")
+
+	# 控制器点名风险 4：泛称别名「部长」映射到魔法部（有意），且仅在该派系可见时命中
+	var minister_res := sg.act(sw, "我支持部长")
+	var minister_delta := 0
+	for d in minister_res.deltas:
+		if str(d.get("op", "")) == "faction_standing_delta" and str(d.get("faction_id", "")) == "ministry":
+			minister_delta = int(d.get("delta", 0))
+	a.eq(minister_delta, 5, "泛称别名「部长」映射到魔法部")
+
+	# 控制器点名风险 3：未揭示派系（第四十三/五十七章）
+	a.eq(sg._detect_faction(sw, "我要加入食死徒"), "", "未揭示派系识别为空")
+	a.eq(sg._detect_faction(sw, "我支持那个人"), "", "未揭示派系的泛称别名也不命中")
+	var hidden_res := sg.act(sw, "我要加入食死徒")
+	a.eq(hidden_res.deltas.size(), 0, "未揭示派系的动作不产出任何 op")
+	a.is_true(hidden_res.tags.has("idle"), "未揭示派系的动作落到 idle")
+
+	# 控制器点名风险 2：同句两个已揭示派系 → 取 id 字典序第一个（gringotts < ministry）
+	var two_res := sg.act(sw, "我支持魔法部和古灵阁")
+	var two_id := ""
+	for d in two_res.deltas:
+		if str(d.get("op", "")) == "faction_standing_delta":
+			two_id = str(d.get("faction_id", ""))
+	a.eq(two_id, "gringotts", "同句多派系：确定性取 id 字典序第一个")
+
+	# 控制器点名风险 1：普通动作不得被派系分支吞掉（tags 必须走原分支，且不产出派系 op）
+	var plain_cases := {
+		"我去对角巷打工赚钱": "work",
+		"我要练习魔药学": "train",
+		"我去打听消息": "social",
+		"我要休息一下": "rest",
+		"我念出 照明咒": "cast",
+	}
+	for plain_text in plain_cases.keys():
+		var plain_res := sg.act(sw, str(plain_text))
+		a.is_true(plain_res.tags.has(str(plain_cases[plain_text])),
+			"「%s」仍走原分支 %s" % [str(plain_text), str(plain_cases[plain_text])])
+		var faction_ops := 0
+		for d in plain_res.deltas:
+			if ["join_faction", "leave_faction", "faction_standing_delta"].has(str(d.get("op", ""))):
+				faction_ops += 1
+		a.eq(faction_ops, 0, "「%s」不产出派系 op" % str(plain_text))
+
+	# 控制器裁定：黑市别名不得含裸地点名「翻倒巷」（否则「去翻倒巷」被误判成派系动作）
+	var bm_aliases: Array = sw.registry.entry("factions", "black_market").get("aliases", [])
+	a.is_false(bm_aliases.has("翻倒巷"), "black_market.aliases 不再含裸地点名「翻倒巷」")
+	a.is_true(bm_aliases.has("黑市"), "黑市简称保留")
+	a.is_true(bm_aliases.has("翻倒巷黑市"), "黑市正式别名保留")
+	a.eq(sg._detect_faction(sw, "我去翻倒巷买点材料"), "", "揭示前：裸地名不识别为派系动作")
+	WorldFactions.reveal(sw, "black_market", "破釜酒吧传闻")
+	a.eq(sg._detect_faction(sw, "我去翻倒巷买点材料"), "", "揭示后：裸地名仍不识别为派系动作")
+	a.eq(sg._detect_faction(sw, "我要加入翻倒巷黑市"), "black_market", "揭示后：正式别名「翻倒巷黑市」可识别")
+	a.eq(sg._detect_faction(sw, "我要加入黑市"), "black_market", "揭示后：简称「黑市」可识别")
+
+	# ---- Task 9 审查 M1：畸形 aliases（非数组）不得中止整个套件 ----
+	var copied := {}
+	for table_name in Registry.TABLE_FILES.keys():
+		var rows := []
+		for rid in sw.registry.ids(table_name):
+			rows.append(sw.registry.entry(table_name, str(rid)).duplicate(true))
+		copied[table_name] = rows
+	for row in copied["factions"]:
+		if str(row.get("id", "")) == "black_market":
+			row["aliases"] = "黑市"        # 畸形：应为数组，这里故意给字符串
+	var bad_reg := Registry.from_tables(copied)
+	var bad_p := PlayerState.new_default()
+	bad_p.location_id = "diagon_alley"
+	var bad_w := WorldState.create("modern", bad_p, 7, bad_reg)
+	WorldFactions.ensure_state(bad_w, "black_market")["revealed"] = true
+	var bad_sg := ScriptedGameMaster.new(RngService.new(7))
+	a.eq(bad_sg._detect_faction(bad_w, "我要加入黑市"), "", "畸形 aliases 被安全跳过（不崩、也不误匹配）")
+	a.eq(bad_sg._detect_faction(bad_w, "我要加入翻倒巷黑市"), "black_market", "畸形 aliases 不影响 label 匹配")
+	# 判别性证据：`as Array` 遇非数组会**运行期报错并中止本函数**（实测不是返回 null）——
+	# 旧实现在遇到 black_market（id 字典序靠前）时直接中止，后续派系再也扫不到。
+	a.eq(bad_sg._detect_faction(bad_w, "我要支持古灵阁"), "gringotts",
+		"畸形 aliases 不得阻断后续派系的识别（旧实现必红）")
+	var bad_res := bad_sg.act(bad_w, "我要加入黑市")
+	a.eq(bad_res.deltas.size(), 0, "畸形 aliases 下产出的 deltas 为空（落 idle）")
+
+	# ---- Task 9 审查 M3：退出派系必须与旁白一致（旧行为会清错归属） ----
+	var lw := make_world()
+	WorldFactions.initialize(lw)
+	lw.player.faction_id = "ministry"
+	var lres := ScriptedGameMaster.new(RngService.new(5)).act(lw, "我要退出古灵阁")
+	a.eq(lres.deltas.size(), 0, "非成员退出某派系：不产出 op")
+	a.is_true(lres.narration.contains("并不属于"), "并如实说明并不属于该派系")
+	a.is_true(lres.narration.contains("魔法部"), "旁白指出当前归属")
+	StateOps.apply(lw, lres.deltas)
+	a.eq(lw.player.faction_id, "ministry", "原归属不被误清")
+	var ok_res := ScriptedGameMaster.new(RngService.new(5)).act(lw, "我要退出魔法部")
+	var has_leave := false
+	for d in ok_res.deltas:
+		if str(d.get("op", "")) == "leave_faction":
+			has_leave = true
+	a.is_true(has_leave, "成员退出自己的派系：产出 leave_faction")
+	StateOps.apply(lw, ok_res.deltas)
+	a.eq(lw.player.faction_id, "", "退出后无所属")
+	# StateOps 侧的第二道门（LLM 路径也一并堵住）
+	lw.player.faction_id = "ministry"
+	var lerrs := StateOps.apply(lw, [{"op": "leave_faction", "faction_id": "gringotts"}])
+	a.is_true(" | ".join(lerrs).contains("不是该派系"), "指定别的派系退出被拒并给出警告")
+	a.eq(lw.player.faction_id, "ministry", "被拒的退出不改变归属")
+	var lerrs2 := StateOps.apply(lw, [{"op": "leave_faction"}])
+	a.eq(lerrs2.size(), 0, "不带 faction_id 的退出仍兼容（清空）")
+	a.eq(lw.player.faction_id, "", "兼容路径真的清空")
+
+	# ---- 计划 03a Task 11 · §8#65③：鸭子类型判定 + blocked 非空文案 ----
+	a.is_false(ScriptedGameMaster.new(RngService.new(1)).is_async(), "离线替身声明为同步")
+	a.is_true(LlmGameMaster.new(null, null, null).is_async(), "LLM 主模块声明为协程")
+	var sync_world := make_world()
+	WorldFactions.initialize(sync_world)
+	var async_engine := TurnEngine.new(sync_world, LlmGameMaster.new(null, null, null), RngService.new(1))
+	var blocked_out: Dictionary = async_engine.submit("我要去上课")
+	a.is_true(bool(blocked_out["blocked"]), "同步 submit 拒绝协程 GM")
+	a.is_true(not str(blocked_out["narration"]).is_empty(), "拒绝时给出非空提示（UI 不会白屏）")
+	a.is_true(str(blocked_out["narration"]).contains("异步"), "提示说明要走异步路径")
+	a.eq(sync_world.clock.turn, 0, "被拒的提交不推进回合")
+
+	# ---- 计划 03a Task 11 · Task 9 审查 M4：命中派系名但四关键词都不中 → 不得抢走普通分支 ----
+	var fallback_w := make_world()
+	WorldFactions.initialize(fallback_w)
+	var plain := ScriptedGameMaster.new(RngService.new(7)).act(fallback_w, "我去魔法部打听消息")
+	a.is_true(plain.tags.has("social"), "「去魔法部打听消息」仍走 social 分支（派系名不抢分支）")
+	var faction_ops := 0
+	for d in plain.deltas:
+		var op_name := str(d.get("op", ""))
+		if op_name == "join_faction" or op_name == "leave_faction" or op_name == "faction_standing_delta":
+			faction_ops += 1
+	a.eq(faction_ops, 0, "回退路径不产出任何派系 op")
+
+	# ---- 计划 03a Task 11 · Task 9 审查 M5：旁白 label 来自 registry（不是硬编码）----
+	var base_reg := Registry.load_default()
+	var tables := {}
+	for table_name in Registry.TABLE_FILES.keys():
+		var rows: Array = []
+		for row_id in base_reg.ids(table_name):
+			rows.append((base_reg.entry(table_name, str(row_id)) as Dictionary).duplicate(true))
+		tables[table_name] = rows
+	for row in (tables["factions"] as Array):
+		if str((row as Dictionary).get("id", "")) == "ministry":
+			(row as Dictionary)["label"] = "奥术部"
+	var renamed_reg := Registry.from_tables(tables)
+	a.eq(str(renamed_reg.entry("factions", "ministry").get("label", "")), "奥术部", "临时 registry 改名生效（夹具自检）")
+	var renamed_w := WorldState.create("modern", PlayerState.new_default(), 7, renamed_reg)
+	WorldFactions.initialize(renamed_w)
+	a.eq(WorldFactions.government_id(renamed_w), WorldFactions.government_type(renamed_w), "改名 registry 下 government_id 可用（前置）")
+	var renamed_res := ScriptedGameMaster.new(RngService.new(9)).act(renamed_w, "我要加入奥术部")
+	a.is_true(renamed_res.narration.contains("奥术部"), "旁白使用 registry 的 label（说明不是硬编码）")
+	a.is_false(renamed_res.narration.contains("魔法部"), "旁白不得出现旧 label")
+
 	return a.report("gm")

@@ -25,6 +25,7 @@ var skills: Dictionary = {}
 var magic: Dictionary = {}
 var relations: Dictionary = {}
 var faction_id: String = ""
+var standing: Dictionary = {}      # 计划 03a：faction_id -> 玩家立场/声望 -100..100
 var current_goal: String = ""
 var location_id: String = ""
 var job: String = ""
@@ -57,6 +58,9 @@ func skill(skill_id: String) -> int:
 func add_skill(skill_id: String, amount: int) -> void:
 	skills[skill_id] = clampi(skill(skill_id) + amount, 0, SKILL_MAX)
 
+const STANDING_MIN := -100
+const STANDING_MAX := 100
+
 func knows_spell(spell_id: String) -> bool:
 	return (magic.get("known_spells", []) as Array).has(spell_id)
 
@@ -65,6 +69,14 @@ func learn_spell(spell_id: String) -> void:
 	if not known.has(spell_id):
 		known.append(spell_id)
 	magic["known_spells"] = known
+
+func standing_of(faction_id: String) -> int:
+	return clampi(int(standing.get(faction_id, 0)), STANDING_MIN, STANDING_MAX)
+
+func add_standing(faction_id: String, delta: int) -> int:
+	var value := clampi(standing_of(faction_id) + delta, STANDING_MIN, STANDING_MAX)
+	standing[faction_id] = value
+	return value
 
 func to_dict() -> Dictionary:
 	return JsonUtil.normalize({
@@ -76,7 +88,7 @@ func to_dict() -> Dictionary:
 		"personality": personality, "life_goal": life_goal, "sim_style_id": sim_style_id,
 		"wand": wand, "magic_tier": magic_tier, "money_knuts": money_knuts,
 		"reputation": reputation, "skills": skills, "magic": magic,
-		"relations": relations, "faction_id": faction_id, "current_goal": current_goal,
+		"relations": relations, "faction_id": faction_id, "standing": standing, "current_goal": current_goal,
 		"location_id": location_id, "job": job, "alive": alive,
 		"flags": flags, "known_facts": known_facts, "next_id": next_id,
 	})
@@ -105,6 +117,7 @@ static func from_dict(d: Dictionary) -> PlayerState:
 	p.magic = JsonUtil.normalize(d.get("magic", p.magic))
 	p.relations = JsonUtil.normalize(d.get("relations", {}))
 	p.faction_id = str(d.get("faction_id", ""))
+	p.standing = JsonUtil.normalize(d.get("standing", {}))
 	p.current_goal = str(d.get("current_goal", ""))
 	p.location_id = str(d.get("location_id", ""))
 	p.job = str(d.get("job", ""))
