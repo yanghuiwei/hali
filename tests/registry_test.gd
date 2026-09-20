@@ -145,4 +145,27 @@ func run() -> int:
 	a.is_true(bad_event_errors.contains("缺少 text"), "政治事件缺 text 必须报错")
 	a.is_true(bad_event_errors.contains("缺少 condition"), "政治事件缺 condition 必须报错")
 
+	# ---- 计划 03a Task 6：reveals_faction 的引用完整性 ----
+	var reveal_count := 0
+	for rid in reg.ids("rumors"):
+		var re := reg.entry("rumors", str(rid))
+		var reveal_target := str(re.get("reveals_faction", ""))
+		if not reveal_target.is_empty():
+			reveal_count += 1
+			a.is_true(reg.has("factions", reveal_target), "传闻 %s 的 reveals_faction 存在（%s）" % [str(rid), reveal_target])
+	a.is_true(reveal_count >= 3, "至少 3 条传闻用于揭示派系（实际 %d）" % reveal_count)
+
+	# 内容校验：坏类型与坏引用都要被拦（不能只看正向）
+	var bad_reveal := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"factions": [{"id": "x", "label": "派", "kind": "dark", "legal_status": "legal", "secrecy": "public",
+			"base_power": 0.5, "institutions": [], "rivals": [], "allies": []}],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+		"rumors": [{"id": "r", "label": "传闻", "text": "t", "reveals_faction": 123}],
+	})
+	a.is_true(" | ".join(bad_reveal.validate()).contains("reveals_faction 必须是字符串"),
+		"rumors 表坏类型的 reveals_faction 必须报错")
+	a.is_true(" | ".join(WorldFactions.validate_content(bad_reveal)).contains("引用不存在的派系"),
+		"validate_content 必须拦下 reveals_faction 的坏引用")
+
 	return a.report("registry")

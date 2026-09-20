@@ -650,4 +650,91 @@ func run() -> int:
 	a.eq(mark_mismatch, 0, "last_change_turn 与「量化持久值是否真的变了」双向一致（%d 个样本）" % mark_samples)
 	a.is_true(mark_samples == 510, "样本数应为 30 回合 × 17 派系 = 510（实际=%d，防循环写错导致空转）" % mark_samples)
 
+	# ---- 信息保护与揭示（Task 6） ----
+	var rw := make_world("modern")
+	WorldFactions.initialize(rw)
+	a.is_false(WorldFactions.reveal(rw, "death_eaters", ""), "空来源不能揭示")
+	a.is_false(WorldFactions.reveal(rw, "death_eaters", "system"), "system 来源不能揭示（第四十三/五十七章）")
+	a.is_false(bool(WorldFactions.state_of(rw, "death_eaters")["revealed"]), "被拒的揭示不写状态")
+	a.is_false(WorldFactions.reveal(rw, "不存在的派系", "破釜酒吧传闻"), "未知派系不能揭示")
+	a.is_true(WorldFactions.reveal(rw, "death_eaters", "破釜酒吧传闻"), "合法来源可以揭示")
+	a.is_true(bool(WorldFactions.state_of(rw, "death_eaters")["revealed"]), "揭示后 revealed=true")
+	a.is_true(WorldFactions.visible_faction_ids(rw).has("death_eaters"), "揭示后进入可见列表")
+	a.is_true(rw.history.size() >= 1, "揭示写入 history（可追溯）")
+	a.is_false(WorldFactions.reveal(rw, "death_eaters", "破釜酒吧传闻"), "重复揭示返回 false（幂等）")
+	a.is_false(WorldFactions.visible_faction_ids(rw).has("order_of_phoenix"), "未揭示派系不在可见列表")
+
+	# 来源必须原样记录在 fact 文案里（可追溯性）
+	var reveal_fact_text := ""
+	for fact in rw.history:
+		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
+			reveal_fact_text = str((fact as Dictionary).get("text", ""))
+	a.is_true(reveal_fact_text.contains("破釜酒吧传闻"), "揭示记录里带来源")
+	a.is_true(reveal_fact_text.contains("食死徒"), "揭示记录里带派系 label")
+
+	# 传闻揭示：只有带 reveals_faction 的传闻才揭示
+	var secret_before := WorldFactions.visible_faction_ids(rw).size()
+	WorldFactions.apply_rumor_reveals(rw, [{"rumor_id": "不存在的传闻", "category": "政治", "text": "x"}])
+	WorldFactions.apply_rumor_reveals(rw, ["不是字典"])
+	WorldFactions.apply_rumor_reveals(rw, [{"category": "政治", "text": "没有 rumor_id"}])
+	a.eq(WorldFactions.visible_faction_ids(rw).size(), secret_before, "无效事件不揭示任何派系")
+	a.is_false(WorldFactions.visible_faction_ids(rw).has("order_of_phoenix"), "无 reveals_faction 的传闻不揭示")
+
+	var rumor_with_reveal := ""
+	for rid in rw.registry.ids("rumors"):
+		var reveal_target := str(rw.registry.entry("rumors", str(rid)).get("reveals_faction", ""))
+		if reveal_target.is_empty():
+			continue
+		if WorldFactions.visible_faction_ids(rw).has(reveal_target):
+			continue
+		if rumor_with_reveal.is_empty():
+			rumor_with_reveal = str(rid)
+	a.is_true(not rumor_with_reveal.is_empty(), "内容表里至少有一条带 reveals_faction 的未揭示传闻")
+	if not rumor_with_reveal.is_empty():
+		var target := str(rw.registry.entry("rumors", rumor_with_reveal).get("reveals_faction", ""))
+		WorldFactions.apply_rumor_reveals(rw, [{"rumor_id": rumor_with_reveal, "category": "政治", "text": "传闻"}])
+		a.is_true(WorldFactions.visible_faction_ids(rw).has(target), "被抽中的传闻揭示对应派系（%s）" % target)
+
+	# ---- 端到端（确定性，不依赖随机抽中）：真实传闻被 tick() 处理 → 该派系进入可见列表 ----
+	# 做法：用 Registry.from_tables 造一份「rumors 表只留一条带 reveals_faction 的传闻」的注册表，
+	# 于是该传闻是唯一候选（PlayerState 的 location_id 落在它的 zones 里）→ 每次 tick 必被抽中。
+	var tables := {}
+	for table_name in Registry.TABLE_FILES.keys():
+		var entries: Array = []
+		for eid in reg.ids(table_name):
+			entries.append(reg.entry(table_name, str(eid)))
+		tables[table_name] = entries
+	var only_rumor: Dictionary = {}
+	for e in (tables["rumors"] as Array):
+		if str((e as Dictionary).get("id", "")) == "rumor_marked_ones":
+			only_rumor = e
+	a.is_true(not only_rumor.is_empty(), "内容表里存在 rumor_marked_ones（E2E 前置）")
+	a.eq(str(only_rumor.get("reveals_faction", "")), "death_eaters", "rumor_marked_ones 揭示食死徒")
+	tables["rumors"] = [only_rumor]
+	var e2e_reg := Registry.from_tables(tables)
+	var e2e_p := PlayerState.new_default()
+	e2e_p.name_text = "测试者"
+	e2e_p.location_id = "knockturn_alley"
+	var e2e := WorldState.create("modern", e2e_p, 777, e2e_reg)
+	a.is_false(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E 前置：食死徒初始不可见")
+	var e2e_events := e2e.tick()
+	var saw_rumor := false
+	for ev in e2e_events:
+		if str(ev.get("rumor_id", "")) == "rumor_marked_ones":
+			saw_rumor = true
+	a.is_true(saw_rumor, "tick 处理了带 reveals_faction 的传闻（最小 rumors 表 ⇒ 确定）")
+	a.is_true(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E：tick 后该派系进入可见列表")
+	var reveal_facts := 0
+	for fact in e2e.history:
+		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
+			reveal_facts += 1
+	a.eq(reveal_facts, 1, "E2E：第一次 tick 写一条揭示记录")
+	e2e.tick()
+	var reveal_facts_after := 0
+	for fact in e2e.history:
+		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
+			reveal_facts_after += 1
+	a.eq(reveal_facts_after, 1, "E2E：第二次 tick 走幂等路径，不重复写揭示记录")
+	a.is_true(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E：已揭示后仍可见")
+
 	return a.report("factions")

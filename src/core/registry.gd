@@ -125,6 +125,9 @@ func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedSt
 		for inst in (e.get("institutions", []) as Array):
 			if not _INSTITUTIONS.has(str(inst)):
 				errors.append("%s: 机构非法（%s）" % [where, str(inst)])
+	if table_name == "rumors":
+		if e.has("reveals_faction") and typeof(e["reveals_faction"]) != TYPE_STRING:
+			errors.append("%s: reveals_faction 必须是字符串" % where)
 	if table_name == "governments":
 		if str(e.get("summary", "")).is_empty():
 			errors.append("%s: 缺少 summary" % where)

@@ -85,6 +85,10 @@ static func validate_content(registry: Registry) -> PackedStringArray:
 			errors.append("factions/%s: base_power 缺失" % id)
 		elif typeof(e["base_power"]) != TYPE_INT and typeof(e["base_power"]) != TYPE_FLOAT:
 			errors.append("factions/%s: base_power 类型非法（%s）" % [id, str(e["base_power"])])
+	for rid in registry.ids("rumors"):
+		var target := str(registry.entry("rumors", str(rid)).get("reveals_faction", ""))
+		if not target.is_empty() and not registry.has("factions", target):
+			errors.append("rumors/%s: reveals_faction 引用不存在的派系（%s）" % [str(rid), target])
 	return errors
 
 # ---------- 初始化与读取 ----------
@@ -376,7 +380,7 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
 		_:
 			return false
 
-# 选举本月政治事件：必须同时满足「tension 过阀」「条件成立」「重大事件配额可用」（第六十八章）。
+# 选举本月政治事件：必须同时满足「tension 过隘」「条件成立」「重大事件配额可用」（第六十八章）。
 # 注意：本函数有副作用（命中时写 history 并占用 last_major_turn 配额），不是纯查询；请勿用于预览/面板。
 static func pick_political_event(world: WorldState) -> Dictionary:
 	if tension_of(world) < TENSION_THRESHOLD:
@@ -407,9 +411,37 @@ static func pick_political_event(world: WorldState) -> Dictionary:
 	world.add_fact("major", str(picked.get("text", "")))
 	return ev
 
-# Task 6 填实：把传闻事件里指向的派系标记为已揭示
-static func apply_rumor_reveals(world: WorldState, _events: Array) -> void:
-	pass
+# 揭示一个派系。约束：来源必须非空且不是 system（与 StateOps.know_fact 同源，第四十三/五十七章）。
+# 已揭示时返回 false（幂等），调用方可据此跳过重复叙事。
+static func reveal(world: WorldState, faction_id: String, source: String) -> bool:
+	var src := source.strip_edges()
+	if src.is_empty() or src == "system":
+		return false
+	if not world.registry.has("factions", faction_id):
+		return false
+	var st := ensure_state(world, faction_id)
+	if st.is_empty() or bool(st.get("revealed", false)):
+		return false
+	st["revealed"] = true
+	st["last_change_turn"] = world.clock.turn
+	world.add_fact("faction_revealed", "你得知了「%s」的存在（来源：%s）。" % [
+		str(entry_of(world, faction_id).get("label", faction_id)), src])
+	return true
+
+# 传闻揭示（第四十三/五十七章）：内容表里带 reveals_faction 的传闻被玩家听到时，该派系转为已知。
+# 事件由 WorldState.tick() 的传闻阶段产出，字典里带 "rumor_id"；无效/无指向的事件直接跳过。
+static func apply_rumor_reveals(world: WorldState, events: Array) -> void:
+	for ev in events:
+		if typeof(ev) != TYPE_DICTIONARY:
+			continue
+		var rumor_id := str((ev as Dictionary).get("rumor_id", ""))
+		if rumor_id.is_empty():
+			continue
+		var entry := world.registry.entry("rumors", rumor_id)
+		var target := str(entry.get("reveals_faction", ""))
+		if target.is_empty():
+			continue
+		reveal(world, target, "传闻：%s" % str((ev as Dictionary).get("category", "街谈巷议")))
 
 # ---------- 政体推导（第十一章 + 第十二章） ----------
 

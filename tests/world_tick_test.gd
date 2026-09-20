@@ -118,7 +118,7 @@ func run() -> int:
 		a.is_true(rumor_w.registry.has("rumors", str(e.get("rumor_id", ""))), "rumor_id 是内容表里的真实传闻")
 
 	# ---- 计划 03a：政治事件真的会触发，且与传闻共用 12 个月重大事件配额 ----
-	# 高张力夹具：**每月重置**极端 world_vars（模拟持续紧张的世界），使 tension 恒过阀、条件恒成立，
+	# 高张力夹具：**每月重置**极端 world_vars（模拟持续紧张的世界），使 tension 恒过阈、条件恒成立，
 	# 于是「事件是否触发」只由配额（MAJOR_EVENT_GAP）决定；玩家无地点 ⇒ 传闻候选集为空 ⇒ 配额纯归政治事件。
 	# （旧版这段用 modern 默认格局，tension≈0.33 < 0.55 ⇒ 40 回合内事件恒 0 条，是一条永真/永绿噪声；修复轮 1 I1）
 	var tense := WorldState.create("modern", PlayerState.new_default(), 777, pre_reg)
@@ -128,7 +128,7 @@ func run() -> int:
 	tense.world_vars["economy_index"] = 0.01
 	tense.world_vars["secrecy_integrity"] = 0.01
 	a.is_true(WorldFactions.compute_tension(tense) >= WorldFactions.TENSION_THRESHOLD,
-		"前置：夹具的 tension 过阀（否则本块会静默空转——旧版就是死在这里）")
+		"前置：夹具的 tension 过阈（否则本块会静默空转——旧版就是死在这里）")
 	a.is_true(WorldFactions.event_condition_met(tense, "lawlessness")
 		and WorldFactions.event_condition_met(tense, "war_exhaustion")
 		and WorldFactions.event_condition_met(tense, "economic_slump"),
