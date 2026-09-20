@@ -117,18 +117,39 @@ func run() -> int:
 		# 用 .get() 而非 e["rumor_id"]：缺键时要得到一条干净的断言失败，不能用下标访问把整个套件搞崩（§8#56 同类陷阱）
 		a.is_true(rumor_w.registry.has("rumors", str(e.get("rumor_id", ""))), "rumor_id 是内容表里的真实传闻")
 
-	# ---- 计划 03a：政治事件也必须受到 12 个月重大事件配额约束（与传闻共用 flags["last_major_turn"]） ----
+	# ---- 计划 03a：政治事件真的会触发，且与传闻共用 12 个月重大事件配额 ----
+	# 高张力夹具：**每月重置**极端 world_vars（模拟持续紧张的世界），使 tension 恒过阀、条件恒成立，
+	# 于是「事件是否触发」只由配额（MAJOR_EVENT_GAP）决定；玩家无地点 ⇒ 传闻候选集为空 ⇒ 配额纯归政治事件。
+	# （旧版这段用 modern 默认格局，tension≈0.33 < 0.55 ⇒ 40 回合内事件恒 0 条，是一条永真/永绿噪声；修复轮 1 I1）
+	var tense := WorldState.create("modern", PlayerState.new_default(), 777, pre_reg)
+	for key in ["corruption", "pureblood_influence", "war_pressure"]:
+		tense.world_vars[key] = 0.99
+	tense.world_vars["muggle_relations"] = 0.01
+	tense.world_vars["economy_index"] = 0.01
+	tense.world_vars["secrecy_integrity"] = 0.01
+	a.is_true(WorldFactions.compute_tension(tense) >= WorldFactions.TENSION_THRESHOLD,
+		"前置：夹具的 tension 过阀（否则本块会静默空转——旧版就是死在这里）")
+	a.is_true(WorldFactions.event_condition_met(tense, "lawlessness")
+		and WorldFactions.event_condition_met(tense, "war_exhaustion")
+		and WorldFactions.event_condition_met(tense, "economic_slump"),
+		"前置：至少三个事件条件成立（否则本块会静默空转）")
+	var faction_events := 0
 	var political_gap := 9999
 	var political_last := -1000
-	var political_count := 0
-	for e in rumor_w.log:
-		if str(e.get("kind", "")) == "faction":
-			political_count += 1
-			political_gap = mini(political_gap, int(e["turn"]) - political_last)
-			political_last = int(e["turn"])
-	a.is_true(political_count >= 0, "政治事件计数可读（实际=%d）" % political_count)
-	if political_count >= 2:
-		a.is_true(political_gap >= 12, "相邻政治事件至少相隔 12 个月（实际最小间隔=%d）" % political_gap)
+	for i in 40:
+		for key in ["corruption", "pureblood_influence", "war_pressure"]:
+			tense.world_vars[key] = 0.99
+		tense.world_vars["muggle_relations"] = 0.01
+		tense.world_vars["economy_index"] = 0.01
+		tense.world_vars["secrecy_integrity"] = 0.01
+		for e in tense.tick():
+			if str(e.get("kind", "")) == "faction":
+				faction_events += 1
+				political_gap = mini(political_gap, int(e["turn"]) - political_last)
+				political_last = int(e["turn"])
+	a.is_true(faction_events >= 2, "高张力世界 40 回合内至少触发 2 次政治事件（实际=%d）" % faction_events)
+	a.is_true(political_gap >= WorldState.MAJOR_EVENT_GAP,
+		"相邻政治事件至少相隔 %d 个月（实际最小间隔=%d）" % [WorldState.MAJOR_EVENT_GAP, political_gap])
 
 	# ---- 计划 03a：tick 跑完仍不得留下畸形 world_vars / 派系状态 ----
 	for fid in pre_w.registry.ids("factions"):

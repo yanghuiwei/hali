@@ -326,8 +326,11 @@ func run() -> int:
 	# 为何删「< 起点」：纯回归值 = 0.06 + (0.45-0.06)*0.04 + noise = 0.0756 + noise，
 	# 要它在「无压制」时仍 ≥ 起点需 noise > -0.0156——只差 0.0043 的余量，换 seed / 改 EVOLVE_NOISE 就会退化成恒真。
 	# 为何「按到下限」与 seed 无关：death_eaters 在真实内容表里同时是 6 对的败者（ministry/auror_office/
-	# wizengamot/mysteries/hogwarts/order_of_phoenix——I1 修复后非对称声明也生效，故是 6 对不是 4 对），
-	# 各对压制被各自的下限（max(0.05, base×0.25)）截断，实际生效的下降量合计 ≈ 0.06 ≫ noise 带宽 ±0.02 → 必被压到下限。
+	# wizengamot/mysteries/hogwarts/order_of_phoenix——I1 修复后非对称声明也生效，故是 6 对不是 4 对）。
+	# 口径订正（修复轮 1 M4）：这 6 对的**未截断潜在**压制合计 ≈ 0.09；但本夹具里压制前 power =
+	# 0.06 + (0.45−0.06)×0.04 + noise = 0.0756±0.02，下限 = max(0.05, 0.05×0.25) = 0.05，
+	# 所以**实际生效的下降量** ∈ [0.0056, 0.0456]（典型 ≈0.026），远小于潜在值——关键是它远大于 noise 带宽下的所需余量，
+	# 且下限 0.05 使终值必然落在下限。
 	var press2 := make_world("modern")
 	WorldFactions.initialize(press2)
 	press2.world_vars["war_pressure"] = 1.0
@@ -540,6 +543,21 @@ func run() -> int:
 	# 容差 2e-4：flags 里存的是量化后的 tension（同上，为存档往返稳定）
 	a.near(WorldFactions.tension_of(tw), WorldFactions.compute_tension(tw), 0.0002,
 		"tension_of 与 compute_tension 一致（tick 写的是同一口径，量化后余差 ≤1e-4）")
+
+	# ---- 修复轮 1（M3）：证明 tension_of 走的是 flags 路径，而不是每次现算 ----
+	# 上面那条 near 在 flags 缺失时会走 compute_tension 兜底（差 0 也绿），单独证明不了「读到的是存的值」。
+	var tf := make_world("modern")
+	tf.flags[WorldFactions.TENSION_FLAG] = 0.42
+	var tension_before := WorldFactions.compute_tension(tf)
+	tf.world_vars["corruption"] = 0.99
+	tf.world_vars["war_pressure"] = 0.99
+	tf.world_vars["muggle_relations"] = 0.01
+	a.is_true(WorldFactions.compute_tension(tf) > tension_before + 0.05,
+		"前置：改 world_vars 后 compute_tension 确实变了（否则下面的断言会空转）")
+	a.near(WorldFactions.tension_of(tf), 0.42, 0.0000001, "tension_of 读 flags：不随 world_vars 变")
+	tf.flags.erase(WorldFactions.TENSION_FLAG)
+	a.near(WorldFactions.tension_of(tf), WorldFactions.compute_tension(tf), 0.0000001,
+		"只有缺 flags 时才回退到现算")
 	var politics := 0
 	var in_log := 0
 	for ev in tick_events:
@@ -607,5 +625,29 @@ func run() -> int:
 	# 因此关系式只在量化精度内成立；若把系数 0.5 改成 0.25，偏差约 0.1 ≫ 2e-4，断言仍会红。
 	a.near(solo_control, 0.5 + (solo_power - 0.5) * 0.5, 0.0002,
 		"机构控制权以 0.5 系数向新实力靠拢：control += (power − control) × 0.5")
+
+	# ---- 修复轮 1（M2）：last_change_turn 必须与「量化后的持久值是否真的变了」双向一致 ----
+	# 旧实现用未量化的 next 就地判定 → 「持久值没变、却标记为本月变化」；
+	# 且敌对压制（apply_rival_pressure）改值时不标记 → 「变了却没标记」。
+	# 现在 evolve 在本回合所有写入结束后统一判定，两个方向都应恰好一致。
+	var stale := make_world("modern")
+	WorldFactions.initialize(stale)
+	var mark_mismatch := 0
+	var mark_samples := 0
+	for i in 30:
+		var before_q := {}
+		for fid in stale.registry.ids("factions"):
+			before_q[str(fid)] = WorldFactions.quantize(WorldFactions.power_of(stale, str(fid)))
+		stale.tick()
+		for fid in stale.registry.ids("factions"):
+			var sid := str(fid)
+			var after_q := WorldFactions.quantize(WorldFactions.power_of(stale, sid))
+			var persisted_changed := not is_equal_approx(after_q, float(before_q[sid]))
+			var marked := int(WorldFactions.state_of(stale, sid).get("last_change_turn", -1)) == stale.clock.turn
+			mark_samples += 1
+			if persisted_changed != marked:
+				mark_mismatch += 1
+	a.eq(mark_mismatch, 0, "last_change_turn 与「量化持久值是否真的变了」双向一致（%d 个样本）" % mark_samples)
+	a.is_true(mark_samples == 510, "样本数应为 30 回合 × 17 派系 = 510（实际=%d，防循环写错导致空转）" % mark_samples)
 
 	return a.report("factions")

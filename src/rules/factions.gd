@@ -292,6 +292,12 @@ static func evolve(world: WorldState) -> Array:
 		return []
 	initialize(world)
 	var rng := RngService.new(world.game_seed + world.clock.turn * 31337)
+	# M2（修复轮 1）：先快照本回合开始时的**量化持久值**，等本回合所有写入（回归、敌对压制、量化）
+	# 都做完后再统一判定「持久值是否真的变了」。若在回归循环里就地判定，会出现两类不自洽：
+	# ① 用未量化的 next 判定 → 持久值没变却标记变化；② 敌对压制把值改回来后标记与实际不符。
+	var power_before: Dictionary = {}
+	for fid in world.registry.ids("factions"):
+		power_before[str(fid)] = quantize(power_of(world, str(fid)))
 	for fid in world.registry.ids("factions"):
 		var id := str(fid)
 		var st := ensure_state(world, id)
@@ -301,14 +307,21 @@ static func evolve(world: WorldState) -> Array:
 		var current := clampf(float(st.get("power", target)), 0.0, 1.0)
 		var noise := rng.stream_float("faction_%s" % id) * (EVOLVE_NOISE * 2.0) - EVOLVE_NOISE
 		var next := clampf(current + (target - current) * EVOLVE_REGRESSION + noise, 0.0, 1.0)
-		if not is_equal_approx(next, current):
-			st["last_change_turn"] = world.clock.turn
-		st["power"] = next
+		var nq := clampf(quantize(next), 0.0, 1.0)
+		st["power"] = nq
 		var control: Dictionary = st.get("control", {})
 		for inst in control.keys():
-			control[inst] = clampf(float(control[inst]) + (next - float(control[inst])) * 0.5, 0.0, 1.0)
+			control[inst] = clampf(float(control[inst]) + (nq - float(control[inst])) * 0.5, 0.0, 1.0)
 	apply_rival_pressure(world)
 	quantize_state(world)
+	# 统一判定（M2）：本回合所有写入都结束后，只有「量化持久值真的变了」的派系才标记本月变化。
+	for fid in world.registry.ids("factions"):
+		var mark_id := str(fid)
+		var mark_state := state_of(world, mark_id)
+		if mark_state.is_empty():
+			continue
+		if not is_equal_approx(quantize(float(mark_state.get("power", 0.0))), float(power_before.get(mark_id, 0.0))):
+			mark_state["last_change_turn"] = world.clock.turn
 	world.flags[GOVERNMENT_FLAG] = government_type(world)
 	world.flags[TENSION_FLAG] = quantize(compute_tension(world))
 	var events: Array = []
@@ -363,7 +376,8 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
 		_:
 			return false
 
-# 选举本月政治事件：必须同时满足「tension 过阈」「条件成立」「重大事件配额可用」（第六十八章）
+# 选举本月政治事件：必须同时满足「tension 过阀」「条件成立」「重大事件配额可用」（第六十八章）。
+# 注意：本函数有副作用（命中时写 history 并占用 last_major_turn 配额），不是纯查询；请勿用于预览/面板。
 static func pick_political_event(world: WorldState) -> Dictionary:
 	if tension_of(world) < TENSION_THRESHOLD:
 		return {}
