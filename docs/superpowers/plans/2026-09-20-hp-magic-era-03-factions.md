@@ -1862,10 +1862,14 @@ Expected: 失败（「加入魔法部」目前落到 idle，`deltas` 为空）�
 在 `src/gm/scripted_game_master.gd` 的常量区加：
 
 ```gdscript
-const FACTION_JOIN: Array[String] = ["加入", "投靠", "效力", "为…做事", "入伙"]
+const FACTION_JOIN: Array[String] = ["加入", "投靠", "效力", "做事", "入伙"]
 const FACTION_LEAVE: Array[String] = ["退出", "脱离", "叛出", "不再属于"]
 const FACTION_SUPPORT: Array[String] = ["支持", "拥护", "声援", "捐款", "赞助"]
 const FACTION_OPPOSE: Array[String] = ["反对", "抗议", "抨击", "揭露", "抵制"]
+
+# ⚠️ 关键词一律用**不带省略号**的普通词：原稿的「为…做事」含 U+2026 省略号，玩家几乎不可能原样输入
+# （等于死关键词）。改为「做事」——它本身很泛，但派系分支要求**同一句里同时命中了已揭示派系名**，
+# 所以「我想做点事」不会误触发（Task 9 实跑修正，2026-09-20）。
 ```
 
 加方法：
