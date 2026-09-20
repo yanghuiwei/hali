@@ -103,17 +103,24 @@ static func generate_wand(rng: RngService, registry: Registry) -> Dictionary:
 	# 计划 03a（§8#16/#21）：杖芯的 rarity 只是语义标签（"common"/"rare"），不是权重；
 	# 真正的权重是 wand_cores.json 里的数值字段 weight（common=6 / rare=1）。
 	# 木材表没有 weight 字段 ⇒ 全部走默认 1.0 = 均匀抽取；仍然走同一个函数，保持两处形式一致。
+	# ⚠️ 不要用有类型接收（`: Dictionary`）接 stream_pick_weighted 的返回值：空表时它返回 null，
+	#    而「可空值赋给有类型变量」是**运行期** SCRIPT ERROR（实测），会中止所在函数、并污染很敏感的
+	#    「SCRIPT ERROR == 2 条」基线指标。当前 registry 表非空 ⇒ 不可达，但不依赖不可达前提。
 	var wood_entries: Array = []
 	for wid in registry.ids("wand_woods"):
 		wood_entries.append(registry.entry("wand_woods", str(wid)))
-	var wood_entry_pick: Dictionary = rng.stream_pick_weighted("wand_wood", wood_entries, "weight")
-	var wood := str(wood_entry_pick.get("id", ""))
+	var wood_entry_pick = rng.stream_pick_weighted("wand_wood", wood_entries, "weight")
+	if wood_entry_pick == null:
+		return {}
+	var wood := str((wood_entry_pick as Dictionary).get("id", ""))
 	var wood_entry: Dictionary = registry.entry("wand_woods", wood)
 	var core_entries: Array = []
 	for cid in registry.ids("wand_cores"):
 		core_entries.append(registry.entry("wand_cores", str(cid)))
-	var core_entry_pick: Dictionary = rng.stream_pick_weighted("wand_core", core_entries, "weight")
-	var core_id := str(core_entry_pick.get("id", ""))
+	var core_entry_pick = rng.stream_pick_weighted("wand_core", core_entries, "weight")
+	if core_entry_pick == null:
+		return {}
+	var core_id := str((core_entry_pick as Dictionary).get("id", ""))
 	var core_entry: Dictionary = registry.entry("wand_cores", core_id)
 	var flex_ids := registry.ids("wand_flexibilities").duplicate()
 	var flex_id := str(rng.stream_pick("wand_flex", flex_ids))

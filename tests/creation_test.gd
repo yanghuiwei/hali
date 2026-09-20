@@ -231,4 +231,26 @@ func run() -> int:
 	a.is_true(t12_wand_rare < 120,
 		"generate_wand 的稀有杖芯远低于均匀占比（400 支里 %d 支；均匀时≈200，加权时≈57）" % t12_wand_rare)
 
+	# ---- 修复轮 1（审查 Minor #4）：generate_wand 的空表守卫 ----
+	# 手法照 Task 6：用 Registry.from_tables() 复制默认内容表，把 wand_woods 换成空数组
+	# ⇒ stream_pick_weighted 返回 null ⇒ 必须走 `if wood_entry_pick == null: return {}`，
+	#    而不是把 null 赋给有类型变量（实测是**运行期** SCRIPT ERROR，会中止所在函数，
+	#    并抬高「SCRIPT ERROR == 2 条」这个很敏感的基线指标）。
+	var f2b_tables := {}
+	for f2b_table in Registry.TABLE_FILES.keys():
+		var f2b_entries: Array = []
+		for f2b_eid in reg.ids(f2b_table):
+			f2b_entries.append(reg.entry(f2b_table, str(f2b_eid)))
+		f2b_tables[f2b_table] = f2b_entries
+	a.is_true(not (f2b_tables["wand_woods"] as Array).is_empty(), "F2b 前置：默认木材表非空（不是拿一个正好为空的夹具冒充）")
+	f2b_tables["wand_woods"] = []
+	var f2b_reg := Registry.from_tables(f2b_tables)
+	a.is_true(f2b_reg.ids("wand_woods").is_empty(), "F2b 前置：夹具里的木材表确实是空的")
+	a.is_true(f2b_reg.ids("wand_cores").size() >= 6, "F2b 前置：其余表未被夹具误伤（杖芯表仍在）")
+	a.eq(CharacterCreation.generate_wand(RngService.new(1), f2b_reg), {},
+		"木材表为空时 generate_wand 返回空魔杖（不返回半成品、不中断）")
+	# ⚠️ 诚实登记：上面这条**不是**「有类型接收 vs 无类型接收」的判别器——两种写法在这条路径上都返回
+	#    Dictionary 的默认值 {} ⇒ 本断言两种情况都绿。真正的判别通道是外部的 `SCRIPT ERROR == 2 条` 基线
+	#    （D6 破坏实验证实：改回有类型接收后 SCRIPT ERROR 从 2 条升到 3 条）。这里钉的是**功能契约**。
+
 	return a.report("creation")

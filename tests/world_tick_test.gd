@@ -181,6 +181,18 @@ func run() -> int:
 		"全零权重回退到均匀抽取，不返回 null")
 	a.is_true(t12_wrng.stream_pick_weighted("w_empty", []) == null, "空列表返回 null")
 
+	# ---- 修复轮 1（审查 Minor #2/#3）：把「roll == 0.0 落在首条零权重上」这条不可测的边界变成可判别 ----
+	# randf() 精确返回 0.0 的概率 ≈ 2^-32 ⇒ 黑盒永远测不出来；`_pick_by_roll(entries, key, roll)` 就是为此拆出来的。
+	# 旧写法（`roll <= acc` + 不跳过零权重）会返回首条零权重条目 "z" ⇒ 违反 stream_pick_weighted 注释里的契约①。
+	a.eq(_picked_id(RngService._pick_by_roll([{"id": "z", "weight": 0.0}, {"id": "o", "weight": 1.0}], "weight", 0.0)),
+		"o", "roll=0.0 时不得返回前导的零权重条目（旧写法会返回 z）")
+	# 兜底也必须是正权重条目（旧写法是 entries[entries.size()-1]，零权重排末位时会返回它）
+	a.eq(_picked_id(RngService._pick_by_roll([{"id": "o", "weight": 5.0}, {"id": "z", "weight": 0.0}], "weight", 999.0)),
+		"o", "roll 超出总权重时，兜底不得落在零权重条目上")
+	# 契约③的前半：非字典条目在**加权路径**被跳过（它不得占掉区间、也不得成为兜底）
+	a.eq(_picked_id(RngService._pick_by_roll(["裸字符串", {"id": "o", "weight": 1.0}], "weight", 0.0)),
+		"o", "加权路径跳过非字典条目（不会被它占掉区间）")
+
 	# ---- 计划 03a（§8#16）端到端：tick() 本身必须走权重（只测 helper 不足以证明接线）----
 	# 夹具：把 rumors 表换成「同一个 zone 两条」，weight=1 的在前、weight=0 的在后。
 	# 加权 ⇒ weight=0 那条永远抽不到；均匀（回到 stream_pick）⇒ 40 回合内几乎必然抽到（P(全不中)≈0.5^40）。
@@ -218,3 +230,12 @@ func run() -> int:
 	a.eq(t12_saw_zero, 0, "E2E：weight=0 的传闻 40 回合内一次都不该被抽中（tick 回到 stream_pick ⇒ 必红）")
 
 	return a.report("world_tick")
+
+# 修复轮 1：安全取 id。_pick_by_roll 可能返回 null / 非字典 ⇒ 直接解引用会让「红」的形态变成套件中止
+# （与台账里 Task 9 M7、Task 12 首轮 personality 那条同源：中止会把后面所有断言掩盖掉）。
+func _picked_id(picked) -> String:
+	if picked == null:
+		return "<null>"
+	if typeof(picked) != TYPE_DICTIONARY:
+		return "<非字典:%s>" % str(picked)
+	return str((picked as Dictionary).get("id", "<无 id>"))
