@@ -1072,6 +1072,10 @@ static func apply_rival_pressure(world: WorldState) -> void:
 
 # 单回合演化：就地更新 world.factions / world.flags，返回事件数组（结构与 tick 的 events 一致）
 static func evolve(world: WorldState) -> Array:
+	# 与 initialize() 同口径的早退：裸世界/半残世界（registry 或 clock 为 null）直接返回空数组，
+	# 否则下一行读 world.clock.turn 会 nil 访问（Task 4 审查 M3 的收口；Task 5 接线时务必保留）。
+	if world == null or world.registry == null or world.clock == null:
+		return []
 	initialize(world)
 	var rng := RngService.new(world.game_seed + world.clock.turn * 31337)
 	for fid in world.registry.ids("factions"):
