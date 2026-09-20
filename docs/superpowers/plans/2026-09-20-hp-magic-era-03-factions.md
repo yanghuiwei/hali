@@ -2137,7 +2137,17 @@ func _part11_watchdog(node: Node) -> void:
 
 - [ ] **Step 4: 验证**
 
-Run: `bash tools/test.sh 2>&1 | grep -E "^\[llm\]|总计|全部通过" && bash tools/b1_acceptance.sh 2>&1 | grep -E "看门狗|\[PASS\]|\[FAIL\]|断言" | tail -20`
+Run:
+```bash
+bash tools/test.sh 2>&1 | grep -E "^\[llm\]|总计|全部通过"
+timeout 300 bash tools/b1_acceptance.sh 2>&1 | grep -E "看门狗|\[PASS\]|\[FAIL\]|断言" | tail -20
+```
+
+> ⚠️ **必须给 `b1_acceptance.sh` 加外部 `timeout`（Task 10 实跑踩到过死锁）**：Part 11 的 `HangProvider`
+> 用 3600 秒定时器模拟"永不返回"，因此**任何把看门狗 deadline 变成"永不触发"的破坏实验都会让它挂死**
+> （协程永不返回 → 探针永不退出 → bash 一直不返回）。破坏实验要选"不会挂住"的方式：**保留 deadline，
+> 只删掉恢复那两行或那条超时提示** → 探针照常在 0.4 秒后结束、断言干净变红。
+> 每组实验后先 `tasklist | grep -i godot` 确认无残留进程（有则 `taskkill //PID <PID> //F`）。
 Expected: `[llm]` 失败=0、`全部通过。`；B1 盘验里看门狗三条均为 `[PASS]`，且总失败数为 0。
 
 - [ ] **Step 5: 提交**
