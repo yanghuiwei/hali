@@ -36,7 +36,7 @@
 | **D2** | 新增内容表 `data/governments.json`（第十一章四大政体：官僚制 / 纯血寡头制 / 食死徒独裁 / 凤凰社抵抗）。**政体名与说明是内容，判定规则是代码**。 | 政体要在叙事与面板里出现中文名，按铁律必须进 data。 |
 | **D3** | **`world_vars` 保持 7 键不变**；第六十五章面板的「机构级」指标（法律执行 / 傲罗 / 威森加摩 / 国际）改为**从派系的机构控制权派生**，标量级指标（财政 / 稳定度 / 腐败度 / 纯血影响 / 麻瓜关系）继续来自 `world_vars`。**这修掉 `§8#7`。** | 7 标签→4 变量之所以是 bug，根源是「机构」被硬塞进「世界标量」。机构控制权本来就该是实体属性（第十二章权力四角 + 第二十六章魔法部体系）。保持 7 键 ⇒ 8 个时代的 `data/eras.json` 与所有旧存档都不需要迁移。 |
 | **D4** | `WorldState.factions` 正式启用，结构：`factions[faction_id] = {"power": float(0..1), "control": {机构id: float(0..1)}, "stance_to_player": int(-100..100), "revealed": bool, "last_change_turn": int, "notes": [String]}`（见 §7.2）。**字段已在存档白名单里**（`src/persist/save_codec.gd` 的 `dict_fields` 已含 `factions`），因此存档格式**不变**。 | 占位符变实；避免动存档格式（`§8#9/#19/#26/#49` 的存档 v2 议题不塞进本计划）。 |
-| **D5** | 派系实力分两层：`power`（对外总体实力 0..1）与 `control`（对具体`机构`的控制权 0..1）。`power_share()` 给出**权力四角**（魔法部/纯血家族/霍格沃茨/商业）的归一化权重；`government_type()` 由「谁控制魔法部 + 战争压力 + 凤凰社实力」推导，结果缓存进 `world.flags["government_type"]`（tick 刷新，叙事与面板只读缓存）。 | 第十二章「不同时期权重不同」= 归一化权重随 tick 演化；第十一章四政体是**格局的函数**，不该是独立状态。缓存进 flags 是为了「叙事读到的是本回合的真实政体」且随存档一致。 |
+| **D5** | 派系实力分两层：`power`（对外总体实力 0..1）与 `control`（对具体`机构`的控制权 0..1）。`power_share()` 给出**权力四角**（魔法部/纯血家族/霍格沃茨/商业）的归一化权重；`government_type()` 由「魔法部实力 + 战争压力 + 抵抗组织实力（+ 黑暗势力对执法/司法的机构控制权）」推导（口径见 §7.4 勘误），结果缓存进 `world.flags["government_type"]`（tick 刷新，叙事与面板只读缓存）。 | 第十二章「不同时期权重不同」= 归一化权重随 tick 演化；第十一章四政体是**格局的函数**，不该是独立状态。缓存进 flags 是为了「叙事读到的是本回合的真实政体」且随存档一致。 |
 | **D6** | 玩家侧：`PlayerState.faction_id` 保留为主所属（可为空）；新增 `PlayerState.standing: Dictionary`（`faction_id -> int(-100..100)`，含义：支持/反对的立场强度）。新增三个 op：`join_faction` / `leave_faction` / `faction_standing_delta`（见 §7.3）。 | 正典第五十章「可以支持凤凰社、加入食死徒、反对魔法部」= standing（支持/反对）+ membership（加入）两件事。`standing` 需加入 `PlayerState.to_dict/from_dict` **与** `SaveCodec` 的类型校验清单（见 §11）。 |
 | **D7** | 信息保护（第四十三/五十七章）：派系有 `revealed` 位。**未 revealed 的派系不进玩家可见文本**（面板显示为「未知势力」，事件文案只给来源与传闻口吻）。揭示途径：`know_fact`（既有 op，必须带非 `system` 来源）或 tick 产出的事件把 `revealed` 置真。 | 第五十七章明令「玩家不能自动知道哪个 NPC 是食死徒」；既有 `SelfCheck` 已有「世界信息保护」检查项，本决策让它有真实数据可查。 |
 | **D8** | 演化在 `WorldState.tick()` 内**追加阶段**，不改既有阶段语义（世界变量回归 / 传闻事件 / 生活基线 / 年龄 / 日志裁剪全部保持原样与原来顺序）。新增阶段一律用 `RngService.new(game_seed + clock.turn * <素数>)` + 命名流，保证同 seed 可复现。 | 第四十七章月度演化 + 计划 01 的确定性铁律。新阶段的插入位置见 §9。 |
@@ -212,14 +212,24 @@ static func reveal(world: WorldState, faction_id: String, source: String) -> boo
  "canon_line": 160}
 ```
 
-判定规则（代码，第十一章 + 第十二章）：
+判定规则（代码，第十一章 + 第十二章）。**下面第 1/3 条的口径是权威版本**（2026-09-20 人类裁定 (a) 的措辞勘误，见本节末）：
 
-1. `order_resistance`：`world_vars.war_pressure >= 0.6` 且 魔法部控制权 `< 0.4` 且凤凰社 power 最高 → **凤凰社抵抗组织**（影子政府）。
-2. `death_eater_dictatorship`：`dark` 类派系对 `law_enforcement`+`wizengamot` 的控制权均值 `>= 0.6` → **食死徒独裁**。
-3. `pureblood_oligarchy`：`pureblood` 类派系 `power_share` 合计 `>= 0.28` 且魔法部控制权 `< 0.5` → **纯血寡头制**。
+1. `order_resistance`：`world_vars.war_pressure >= 0.6` 且 `power_of("order_of_phoenix") > power_of("ministry")` → **凤凰社抵抗组织**（影子政府）。
+2. `death_eater_dictatorship`：`dark` 类派系对 `law_enforcement` + `wizengamot` 的**自身 `control` 均值** `>= 0.6`（未声明该机构时按 0 计）→ **食死徒独裁**。
+3. `pureblood_oligarchy`：`pureblood` 类派系 `power_share` 合计 `>= 0.28` 且 `power_of("ministry") < 0.5` → **纯血寡头制**。
 4. 否则 `ministry_bureaucracy`。
 
 优先级按 1→4 短路。结果写入 `world.flags["government_type"]`。
+
+### ⚠️ 勘误（2026-09-20，人类裁定 (a)，Task 2 审查 Important 1）
+
+本节原措辞写的是「魔法部**控制权** `< 0.4` / `< 0.5`」，且规则 1 多了一个「凤凰社 power 最高」的条件。**实现口径（= 计划 = brief = 构造用例）用的是「魔法部实力 `power_of("ministry")`」**，理由：
+
+- **规则 1 的两条件版才对应正典**：第十一章第 4 条说凤凰社「战争时期**可能成为影子政府**」，可操作化的判据是「抵抗组织的实力超过魔法部」，而不是「凤凰社在 17 个派系中实力最高」——后者按字面**几乎不可达**（凤凰社 `base_power` 只有 0.10–0.35），与 §13.2 里 0.45 那处属于同一类笔误。
+- **「魔法部弱」用实力而非机构控制权**：`control` 是**谁在渗透哪个机构**（可被食死徒抬到 0.7 而魔法部自身实力不变），用它当「魔法部弱」的判据会让政体在「食死徒刚渗透执法司但魔法部仍然强势」时过早滑向寡头制。机构控制权的正确用法是规则 2（独裁：黑暗势力**真的**掌握了执法与司法）。
+- 口径经构造用例钉住：寡头制用例（纯血 0.9/0.9、魔法部 power 0.30）命中规则 3；抵抗组织用例（战时 + 抵抗 0.95 > 魔法部 0.75）命中规则 1 并短路。**代码与测试一行未改**，本节措辞已改为权威版本。
+- 余量数据（供后续调参）：抵抗格局下纯血占比 = 0.27994（比 0.28 低 6e-5），因规则 1 先短路而无害；寡头格局 0.3010（余量 0.021）。阈值仍属「首版拍数」（§13.2）。
+- 规则 2 的「未声明按 0 计」补在 Task 4（Task 2 审查 Minor 1 的收口项）：Task 2 实现曾用「回退到全局归并持有值」，与 `institution_control()` 的「未声明=不参与」语义自相矛盾。
 
 ## 8. 数据流（单回合，含新增阶段）
 
