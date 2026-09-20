@@ -1730,13 +1730,25 @@ git commit -m "feat(ui): 势力面板重写——机构控制权 + 已知势力�
 	# ---- 计划 03a：提示词只暴露已揭示的派系（第四十三/五十七章） ----
 	WorldFactions.initialize(w)
 	var digest := PromptBuilder.state_digest(w)
-	a.is_true(digest.contains("政体："), "摘要含政体")
-	a.is_true(digest.contains("已知势力："), "摘要含已知势力行")
-	a.is_true(digest.contains("魔法部"), "摘要含公开派系")
-	a.is_false(digest.contains("食死徒"), "摘要不得含未揭示派系（信息保护）")
+	# ⚠️ `state_digest()` 返回 **Dictionary**（计划 02 spec §6.5 的键集合契约），不是文本；
+	# `build()` 用 `JSON.stringify(state_digest(world))` 把它塞进 user_prompt，所以新增内容要**加键**。
+	# 断言必须用 `.get(..., "")` 读缺失键——用 `digest["government"]` 下标访问会让缺键时抛运行期错误、
+	# 整个套件中止（§8#56 陷阱；Task 8 实跑踩到过一次）。
+	a.is_true(str(digest.get("government", "")).contains("官僚制"), "摘要含政体（label 取自内容表）")
+	a.is_true(not str(digest.get("known_factions", "")).is_empty(), "摘要含已知势力行")
+	a.is_true(str(digest.get("known_factions", "")).contains("魔法部"), "摘要含公开派系")
+	a.is_false(str(digest.get("known_factions", "")).contains("食死徒"), "摘要不得含未揭示派系（信息保护）")
 	WorldFactions.ensure_state(w, "death_eaters")["revealed"] = true
 	var digest2 := PromptBuilder.state_digest(w)
-	a.is_true(digest2.contains("食死徒"), "揭示后才进入摘要")
+	a.is_true(str(digest2.get("known_factions", "")).contains("食死徒"), "揭示后才进入摘要")
+	# 提示词契约未破坏：键集合必须是计划 02 的 7 键 + 新增 2 键（多键/少键/改名都算破坏）
+	var keys := digest.keys()
+	keys.sort()
+	a.eq(keys, ["clock", "era", "government", "known_factions", "location", "player",
+		"recent_history", "recent_log", "world_vars"], "摘要键集合 = 既有 7 键 + 新增 2 键")
+	# 信息保护：user_prompt 全文（不只是 known_factions 行）都不得出现未揭示派系的 label
+	var up := PromptBuilder.build(w, "我要去上课").user_prompt
+	a.is_false(up.contains("翻倒巷黑市"), "user_prompt 不含未揭示派系（信息保护）")
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -1750,10 +1762,11 @@ Expected: 失败（摘要无「政体：」「已知势力：」）。
 
 ```gdscript
 	# 计划 03a：政治格局（只给已揭示的派系——未揭示的绝不进提示词，第四十三/五十七章）
+	# ⚠️ `state_digest()` 返回 Dictionary，`build()` 会 `JSON.stringify` 它 → 这里**加两个键**（不是 append 文本行）。
 	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
 	if gov_id.is_empty():
 		gov_id = WorldFactions.government_type(world)
-	lines.append("政体：%s" % str(world.registry.entry("governments", gov_id).get("label", gov_id)))
+	out["government"] = str(world.registry.entry("governments", gov_id).get("label", gov_id))
 	var faction_parts: Array[String] = []
 	for fid in WorldFactions.visible_faction_ids(world):
 		var id := str(fid)
@@ -1762,10 +1775,8 @@ Expected: 失败（摘要无「政体：」「已知势力：」）。
 			WorldFactions.power_of(world, id),
 			world.player.standing_of(id),
 			",所属" if world.player.faction_id == id else ""])
-	if faction_parts.is_empty():
-		lines.append("已知势力：无")
-	else:
-		lines.append("已知势力：%s" % " ".join(faction_parts))
+	out["known_factions"] = "无" if faction_parts.is_empty() else " ".join(faction_parts)
+	return out
 ```
 
 - [ ] **Step 4: 跑测试确认通过**
@@ -1779,6 +1790,13 @@ Expected: 全部 `失败=0`；`全部通过。`
 git add src/gm/prompt_builder.gd tests/prompt_test.gd
 git commit -m "feat(gm): 提示词摘要暴露已揭示派系与政体（计划 03a Task 8）"
 ```
+
+> ### ⚠️ Task 8 实跑教训（2026-09-20，控制器据实修正计划）
+> 1. **`state_digest()` 是 Dictionary 不是文本**：原稿的 `lines.append("政体：…")` 与 `digest.contains("政体：")` 都是照「文本摘要」写的，实际契约是键集合（`build()` 把整份 JSON 塞进 `user_prompt`）。已改成**加键** `government` / `known_factions`，断言用 `.get(..., "")`（下标访问缺键会中止整个套件，属 `§8#56` 陷阱）。
+> 2. **必须加一条键集合断言**（既有 7 键 + 新增 2 键，多/少/改名都算破坏）——这是「提示词契约未被重构」的唯一硬证据。
+> 3. **信息保护断言要扫全文**（`user_prompt` 整体），不能只查 `known_factions` 那一行。
+> 4. **「神圣二十八族」是公开血统 label**（`data/bloodlines.json`，建角即可见），它会出现在 `system_prompt` 的 `content_index.bloodlines` 里 —— 那是**既有内容**，不是派系泄漏。断言要写成「显式豁免 + 理由」而不是把词从断言里删掉：豁免它作为**血统名**的存在，同时断言它作为**未揭示派系**不得进 `known_factions`。
+> 5. **面板/探针里的期望值要现读 `institution_control()`**，不要硬编码 `base_power`（实跑：探针跑了 4 回合后 `auror_office` 的控制权已从 0.60 漂到 **0.62**，硬编码会假红）。
 
 ---
 
