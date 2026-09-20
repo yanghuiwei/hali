@@ -168,4 +168,15 @@ func run() -> int:
 		WorldFactions.ensure_state(w_dark, str(fid))["revealed"] = false
 	a.is_true(PanelFormatter.power_panel(w_dark).contains("【已知势力】暂无已知势力"), "全隐藏时显示占位文案")
 
+	# ---- 计划 03a Task 8（Task 7 审查 M5）：【所属势力】必须显示中文 label ----
+	var member := PlayerState.new_default()
+	member.name_text = "李四"
+	member.location_id = "london_muggle"
+	member.faction_id = "ministry"
+	var w_member := WorldState.create("modern", member, 7, reg)
+	var member_panel := PanelFormatter.player_panel(w_member)
+	a.is_true(member_panel.contains("【所属势力】魔法部"), "所属势力显示中文 label")
+	a.is_false(member_panel.contains("【所属势力】ministry"), "不再显示原始 faction_id")
+	a.is_true(PanelFormatter.player_panel(w_empty).contains("【所属势力】无"), "无所属仍显示「无」")
+
 	return a.report("panel")

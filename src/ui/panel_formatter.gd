@@ -43,7 +43,7 @@ static func player_panel(world: WorldState) -> String:
 	lines.append("【财富】%s 【家庭】%s" % [p.money().formatted(), _label(world, "birth_identities", p.birth_identity_id)])
 	lines.append("【社会地位】%s 【魔法能力】%s 【战斗能力】%s" % [_label(world, "political_leanings", p.political_leaning_id), _magic_level_label(p), _top_skill(p, world)])
 	lines.append("【魔药/治疗】%s 【技能】%s" % [str(p.skill("potions")), _skills_line(p, world)])
-	lines.append("【声望】%d 【重要关系】%d人 【所属势力】%s" % [p.reputation, p.relations.size(), (p.faction_id if not p.faction_id.is_empty() else "无")])
+	lines.append("【声望】%d 【重要关系】%d人 【所属势力】%s" % [p.reputation, p.relations.size(), (_label(world, "factions", p.faction_id) if not p.faction_id.is_empty() else "无")])
 	lines.append("【当前目标】%s" % (p.current_goal if not p.current_goal.is_empty() else UNKNOWN))
 	return "\n".join(lines)
 

@@ -68,6 +68,20 @@ static func state_digest(world: WorldState) -> Dictionary:
 	var log_tail: Array = world.log.slice(maxi(0, world.log.size() - max_log))
 	var history_tail: Array = world.history.slice(maxi(0, world.history.size() - max_history))
 	var location := world.current_location()
+	# 计划 03a Task 8：政治格局两行。**只给已揭示（revealed）的派系**——未揭示的绝不进提示词（第四十三/五十七章）。
+	# 注：`state_digest()` 返回 Dictionary（计划 02 spec §6.5 的键集合契约），故两行以两个字符串键承载。
+	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
+	if gov_id.is_empty():
+		gov_id = WorldFactions.government_type(world)
+	var faction_parts: Array[String] = []
+	for fid in WorldFactions.visible_faction_ids(world):
+		var id := str(fid)
+		faction_parts.append("%s(%.2f,立场%+d%s)" % [
+			str(world.registry.entry("factions", id).get("label", id)),
+			WorldFactions.power_of(world, id),
+			world.player.standing_of(id),
+			",所属" if world.player.faction_id == id else ""])
+	var known_line := "已知势力：无" if faction_parts.is_empty() else "已知势力：%s" % " ".join(faction_parts)
 	return JsonUtil.normalize({
 		"clock": {"year": world.clock.year, "month": world.clock.month, "turn": world.clock.turn},
 		"era": {"id": world.era_id, "start_year": world.era_start_year},
@@ -85,4 +99,6 @@ static func state_digest(world: WorldState) -> Dictionary:
 		"location": {"id": p.location_id, "label": location.get("label", ""), "zone": location.get("zone", ""), "danger": location.get("danger", 0), "danger_label": location.get("danger_label", "")},
 		"recent_log": log_tail,
 		"recent_history": history_tail,
+		"government": "政体：%s" % str(world.registry.entry("governments", gov_id).get("label", gov_id)),
+		"known_factions": known_line,
 	})

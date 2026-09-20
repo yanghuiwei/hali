@@ -266,7 +266,20 @@ func _part5_panels(node: Node) -> void:
 	node.call("_on_power")
 	var power := _log_of(node).substr(before)
 	check(power.contains("《哈利·波特·魔法纪元·势力面板》"), "势力面板有标题")
-	note("观察（§8#7）：势力面板 7 个标签映射到 4 个 world_vars（纯显示，已登记）")
+	# §8#7 已由计划 03a Task 7 修复：机构级指标（法律执行/傲罗/威森加摩/国际）= 派系对该机构的 control
+	# 最大值 + holder；world_vars 里已经没有机构键，不再存在「7 个标签映射到 4 个 world_vars」。
+	var w_panel := _world(node)
+	check(not w_panel.world_vars.has("auror_office"), "world_vars 没有机构键（指标不来自标量，§8#7 已修）")
+	var auror_before := float(((WorldFactions.institution_control(w_panel)["auror_office"]) as Dictionary)["value"])
+	check(power.contains("傲罗：%.2f（傲罗指挥部）" % auror_before),
+		"势力面板傲罗指标 = 派系控制权 %.2f" % auror_before)
+	WorldFactions.ensure_state(w_panel, "auror_office")["control"]["auror_office"] = 0.93
+	before = _log_len(node)
+	node.call("_on_power")
+	var power2 := _log_of(node).substr(before)
+	check(power2.contains("傲罗：0.93（傲罗指挥部）"), "改控制权后面板随之变化（§8#7 的行为型证据）")
+	check(power2.contains("【已知势力】"), "含【已知势力】行")
+	note("观察：机构级指标（法律执行/傲罗/威森加摩/国际）取自派系机构控制权 + holder；§8#7 的「7 标签→4 world_vars」错映射已在本计划修好")
 
 	before = _log_len(node)
 	node.call("_on_status")
