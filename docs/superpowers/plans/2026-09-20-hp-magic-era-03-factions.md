@@ -2432,6 +2432,31 @@ git commit -m "fix(gm): 降级原因透出 + is_async 鸭子类型 + 测试可�
 >    不要让「红的形态」是**套件中止**——中止会把后面所有断言掩盖掉（与台账里 Task 9 M7 同源）。
 > 3. **凡是「声称某个数据字段生效」的验收，必须先把该字段的真实类型查清楚**：
 >    `rarity` 是字符串标签、`weight` 才是数值（详见 Step 3 末尾的实测缺陷块）。
+> 4. **可空返回不要用有类型接收**：`var x: Dictionary = f()`（`f` 可能返回 `null`）是**运行期** SCRIPT ERROR
+>    （实测 `Trying to assign value of type 'Nil' to a variable of type 'Dictionary'`），而且会**中止所在函数**。
+>    反过来，如果一条边界概率极低（如 `randf() == 0.0` ≈ 2^-32）导致黑盒测不出来，**就把那段逻辑抽成
+>    可传参的私有函数**（如 `_pick_by_roll(entries, key, roll)`）——把「不可测」变成「可判别」，
+>    而不是写一条恒绿的断言假装覆盖（参见 Task 10 I1 的「机制成立 / 黑盒不可达」教训）。
+
+---
+
+## Task 12 范围声明（控制器裁定，2026-09-20，依据审查 finding #1）
+
+**本任务修的是「创建路径」的 `§8#69`。读档路径不在范围内。**
+
+- 事实：`src/model/player_state.gd:107` 是 `p.house_id = str(d.get("house_id", "none"))` —— **原样拷贝、不重判**。
+  于是**修前生成的旧存档**（如 `user://saves/slot1.json` 里的 `squib` + `gryffindor`，即 `§8#69` 的原始证据本身）
+  读进来仍是 `gryffindor`；只有**重新建角**才会得到 `none`。
+- **裁定：不在本任务修，登记进「存档格式 v2」批次**（与 `§8#26`「载入路径不重跑 `validate_choices`」同族）。
+  理由：
+  1. `PlayerState.from_dict` 的契约是「忠实还原存档内容」；在里面塞内容级归一化，会造出一个**隐藏的读时改写**，
+     而且无法区分「修复前的脏数据」与「将来某个合法场景」（`§8#69` 当初的待裁定项就包含「把学院当作家世/归属标签」这一读法）。
+  2. 只归一化 `house_id` **一个字段**、而 `validate_choices` 照旧不跑，是任意且不自洽的做法。
+  3. 正确的入口是**存档格式 v2**：载入时统一跑一次内容校验/迁移（`§8#26` / `§8#47` / `§8#19` / `§8#49` 同族一次做完）。
+- 零成本缓解（写进 HANDOFF/台账，不写代码）：**旧存档属历史数据，重建角色即得 `none`**；本地 `user://saves/slot1.json` 若仍是
+  `squib`+`gryffindor`，那是**修复前**生成的，不代表修复无效（B1 探针每次新建角色，已按 `none` 断言）。
+- ⚠️ 复核提示：`assign_house` 在生产代码里**只有** `character_creation.gd:221` 一个调用点（控制器与 reviewer 各自确认），
+  所以「哑炮拿到学院」的**新**路径已经堵死；剩下的只有旧存档这个**数据**问题。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -2501,28 +2526,63 @@ const GENDERS: PackedStringArray = ["男", "女", "未定"]
 `src/core/rng_service.gd` 加：
 
 ```gdscript
-# 计划 03a（§8#16/#21）：按权重抽取。权重非正的条目永不被抽中；总权重为 0 时回退到均匀抽取。
+# 计划 03a（§8#16/#21）：按权重抽取。
+# 契约：
+#   ① 权重 ≤ 0 的条目**永不被抽中**（加权路径里跳过；也不会成为兜底返回）；
+#   ② 权重键缺失 ⇒ 默认 1.0（等价均匀）；
+#   ③ 非字典条目在**加权路径**被跳过；但总权重为 0 时会**整体回退** stream_pick ⇒ 此时非字典条目**可**被抽中。
+#      这个不对称是「全零 = 退化到旧行为」的有意语义，**不是 bug**（已在注释里写明）；
+#   ④ 空表返回 null。
+# ⚠️ 故意**不加**返回类型标注：空表返回 null，而 GDScript 对「可空返回值赋给有类型变量」是**运行期** SCRIPT ERROR
+#    （实测 Trying to assign value of type 'Nil' to a variable of type 'Dictionary'），而且会**中止所在函数**。
 func stream_pick_weighted(name: String, entries: Array, weight_key: String = "weight"):
 	if entries.is_empty():
 		return null
 	var total := 0.0
 	for e in entries:
 		if typeof(e) == TYPE_DICTIONARY:
-			total += maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
+			total += _weight_of(e, weight_key)
 	if total <= 0.0:
 		return stream_pick(name, entries)
-	var roll := stream_float(name) * total
+	# 用 `<` 而不是 `<=`，并跳过非正权重：否则「roll == 0.0 且首条权重为 0」会返回一条权重 0 的条目（违反契约 ①）
+	return _pick_by_roll(entries, weight_key, stream_float(name) * total)
+
+static func _weight_of(e: Variant, weight_key: String) -> float:
+	return maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
+
+# 把「按 roll 落区间」抽成独立私有函数，**唯一目的是让 roll == 0.0 这条边界可判别地被测到**：
+# randf() 精确返回 0.0 的概率 ≈ 2^-32，黑盒永远测不出来；直接传 roll 就能测。
+static func _pick_by_roll(entries: Array, weight_key: String, roll: float):
 	var acc := 0.0
+	var last_positive: Variant = null
 	for e in entries:
 		if typeof(e) != TYPE_DICTIONARY:
 			continue
-		acc += maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
-		if roll <= acc:
+		var w := _weight_of(e, weight_key)
+		if w <= 0.0:
+			continue
+		last_positive = e
+		acc += w
+		if roll < acc:
 			return e
-	return entries[entries.size() - 1]
+	# 浮点累加误差可能让所有区间都落空（roll 理论上 < total）⇒ 兜底也必须是**正权重**条目
+	if last_positive != null:
+		return last_positive
+	return null
+
+# 对应的可判别断言（放在 tests/world_tick_test.gd 或 creation_test.gd 的 helper 段）：
+#   两条同权重下 weight=0 **排首位** + 传 roll=0.0 ⇒ 必须返回权重 > 0 的那条（旧写法 `roll <= acc` 会返回它）
+#   即：RngService._pick_by_roll([{"id":"z","weight":0.0},{"id":"o","weight":1.0}], "weight", 0.0)
+#       的 id 必须是 "o"（不是 "z"）。
 ```
 
 `src/model/world_state.gd` 的 `tick()`：把 `var picked: Dictionary = month_rng.stream_pick("pick_%d" % i, candidates)` 改为：
+
+```gdscript
+			# 计划 03a（§8#16）：传入传闻模板的 weight 必须真的生效（原为均匀抽取 ⇒ 稀有度旋钮失效）
+			# 注：此处用有类型接收是**安全的**——整个传闻循环被上方 `if not candidates.is_empty():` 守卫，
+			# 空表回退不可达。**不要**为了「统一风格」去动这个守卫或这行（§8#69 审查时的 Minor #4 已核）。
+			var picked: Dictionary = month_rng.stream_pick_weighted("pick_%d" % i, candidates, "weight")
 
 ```gdscript
 			var picked: Dictionary = month_rng.stream_pick_weighted("pick_%d" % i, candidates, "weight")
@@ -2533,17 +2593,24 @@ func stream_pick_weighted(name: String, entries: Array, weight_key: String = "we
 `src/rules/character_creation.gd` 的 `generate_wand()`：把杖芯与木材抽取改为加权：
 
 ```gdscript
+	# ⚠️ 不要用有类型接收（`: Dictionary`）接 stream_pick_weighted 的返回值：空表时它返回 null，
+	#    而「可空值赋给有类型变量」是**运行期 SCRIPT ERROR**（实测），会中止所在函数、并污染很敏感的
+	#    「SCRIPT ERROR == 2 条」基线指标。当前 registry 表非空 ⇒ 不可达，但不依赖不可达前提。
 	var wood_entries: Array = []
 	for wid in registry.ids("wand_woods"):
 		wood_entries.append(registry.entry("wand_woods", str(wid)))
-	var wood_entry_pick: Dictionary = rng.stream_pick_weighted("wand_wood", wood_entries, "weight")
-	var wood := str(wood_entry_pick.get("id", ""))
+	var wood_entry_pick = rng.stream_pick_weighted("wand_wood", wood_entries, "weight")
+	if wood_entry_pick == null:
+		return {}
+	var wood := str((wood_entry_pick as Dictionary).get("id", ""))
 	var wood_entry: Dictionary = registry.entry("wand_woods", wood)
 	var core_entries: Array = []
 	for cid in registry.ids("wand_cores"):
 		core_entries.append(registry.entry("wand_cores", str(cid)))
-	var core_entry: Dictionary = rng.stream_pick_weighted("wand_core", core_entries, "weight")
-	var core_id := str(core_entry.get("id", ""))
+	var core_entry_pick = rng.stream_pick_weighted("wand_core", core_entries, "weight")
+	if core_entry_pick == null:
+		return {}
+	var core_id := str((core_entry_pick as Dictionary).get("id", ""))
 ```
 
 > ⚠️ **计划原文的实测缺陷（控制器已核实，2026-09-20）——必须先改计划再改代码**：
