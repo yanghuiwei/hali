@@ -1169,7 +1169,7 @@ git commit -m "feat(factions): 派系实力/控制权演化与政体刷新（计
 
 	var pev := WorldFactions.pick_political_event(angry)
 	a.is_true(not pev.is_empty(), "紧张局势下能选出政治事件")
-	a.is_true(angry.registry.has("political_events", str(pev.get("id", ""))), "事件 id 来自内容表")
+	a.is_true(angry.registry.has("political_events", str(pev.get("event_id", ""))), "事件 id 来自内容表")
 	a.is_true(not str(pev.get("text", "")).is_empty(), "事件有文案")
 	a.eq(int(angry.flags.get("last_major_turn", -1)), angry.clock.turn, "事件占用本月重大事件配额")
 	a.is_true(WorldFactions.pick_political_event(angry).is_empty(), "同一回合不再重复触发（MAJOR_EVENT_GAP）")
@@ -1355,7 +1355,10 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
 		_:
 			return false
 
-# 选举本月政治事件：必须同时满足「tension 过阈」「条件成立」「重大事件配额可用」（第六十八章）
+# 选举本月政治事件：必须同时满足「tension 过阈」「条件成立」「重大事件配额可用」（第六十八章）。
+# ⚠️ 名字像查询，但**有副作用**：命中时写 `world.history`（`add_fact("major", …)`）并占用 `last_major_turn`
+# 配额。目前只有 `evolve()` 内部调用（由 `tick()` 统一把事件追加进 `events`/`log`），顺序一致；
+# 但**不要**在面板预览、UI 提示等地方调用它（会静默烧掉配额）。Task 5 审查 Minor 1 已登记。
 static func pick_political_event(world: WorldState) -> Dictionary:
 	if tension_of(world) < TENSION_THRESHOLD:
 		return {}
