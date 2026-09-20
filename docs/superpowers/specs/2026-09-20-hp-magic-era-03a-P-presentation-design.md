@@ -20,7 +20,18 @@
 | 内容表 | 全在 `data/*.json`（17 张表） | ✅ 新增 `data/presentation.json` / `data/audio_cues.json` 顺理成章 |
 
 **唯一"必须先解决"的硬问题（不是可选美化）**：Godot 4 的内置默认字体是 **Open Sans 子集，不含中日韩字形**（官方 UI 字体文档；第三方分析称仅约 1010 个码点）。本游戏**全部玩家可见文本是中文** ⇒ 当前窗口在缺字体时很可能整屏豆腐块；Windows 上靠"系统字体回退"可能侥幸显示，但**导出到他人机器/其它平台不可靠**。⇒ **CJK 字体是"能不能读"的前提**，应作为本计划第 1 优先项。
-（复核方式：headless 探针断言 `ThemeDB.fallback_font.has_char("你".unicode_at(0))`——需单开一次 Godot，控制器会在不与其他 headless 实例并发时补做。）
+**已实测（2026-09-20，一次性探针，跑完即删）**：
+
+```
+CJK-PROBE class=FontFile      ← ThemeDB.fallback_font
+CJK-PROBE U+4F60 has_char=false   （你）   CJK-PROBE U+9B54 has_char=false   （魔）
+CJK-PROBE U+6CD5 has_char=false   （法）   CJK-PROBE U+0041 has_char=true    （A）
+CJK-PROBE U+3042 has_char=false   （あ）   CJK-PROBE U+D55C has_char=false  （한）
+```
+
+⇒ **内置字体确实不含中文/日文/韩文字形**（拉丁字母有）。
+⚠️ 两点细化：① Godot 4 在**渲染期**还会尝试**系统字体回退**（官方文档），所以 Windows 上未必立刻看到豆腐块——但那是**平台相关**行为，导出到其它机器、或系统无对应字体时即失效；② 因此本游戏（玩家可见文本 100% 中文）**必须自带 CJK 字体**，这是 P3 的验收前提。
+建议把这条也做成**可持续的断言**（`tests/presentation_test.gd`：若 `data/presentation.json` 未配置 CJK 字体，则该测试**失败**并提示「中文界面需要自带字体」——把"能不能读"钉进 CI，而不是靠肉眼）。
 
 ## 1. 素材目录约定（人类放文件的地方）
 

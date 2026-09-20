@@ -150,7 +150,7 @@ var requests: Array = []            # 记录收到的 LlmRequest（断言用）
 ### 6.3 TurnEngine
 
 ```gdscript
-# 同步：仅供 ScriptedGameMaster / 既有测试；若 gm 是 LlmGameMaster 会 push_error 并返回 blocked。
+# 同步：仅供 ScriptedGameMaster / 既有测试；若 gm.is_async() 为真则 push_error 并返回 blocked（鸭子类型，见 03a Task 11）。
 func submit(action_text: String) -> Dictionary
 
 # 异步：正式路径，UI 使用。
@@ -204,7 +204,7 @@ UI 禁用输入 + 「世界正在回应…」
       │     parsed.ok == false → 带错误提示重试 1 次 → 仍失败 → 降级
       │     deltas = OpGuard.sanitize(world, parsed.ops)
       │     return GmResult{narration, deltas, tags}
-      ├─ _post_submit(gm_result)：StateOps.apply → world.tick() → rng_state → 第 15 回合自检
+      ├─ _resolve(out, gm_result)：StateOps.apply → world.tick() → rng_state → 第 15 回合自检
       └─ return {narration, deltas_applied, op_errors, events, audit, blocked}
  └─ UI 恢复输入，打印 narration / events / op_errors / audit
 ```
