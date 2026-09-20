@@ -2312,64 +2312,97 @@ git commit -m "fix(gm): 降级原因透出 + is_async 鸭子类型 + 测试可�
 
 - [ ] **Step 1: 写失败测试**
 
+> ⚠️ **本节片段已被控制器按实测订正（2026-09-20，依据见下方「Step 1 实测教训」）。按订正后的写，不要按旧稿。**
+
 `tests/creation_test.gd` 追加（用该文件既有的建角辅助/世界构造方式）：
 
 ```gdscript
 	# ---- 计划 03a（§8#69）：哑炮不进霍格沃茨 ----
-	var squib_choices := {
+	# ⚠️ 判别路径必须是「玩家**显式指定**学院」（创建界面 house 下拉默认就是 gryffindor = B1 实测路径）；
+	#    house_id="system" 时 assign_house 早在 magic_aptitude=false 上返回 "none"（本文件既有断言「哑炮不判学院」已如此）
+	#    ⇒ 用 system 的那条**改前改后都绿 = 无判别力**，只能当非回归。
+	# ⚠️ personality 必须 ≥3 项（validate_choices 硬要求）；给 1 项 ⇒ player==null ⇒ 下文解引用会把整个套件**中止**（红得不干净）。
+	var t12_squib := {
 		"era_id": "modern", "bloodline_id": "squib", "birth_identity_id": "ordinary_wizard_family",
 		"name_text": "测试哑炮", "gender": "未定", "age_years": 11, "birthplace": "london_muggle",
 		"family_status": "由系统生成", "aptitude_id": "squib", "aptitude_special": "", "wand": {},
-		"house_id": "system", "political_leaning_id": "blood_equality", "personality": ["好奇"],
+		"house_id": "gryffindor", "political_leaning_id": "blood_equality",
+		"personality": ["好奇", "固执", "怕黑"],
 		"life_goal": "活下去", "sim_style_id": "brutal_realism",
 	}
-	var squib_res := CharacterCreation.create(squib_choices, reg, RngService.new(5))
-	a.eq(squib_res.errors.size(), 0, "哑炮建角无错误")
-	a.eq(squib_res.player.house_id, "none", "哑炮不进霍格沃茨（house_id=none）")
-	a.is_true(bool(squib_res.player.flags.get("no_magic", false)), "哑炮仍无魔法")
+	var t12_squib_res := CharacterCreation.create(t12_squib, reg, RngService.new(5))
+	a.eq(t12_squib_res.errors.size(), 0, "哑炮建角无错误")
+	# 用「取不到就返回可鉴别的哨兵串」代替解引用，避免 null 中止套件（红要红得干净）
+	var t12_squib_house := "<player==null>"
+	if t12_squib_res.player != null:
+		t12_squib_house = str(t12_squib_res.player.house_id)
+	a.eq(t12_squib_house, "none", "哑炮不进霍格沃茨：显式指定 gryffindor 也必须被覆盖为 none")
+	a.is_true(t12_squib_res.player != null and bool(t12_squib_res.player.flags.get("no_magic", false)), "哑炮仍无魔法")
+	# 未显式指定学院（system）时同样是 none —— 非回归（改前就绿，不具判别力，只钉住不倒退）
+	var t12_squib_sys := t12_squib.duplicate(true)
+	t12_squib_sys["house_id"] = "system"
+	var t12_squib_sys_res := CharacterCreation.create(t12_squib_sys, reg, RngService.new(5))
+	var t12_squib_sys_house := "<player==null>"
+	if t12_squib_sys_res.player != null:
+		t12_squib_sys_house = str(t12_squib_sys_res.player.house_id)
+	a.eq(t12_squib_sys_house, "none", "哑炮 + house_id=system 同样不入学")
+	# 非哑炮：玩家显式指定学院必须仍然优先（不得被这次修正误伤）
+	var t12_normal := t12_squib.duplicate(true)
+	t12_normal["bloodline_id"] = "half_blood"
+	t12_normal["aptitude_id"] = "normal"
+	var t12_normal_res := CharacterCreation.create(t12_normal, reg, RngService.new(5))
+	a.is_true(t12_normal_res.player != null and str(t12_normal_res.player.house_id) == "gryffindor",
+		"非哑炮仍按玩家选择入学")
 
-	# 非哑炮：仍然正常分配学院
-	var normal_choices := squib_choices.duplicate(true)
-	normal_choices["bloodline_id"] = "half_blood"
-	normal_choices["aptitude_id"] = "normal"
-	var normal_res := CharacterCreation.create(normal_choices, reg, RngService.new(5))
-	a.is_true(normal_res.player.house_id != "none", "非哑炮仍会入学")
-	# ---- 计划 03a（§8#21）：杖芯 rarity 必须真的生效 ----
+	# ---- 计划 03a（§8#21）：杖芯权重必须真的生效 ----
 	# ⚠️ rarity 是字符串标签，float("common")==0.0，不能直接当权重；权重来自新增的数值字段 "weight"。
-	var core_entries: Array = []
+	# ⚠️ 必须同时有【helper 层】与【调用处端到端】两类断言：helper 层直接传 "weight"，
+	#    抓不到 generate_wand 用错键名（实测：把调用处改回 "rarity" 时 helper 层全绿、**只有端到端变红**）。
+	var t12_core_entries: Array = []
 	for cid in reg.ids("wand_cores"):
-		core_entries.append(reg.entry("wand_cores", str(cid)))
-	var wrng2 := RngService.new(7)
-	var common_hits := 0
-	var rare_hits := 0
+		t12_core_entries.append(reg.entry("wand_cores", str(cid)))
+	var t12_wrng := RngService.new(7)
+	var t12_common := 0
+	var t12_rare := 0
 	for i in 3000:
-		var picked: Dictionary = wrng2.stream_pick_weighted("wand_core_test", core_entries, "weight")
+		var picked: Dictionary = t12_wrng.stream_pick_weighted("wand_core_test", t12_core_entries, "weight")
 		if str(picked.get("rarity", "")) == "rare":
-			rare_hits += 1
+			t12_rare += 1
 		else:
-			common_hits += 1
-	a.is_true(common_hits > rare_hits * 4, "常见杖芯显著多于稀有杖芯（weight 生效；均匀时会红）")
-	a.is_true(rare_hits > 0, "稀有杖芯仍会被抽中（weight 不是硬排除）")
+			t12_common += 1
+	a.is_true(t12_common > t12_rare * 4, "[helper] 常见杖芯显著多于稀有（weight 生效；均匀时会红）")
+	a.is_true(t12_rare > 0, "[helper] 稀有杖芯仍会被抽中（weight 不是硬排除）")
+	# 端到端：直接数 generate_wand 的产出（这条才是「调用处传错键名」的判别器）
+	var t12_rare_wands := 0
+	for i in 400:
+		var w := CharacterCreation.generate_wand(RngService.new(1000 + i), reg)
+		if str(reg.entry("wand_cores", str(w.get("core", ""))).get("rarity", "")) == "rare":
+			t12_rare_wands += 1
+	a.is_true(t12_rare_wands < 120, "[端到端] 400 支魔杖里稀有杖芯 < 120（约 14.3%；均匀时会 ≈133–200）")
 ```
 
 `tests/world_tick_test.gd` 追加：
 
 ```gdscript
 	# ---- 计划 03a（§8#16）：weight 必须真的生效 ----
-	var wrng := RngService.new(99)
-	var light: Array = [{"id": "a", "weight": 0.0}, {"id": "b", "weight": 1.0}]
-	var picked_b := 0
+	var t12_wrng := RngService.new(99)
+	var t12_light: Array = [{"id": "a", "weight": 0.0}, {"id": "b", "weight": 1.0}]
+	var t12_picked_b := 0
 	for i in 50:
-		var picked: Dictionary = wrng.stream_pick_weighted("w_test", light)
-		if str(picked.get("id", "")) == "b":
-			picked_b += 1
-	a.eq(picked_b, 50, "weight=0 的条目永远不会被抽中（50/50 次）")
-	var none: Array = [{"id": "a", "weight": 0.0}, {"id": "b", "weight": 0.0}]
-	a.is_true(wrng.stream_pick_weighted("w_zero", none) != null, "全零权重回退到均匀抽取，不返回 null")
-	a.is_true(wrng.stream_pick_weighted("w_empty", []) == null, "空列表返回 null")
+		var t12_picked: Dictionary = t12_wrng.stream_pick_weighted("w_test", t12_light)
+		if str(t12_picked.get("id", "")) == "b":
+			t12_picked_b += 1
+	a.eq(t12_picked_b, 50, "weight=0 的条目永远不会被抽中（50/50 次）")
+	var t12_all_zero: Array = [{"id": "a", "weight": 0.0}, {"id": "b", "weight": 0.0}]
+	a.is_true(t12_wrng.stream_pick_weighted("w_zero", t12_all_zero) != null, "全零权重回退到均匀抽取，不返回 null")
+	a.is_true(t12_wrng.stream_pick_weighted("w_empty", []) == null, "空列表返回 null")
+	# ⚠️ 端到端：helper 层断言**不碰 tick()** ⇒ 「tick 回到 stream_pick」这类破坏无从变红。
+	# 做法：用 Registry.from_tables() 复制默认内容表，把 rumors 换成「weight=1 在前、weight=0 在后」同一 zone 的两条，
+	# 玩家 location_id 落在该 zone 内 ⇒ 候选集恒为这两条 ⇒ 40 回合内 weight=0 一次都不许被抽中。
+	# （这正是 Task 6 用过的「把随机抽中变成确定事件」夹具手法；同样走真实 tick → events 链路，不走捷径直接调函数。）
 ```
 
-`tools/b1_acceptance.gd`：在 `_part2_squib_start()` 里把姓名断言改为「默认不为空但可由玩家修改」并把性别写进盘验；新增两条：
+`tools/b1_acceptance.gd`：在 `_part2_squib_start()` 里把姓名断言改为「默认不为空但可由玩家修改」并把性别写进盘验；新增：
 
 ```gdscript
 	check((node.get("name_edit") as LineEdit).text.strip_edges() != "无名者", "姓名框不再预填「无名者」")
@@ -2378,10 +2411,33 @@ git commit -m "fix(gm): 降级原因透出 + is_async 鸭子类型 + 测试可�
 
 （`_select(node, "gender", "男")` 后断言 `world.player.gender == "男"` 也一并加上。）
 
+> ⚠️ **本任务必然连带的 b1 改动（计划原稿没写，实测必红）**：① `_dropdown_count(node) == 7` 必须改成 `== 8`；
+> ② 镜像循环的 key 列表必须加 `"gender"`（它是「界面输入的外部观测通道」，不加就观测不到性别）。
+> ③ 原来 `_part2_squib_start()` 末尾把哑炮 `house_id` 当**观察项**打印，现在要改成**断言 `== "none"`**。
+
+### Step 1 实测教训（控制器实测 + 实现者复核，2026-09-20；已回写进上面的片段）
+
+| # | 旧稿的问题 | 实测证据 | 订正 |
+| --- | --- | --- | --- |
+| 1 | `"personality": ["好奇"]`（1 项） | `validate_choices` 要求 ≥3 ⇒ `errors=1`、`player==null` ⇒ 下文 `player.house_id` 是**空引用访问**、整个套件**中止**（红得不干净） | 给 3 项 + 用**哨兵串 `"<player==null>"`** 代替解引用 |
+| 2 | `"house_id": "system"` 作判别 | `assign_house` 对哑炮在 `magic_aptitude=false` 上早就返回 `"none"`（既有断言「哑炮不判学院」）⇒ **改前改后都绿，无判别力** | 判别用 **`"gryffindor"`**（= 创建界面 house 下拉默认值 = B1 实测路径）；`system` 降为非回归 |
+| 3 | 只有 helper 层杖芯分布断言 | `generate_wand` 改回 `"rarity"` 时 **helper 层全绿**（它自己传的就是 `"weight"`）⇒ 唯一的红来自端到端 | 加 **[端到端]** `generate_wand` 400 支稀有占比断言 |
+| 4 | 只有 helper 层传闻 weight 断言 | helper 不碰 `tick()` ⇒ 「tick 回到 `stream_pick`」无从变红 | 加 **[端到端]** 双传闻夹具（weight=1 在前 / weight=0 在后，40 回合） |
+| 5 | `wand_woods` 的处置未说 | 木材表无 `weight` 字段 ⇒ 传 `"weight"` 等价均匀（分布不变），但**随机流消耗变了**；实测**零条**既有断言因此变红 | 照改（保持两处调用一致，将来加权重是**纯内容**改动），并在报告里写明处置与理由 |
+
+> **可复用的一般结论（写给后续任务）**：
+> 1. **「helper 层断言」不足以保证「调用处用对了参数」**。凡本次修的是「调用处传错键名 / 漏传参数」这类缺陷，
+>    必须至少有一条**走真实入口**的端到端断言；否则破坏实验会「全绿但缺陷仍在」（本任务 D3a/D4 各证一次）。
+> 2. **断言要「红得干净」**：凡是 `player` / `result` 可能为 null 的路径，先判空再取值（或取哨兵串），
+>    不要让「红的形态」是**套件中止**——中止会把后面所有断言掩盖掉（与台账里 Task 9 M7 同源）。
+> 3. **凡是「声称某个数据字段生效」的验收，必须先把该字段的真实类型查清楚**：
+>    `rarity` 是字符串标签、`weight` 才是数值（详见 Step 3 末尾的实测缺陷块）。
+
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `bash tools/test.sh 2>&1 | grep -E "^\[creation\]|^\[world_tick\]|总计"`
-Expected: 失败（哑炮 `house_id=gryffindor`；`stream_pick_weighted` 未定义）。
+Expected: 失败（哑炮显式指定 gryffindor 时得到 `gryffindor`；`stream_pick_weighted` 未定义）。
+⚠️ 若看到的是**套件中止**（而不是干净的断言失败），先检查 personality 是否 ≥3 项——见 Step 1 的「实测教训」。
 
 - [ ] **Step 3: 实现**
 
@@ -2416,13 +2472,22 @@ Expected: 失败（哑炮 `house_id=gryffindor`；`stream_pick_weighted` 未定�
 	gender_label.custom_minimum_size = Vector2(120, 0)
 	gender_row.add_child(gender_label)
 	gender_dropdown = OptionButton.new()
-	for index in ["男", "女", "未定"].size():
-		gender_dropdown.add_item(["男", "女", "未定"][index], index)
-	gender_dropdown.set_item_metadata(0, "男")
-	gender_dropdown.set_item_metadata(1, "女")
-	gender_dropdown.set_item_metadata(2, "未定")
+	for index in GENDERS.size():
+		gender_dropdown.add_item(GENDERS[index], index)
+		gender_dropdown.set_item_metadata(index, GENDERS[index])
+	# ① 登记进 dropdowns：这样 b1 探针能用通用的 _select(node, "gender", "男") 驱动，
+	#    镜像循环也能统一取用；② 但 _on_start_pressed 仍应**读 gender_dropdown 成员变量**
+	#    （而不是 _selected("gender")）——避免把「性别读取」耦合到 dropdowns 注册表。
+	dropdowns["gender"] = gender_dropdown
 	gender_row.add_child(gender_dropdown)
 	creation_box.add_child(gender_row)
+```
+
+建议在文件顶部加常量（与既有 `SEED_SALT` 并列）：
+
+```gdscript
+# §8#70：创建界面的性别选项（原来界面没有性别输入，所有角色性别恒为「未定」）
+const GENDERS: PackedStringArray = ["男", "女", "未定"]
 ```
 
 2) 字段区加 `var gender_dropdown: OptionButton = null`，`_show_creation()` 开头把 `gender_dropdown = null` 一并重置（跟着 `dropdowns.clear()`）。
