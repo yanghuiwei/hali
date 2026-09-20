@@ -1,0 +1,393 @@
+== 审查范围 ==
+BASE d5a56d8 → HEAD 973eea8（只含 1 个代码提交；控制器 docs 提交 d5a56d8/f036394 已排除）
+
+== 提交列表 ==
+973eea8 fix(rules,ui): 哑炮不进霍格沃茨 + 创建界面姓名/性别 + 权重/稀有度生效（§8#69/#70/#16/#21）（计划 03a Task 12）
+
+== 文件统计 ==
+ data/wand_cores.json            | 12 +++----
+ src/core/rng_service.gd         | 24 ++++++++++++++
+ src/model/world_state.gd        |  3 +-
+ src/rules/character_creation.gd | 24 +++++++++++---
+ src/ui/main.gd                  | 28 +++++++++++++++--
+ tests/creation_test.gd          | 69 +++++++++++++++++++++++++++++++++++++++++
+ tests/world_tick_test.gd        | 50 +++++++++++++++++++++++++++++
+ tools/b1_acceptance.gd          | 17 +++++++---
+ 8 files changed, 207 insertions(+), 20 deletions(-)
+
+== 完整 diff ==
+diff --git a/data/wand_cores.json b/data/wand_cores.json
+index 61306de..8e8682b 100644
+--- a/data/wand_cores.json
++++ b/data/wand_cores.json
+@@ -1,8 +1,8 @@
+ [
+-	{"id": "unicorn_hair", "label": "独角兽尾毛", "rarity": "common"},
+-	{"id": "dragon_heartstring", "label": "龙心弦", "rarity": "common"},
+-	{"id": "phoenix_feather", "label": "凤凰羽毛", "rarity": "rare"},
+-	{"id": "thestral_tail_hair", "label": "夜骐尾羽", "rarity": "rare"},
+-	{"id": "veela_hair", "label": "媚娃头发", "rarity": "rare"},
+-	{"id": "troll_whisker", "label": "巨怪胡须", "rarity": "common"}
++	{"id": "unicorn_hair", "label": "独角兽尾毛", "rarity": "common", "weight": 6},
++	{"id": "dragon_heartstring", "label": "龙心弦", "rarity": "common", "weight": 6},
++	{"id": "phoenix_feather", "label": "凤凰羽毛", "rarity": "rare", "weight": 1},
++	{"id": "thestral_tail_hair", "label": "夜骐尾羽", "rarity": "rare", "weight": 1},
++	{"id": "veela_hair", "label": "媚娃头发", "rarity": "rare", "weight": 1},
++	{"id": "troll_whisker", "label": "巨怪胡须", "rarity": "common", "weight": 6}
+ ]
+diff --git a/src/core/rng_service.gd b/src/core/rng_service.gd
+index 7261068..8d8646c 100644
+--- a/src/core/rng_service.gd
++++ b/src/core/rng_service.gd
+@@ -25,6 +25,30 @@ func stream_pick(name: String, options: Array):
+ 		return null
+ 	return options[stream(name).randi_range(0, options.size() - 1)]
+ 
++# 计划 03a（§8#16/#21）：按权重抽取。权重非正（≤0）的条目永不被抽中；权重键缺失时默认 1.0（等价均匀）。
++# 总权重为 0（含全部条目权重≤0）时回退到均匀抽取，保证与 stream_pick 同样「总能抽到点什么」。
++# ⚠️ 故意**不加**返回类型标注：空列表时本函数返回 null，而 GDScript 对
++# 「null 赋给有类型变量」是解析期错误（实测 Cannot assign a value of type "null" as "Dictionary"）。
++# 权重键缺失时默认 1.0 ⇒ 传一个表里没有的键名等价于均匀抽取（不要用它假装「权重已生效」）。
++func stream_pick_weighted(name: String, entries: Array, weight_key: String = "weight"):
++	if entries.is_empty():
++		return null
++	var total := 0.0
++	for e in entries:
++		if typeof(e) == TYPE_DICTIONARY:
++			total += maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
++	if total <= 0.0:
++		return stream_pick(name, entries)
++	var roll := stream_float(name) * total
++	var acc := 0.0
++	for e in entries:
++		if typeof(e) != TYPE_DICTIONARY:
++			continue
++		acc += maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
++		if roll <= acc:
++			return e
++	return entries[entries.size() - 1]
++
+ func chance(name: String, probability: float) -> bool:
+ 	return stream_float(name) < clampf(probability, 0.0, 1.0)
+ 
+diff --git a/src/model/world_state.gd b/src/model/world_state.gd
+index 050cbc5..c71af3a 100644
+--- a/src/model/world_state.gd
++++ b/src/model/world_state.gd
+@@ -115,7 +115,8 @@ func tick() -> Array:
+ 		if month_rng.chance("extra_rumor", 0.35 * intensity):
+ 			rumor_count = 2
+ 		for i in rumor_count:
+-			var picked: Dictionary = month_rng.stream_pick("pick_%d" % i, candidates)
++			# 计划 03a（§8#16）：传入传闻模板的 weight 必须真的生效（原为均匀抽取 ⇒ 稀有度旋钮失效）
++			var picked: Dictionary = month_rng.stream_pick_weighted("pick_%d" % i, candidates, "weight")
+ 			if picked.is_empty():
+ 				continue
+ 			var is_major := bool(picked.get("major", false))
+diff --git a/src/rules/character_creation.gd b/src/rules/character_creation.gd
+index 76151a6..644ae00 100644
+--- a/src/rules/character_creation.gd
++++ b/src/rules/character_creation.gd
+@@ -100,10 +100,20 @@ static func default_skills_for(choices: Dictionary, registry: Registry) -> Dicti
+ 	return skills
+ 
+ static func generate_wand(rng: RngService, registry: Registry) -> Dictionary:
+-	var wood: String = str(rng.stream_pick("wand_wood", registry.ids("wand_woods").duplicate()))
+-	var wood_entry: Dictionary = registry.entry("wand_woods", str(wood))
+-	var core_ids := registry.ids("wand_cores").duplicate()
+-	var core_id := str(rng.stream_pick("wand_core", core_ids))
++	# 计划 03a（§8#16/#21）：杖芯的 rarity 只是语义标签（"common"/"rare"），不是权重；
++	# 真正的权重是 wand_cores.json 里的数值字段 weight（common=6 / rare=1）。
++	# 木材表没有 weight 字段 ⇒ 全部走默认 1.0 = 均匀抽取；仍然走同一个函数，保持两处形式一致。
++	var wood_entries: Array = []
++	for wid in registry.ids("wand_woods"):
++		wood_entries.append(registry.entry("wand_woods", str(wid)))
++	var wood_entry_pick: Dictionary = rng.stream_pick_weighted("wand_wood", wood_entries, "weight")
++	var wood := str(wood_entry_pick.get("id", ""))
++	var wood_entry: Dictionary = registry.entry("wand_woods", wood)
++	var core_entries: Array = []
++	for cid in registry.ids("wand_cores"):
++		core_entries.append(registry.entry("wand_cores", str(cid)))
++	var core_entry_pick: Dictionary = rng.stream_pick_weighted("wand_core", core_entries, "weight")
++	var core_id := str(core_entry_pick.get("id", ""))
+ 	var core_entry: Dictionary = registry.entry("wand_cores", core_id)
+ 	var flex_ids := registry.ids("wand_flexibilities").duplicate()
+ 	var flex_id := str(rng.stream_pick("wand_flex", flex_ids))
+@@ -172,7 +182,8 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) ->
+ 	p.birth_identity_id = str(choices["birth_identity_id"])
+ 	p.birthplace = str(choices.get("birthplace", ""))
+ 	p.family_status = str(choices.get("family_status", ""))
+-	p.house_id = assign_house(choices, rng, registry)
++	# §8#69：原来这里有一行**无条件**的 p.house_id = assign_house(...)，现已移入下方「非哑炮」分支——
++	# 哑炮即使在创建界面显式选了学院，也不得入学（正典第七章/第二十四章：哑炮不进霍格沃茨）。
+ 	p.political_leaning_id = str(choices["political_leaning_id"])
+ 	p.personality = (choices.get("personality", []) as Array).duplicate()
+ 	p.life_goal = str(choices["life_goal"])
+@@ -204,7 +215,10 @@ static func create(choices: Dictionary, registry: Registry, rng: RngService) ->
+ 		p.wand = {}
+ 		p.flags["no_magic"] = true
+ 		p.job = ""
++		# §8#69 正典修正（第七章/第二十四章）：哑炮不进霍格沃茨；「未入学」用 houses.json 里已有的 none
++		p.house_id = "none"
+ 	else:
++		p.house_id = assign_house(choices, rng, registry)
+ 		p.magic_tier = MagicLevel.Tier.PRE_SCHOOL
+ 		var wand_choice: Dictionary = choices.get("wand", {})
+ 		p.wand = wand_choice if not wand_choice.is_empty() else generate_wand(rng, registry)
+diff --git a/src/ui/main.gd b/src/ui/main.gd
+index c3d5977..7f868d9 100644
+--- a/src/ui/main.gd
++++ b/src/ui/main.gd
+@@ -2,6 +2,8 @@ extends Control
+ 
+ const SAVE_SLOT := "slot1"
+ const SEED_SALT := 20260918
++# §8#70：创建界面的性别选项（原来界面没有性别输入，所有角色性别恒为「未定」）
++const GENDERS: PackedStringArray = ["男", "女", "未定"]
+ 
+ var registry: Registry = null
+ var world: WorldState = null
+@@ -16,6 +18,7 @@ var command_edit: LineEdit = null
+ var status_label: Label = null
+ var dropdowns: Dictionary = {}
+ var name_edit: LineEdit = null
++var gender_dropdown: OptionButton = null
+ var goal_edit: LineEdit = null
+ var age_spin: SpinBox = null
+ var personality_edit: LineEdit = null
+@@ -108,6 +111,7 @@ func _show_creation() -> void:
+ 	for child in creation_box.get_children():
+ 		child.queue_free()
+ 	dropdowns.clear()
++	gender_dropdown = null
+ 	var title := Label.new()
+ 	title.text = "【选择你的起点】（第七十五章）"
+ 	creation_box.add_child(title)
+@@ -131,10 +135,28 @@ func _show_creation() -> void:
+ 	name_label.custom_minimum_size = Vector2(120, 0)
+ 	name_row.add_child(name_label)
+ 	name_edit = LineEdit.new()
+-	name_edit.text = "无名者"
++	# §8#70：不再预填「无名者」——留空 + 占位提示，逼玩家给角色起名
++	# （validate_choices 会拒绝空名字，不会静默给一个“无名者”角色）
++	name_edit.text = ""
++	name_edit.placeholder_text = "你的名字（例：艾拉·卡文迪什）"
+ 	name_row.add_child(name_edit)
+ 	creation_box.add_child(name_row)
+ 
++	# §8#70：性别下拉。同时登记进 dropdowns，这样既能让 _selected()/镜像循环统一取用，
++	# 也能让 B1 探针用通用的 _select(node, "gender", "男") 驱动。
++	var gender_row := HBoxContainer.new()
++	var gender_label := Label.new()
++	gender_label.text = "性别"
++	gender_label.custom_minimum_size = Vector2(120, 0)
++	gender_row.add_child(gender_label)
++	gender_dropdown = OptionButton.new()
++	for index in GENDERS.size():
++		gender_dropdown.add_item(GENDERS[index], index)
++		gender_dropdown.set_item_metadata(index, GENDERS[index])
++	dropdowns["gender"] = gender_dropdown
++	gender_row.add_child(gender_dropdown)
++	creation_box.add_child(gender_row)
++
+ 	var age_row := HBoxContainer.new()
+ 	var age_label := Label.new()
+ 	age_label.text = "年龄"
+@@ -180,7 +202,7 @@ func _show_creation() -> void:
+ 
+ 	if _debug_mirror:
+ 		for key in ["era_id", "bloodline_id", "birth_identity_id", "aptitude_id", "house_id",
+-				"political_leaning_id", "sim_style_id"]:
++				"political_leaning_id", "sim_style_id", "gender"]:
+ 			_mirror("[创建界面] %s 选项数=%d 当前=%s" % [key, (dropdowns[key] as OptionButton).item_count, _selected(key)])
+ 
+ func _selected(key: String) -> String:
+@@ -193,7 +215,7 @@ func _on_start_pressed() -> void:
+ 		"bloodline_id": _selected("bloodline_id"),
+ 		"birth_identity_id": _selected("birth_identity_id"),
+ 		"name_text": name_edit.text,
+-		"gender": "未定",
++		"gender": str(gender_dropdown.get_item_metadata(gender_dropdown.selected)),
+ 		"age_years": int(age_spin.value),
+ 		"birthplace": "london_muggle",
+ 		"family_status": "由系统生成",
+diff --git a/tests/creation_test.gd b/tests/creation_test.gd
+index e61ab6e..3d45eb9 100644
+--- a/tests/creation_test.gd
++++ b/tests/creation_test.gd
+@@ -162,4 +162,73 @@ func run() -> int:
+ 		var r := CharacterCreation.create(c, reg, RngService.new(42))
+ 		a.eq(r.errors.size(), 0, "血统 %s 可创建" % bloodline_id)
+ 
++	# ---- 计划 03a（§8#69）：哑炮不进霍格沃茨 ----
++	# ⚠️ 计划原文的测试片段实测有两个问题（控制器实测，见 task-12-report.md）：
++	#   ① personality 只给 1 项 → validate_choices 报「需要 3 个性格关键词」⇒ player==null，
++	#      后续 `squib_res.player.house_id` 是**空引用访问**，会把整个套件**中止**（红得不干净）。
++	#   ② house_id="system" 时 assign_house 早就在 `magic_aptitude=false` 上返回 "none"
++	#      （见本文件下方 "哑炮不判学院" 断言）⇒ 该断言**改前改后都绿 = 无判别力**。
++	#   真正的缺陷路径是**玩家显式指定学院**（创建界面 house 下拉默认就是 gryffindor）⇒
++	#   必须用 house_id="gryffindor" 才能判别（与 B1 探针实测到的 house_id=gryffindor 完全对应）。
++	var t12_squib := {
++		"era_id": "modern", "bloodline_id": "squib", "birth_identity_id": "ordinary_wizard_family",
++		"name_text": "测试哑炮", "gender": "未定", "age_years": 11, "birthplace": "london_muggle",
++		"family_status": "由系统生成", "aptitude_id": "squib", "aptitude_special": "", "wand": {},
++		"house_id": "gryffindor", "political_leaning_id": "blood_equality",
++		"personality": ["好奇", "固执", "怕黑"],
++		"life_goal": "活下去", "sim_style_id": "brutal_realism",
++	}
++	var t12_squib_res := CharacterCreation.create(t12_squib, reg, RngService.new(5))
++	a.eq(t12_squib_res.errors.size(), 0, "哑炮建角无错误")
++	# 用「取不到就返回可鉴别的哨兵串」代替解引用，避免 null 中止套件（红要红得干净）
++	var t12_squib_house := "<player==null>"
++	if t12_squib_res.player != null:
++		t12_squib_house = str(t12_squib_res.player.house_id)
++	a.eq(t12_squib_house, "none", "哑炮不进霍格沃茨：显式指定 gryffindor 也必须被覆盖为 none")
++	a.is_true(t12_squib_res.player != null and bool(t12_squib_res.player.flags.get("no_magic", false)),
++		"哑炮仍无魔法")
++	# 未显式指定学院（system）时同样是 none —— 防回归（这条改前就绿，不具判别力，只钉住不倒退）
++	var t12_squib_sys := t12_squib.duplicate(true)
++	t12_squib_sys["house_id"] = "system"
++	var t12_squib_sys_res := CharacterCreation.create(t12_squib_sys, reg, RngService.new(5))
++	var t12_squib_sys_house := "<player==null>"
++	if t12_squib_sys_res.player != null:
++		t12_squib_sys_house = str(t12_squib_sys_res.player.house_id)
++	a.eq(t12_squib_sys_house, "none", "哑炮 + house_id=system 同样不入学")
++	# 非哑炮：玩家显式指定学院必须仍然优先（不得被这次修正误伤）
++	var t12_normal := t12_squib.duplicate(true)
++	t12_normal["bloodline_id"] = "half_blood"
++	t12_normal["aptitude_id"] = "normal"
++	var t12_normal_res := CharacterCreation.create(t12_normal, reg, RngService.new(5))
++	var t12_normal_house := "<player==null>"
++	if t12_normal_res.player != null:
++		t12_normal_house = str(t12_normal_res.player.house_id)
++	a.eq(t12_normal_house, "gryffindor", "非哑炮：玩家指定学院仍然优先")
++
++	# ---- 计划 03a（§8#21）：杖芯权重必须真的生效 ----
++	# ⚠️ rarity 是字符串标签，float("common")==0.0，不能直接当权重；权重来自新增的数值字段 "weight"。
++	var t12_core_entries: Array = []
++	for cid in reg.ids("wand_cores"):
++		t12_core_entries.append(reg.entry("wand_cores", str(cid)))
++	var t12_weighted_rng := RngService.new(7)
++	var t12_common_hits := 0
++	var t12_rare_hits := 0
++	for i in 3000:
++		var t12_picked: Dictionary = t12_weighted_rng.stream_pick_weighted("wand_core_test", t12_core_entries, "weight")
++		if str(t12_picked.get("rarity", "")) == "rare":
++			t12_rare_hits += 1
++		else:
++			t12_common_hits += 1
++	a.is_true(t12_common_hits > t12_rare_hits * 4,
++		"常见杖芯显著多于稀有杖芯（weight 生效；全为 1 时均匀⇒必红）实际 common=%d rare=%d" % [t12_common_hits, t12_rare_hits])
++	a.is_true(t12_rare_hits > 0, "稀有杖芯仍会被抽中（weight 不是硬排除）")
++	# 端到端：光是 helper 正确还不够，generate_wand 必须真的走权重（把 "weight" 改回 "rarity" 时本条必红）
++	var t12_wand_rare := 0
++	for i in 400:
++		var t12_wand := CharacterCreation.generate_wand(RngService.new(5000 + i), reg)
++		if str(reg.entry("wand_cores", str(t12_wand["core"])).get("rarity", "")) == "rare":
++			t12_wand_rare += 1
++	a.is_true(t12_wand_rare < 120,
++		"generate_wand 的稀有杖芯远低于均匀占比（400 支里 %d 支；均匀时≈200，加权时≈57）" % t12_wand_rare)
++
+ 	return a.report("creation")
+diff --git a/tests/world_tick_test.gd b/tests/world_tick_test.gd
+index 07a7a15..0b48052 100644
+--- a/tests/world_tick_test.gd
++++ b/tests/world_tick_test.gd
+@@ -167,4 +167,54 @@ func run() -> int:
+ 		a.is_true(not fstate.is_empty(), "tick 后 %s 仍有状态" % str(fid))
+ 		a.between(float(fstate.get("power", -1.0)), 0.0, 1.0, "%s 实力在界内" % str(fid))
+ 
++	# ---- 计划 03a（§8#16）：weight 必须真的生效 ----
++	var t12_wrng := RngService.new(99)
++	var t12_light: Array = [{"id": "a", "weight": 0.0}, {"id": "b", "weight": 1.0}]
++	var t12_picked_b := 0
++	for i in 50:
++		var t12_picked: Dictionary = t12_wrng.stream_pick_weighted("w_test", t12_light)
++		if str(t12_picked.get("id", "")) == "b":
++			t12_picked_b += 1
++	a.eq(t12_picked_b, 50, "weight=0 的条目永远不会被抽中（50/50 次）")
++	var t12_all_zero: Array = [{"id": "a", "weight": 0.0}, {"id": "b", "weight": 0.0}]
++	a.is_true(t12_wrng.stream_pick_weighted("w_zero", t12_all_zero) != null,
++		"全零权重回退到均匀抽取，不返回 null")
++	a.is_true(t12_wrng.stream_pick_weighted("w_empty", []) == null, "空列表返回 null")
++
++	# ---- 计划 03a（§8#16）端到端：tick() 本身必须走权重（只测 helper 不足以证明接线）----
++	# 夹具：把 rumors 表换成「同一个 zone 两条」，weight=1 的在前、weight=0 的在后。
++	# 加权 ⇒ weight=0 那条永远抽不到；均匀（回到 stream_pick）⇒ 40 回合内几乎必然抽到（P(全不中)≈0.5^40）。
++	# 两条 id 的字典序 "..one" < "..zero" ⇒ 注册表排序后 weight=1 稳定在前（不受 roll==0 的边界影响）。
++	var t12_tables := {}
++	for t12_table_name in Registry.TABLE_FILES.keys():
++		var t12_entries: Array = []
++		for t12_eid in reg.ids(t12_table_name):
++			t12_entries.append(reg.entry(t12_table_name, str(t12_eid)))
++		t12_tables[t12_table_name] = t12_entries
++	a.is_true((reg.ids("rumors") as PackedStringArray).size() > 2, "E2E 前置：默认传闻表确实是多条的（未被夹具偷换）")
++	t12_tables["rumors"] = [
++		{"id": "t12_weight_one", "label": "权重一的传闻", "category": "测试", "text": "权重 1 的传闻",
++			"weight": 1.0, "major": false, "min_year": 0, "zones": ["diagon_alley"], "requires_flags": []},
++		{"id": "t12_weight_zero", "label": "权重零的传闻", "category": "测试", "text": "权重 0 的传闻",
++			"weight": 0.0, "major": false, "min_year": 0, "zones": ["diagon_alley"], "requires_flags": []},
++	]
++	var t12_reg := Registry.from_tables(t12_tables)
++	var t12_p := PlayerState.new_default()
++	t12_p.name_text = "权重测试者"
++	t12_p.location_id = "diagon_alley"
++	var t12_world := WorldState.create("modern", t12_p, 424242, t12_reg)
++	var t12_saw_one := 0
++	var t12_saw_zero := 0
++	for i in 40:
++		for t12_ev in t12_world.tick():
++			if str(t12_ev.get("kind", "")) != "rumor":
++				continue
++			match str(t12_ev.get("rumor_id", "")):
++				"t12_weight_one":
++					t12_saw_one += 1
++				"t12_weight_zero":
++					t12_saw_zero += 1
++	a.is_true(t12_saw_one > 0, "E2E：weight=1 的传闻会被抽中（实际 %d 次）" % t12_saw_one)
++	a.eq(t12_saw_zero, 0, "E2E：weight=0 的传闻 40 回合内一次都不该被抽中（tick 回到 stream_pick ⇒ 必红）")
++
+ 	return a.report("world_tick")
+diff --git a/tools/b1_acceptance.gd b/tools/b1_acceptance.gd
+index bc9ee96..280ae71 100644
+--- a/tools/b1_acceptance.gd
++++ b/tools/b1_acceptance.gd
+@@ -229,17 +229,22 @@ func _part1_creation_ui(node: Node) -> void:
+ 		"主场景指向 src/ui/main.tscn")
+ 	check((node.get("creation_box") as VBoxContainer).visible, "开场显示创建界面")
+ 	check(not (node.get("play_box") as VBoxContainer).visible, "开场不显示游戏界面")
+-	check(_dropdown_count(node) == 7, "创建界面有 7 个下拉框（实际 %d）" % _dropdown_count(node))
++	check(_dropdown_count(node) == 8, "创建界面有 8 个下拉框（7 个内容表 + §8#70 新增的性别，实际 %d）" % _dropdown_count(node))
+ 	for key in ["era_id", "bloodline_id", "birth_identity_id", "aptitude_id", "house_id",
+-			"political_leaning_id", "sim_style_id"]:
++			"political_leaning_id", "sim_style_id", "gender"]:
+ 		var option: OptionButton = (node.get("dropdowns") as Dictionary)[key]
+ 		check(option.item_count > 0, "下拉 %s 有选项（%d 项）" % [key, option.item_count])
+ 
+ # 清单 2：哑炮角色创建
+ func _part2_squib_start(node: Node) -> void:
+-	part("清单 2 · 哑炮 + 姓名/年龄/性格/目标 → 开始人生")
++	part("清单 2 · 哑炮 + 姓名/性别/年龄/性格/目标 → 开始人生")
+ 	check(_select(node, "bloodline_id", "squib"), "能选中血统「哑炮」")
+ 	check(_select(node, "aptitude_id", "squib"), "能选中资质「哑炮无魔法天赋」")
++	# §8#70：必须在写入姓名**之前**检查默认值，否则测的是自己刚写进去的字符串
++	check((node.get("name_edit") as LineEdit).text.strip_edges() == "", "姓名框默认为空（不再预填「无名者」）")
++	check(not (node.get("name_edit") as LineEdit).placeholder_text.is_empty(), "姓名框带占位提示")
++	check(node.get("gender_dropdown") != null, "创建界面有性别下拉")
++	check(_select(node, "gender", "男"), "能选中性别「男」")
+ 	(node.get("name_edit") as LineEdit).text = "测试哑炮"
+ 	(node.get("age_spin") as SpinBox).value = 11
+ 	(node.get("goal_edit") as LineEdit).text = "我想知道魔法到底能走多远"
+@@ -266,8 +271,10 @@ func _part2_squib_start(node: Node) -> void:
+ 	check(world.player.magic_tier == MagicLevel.Tier.SQUIB, "哑炮 magic_tier=SQUIB")
+ 	check(world.player.wand.is_empty(), "哑炮没有魔杖")
+ 	check(world.player.magic.get("known_spells", []).is_empty(), "哑炮没有已掌握魔咒")
+-	note("观察（§8#69）：哑炮的 house_id = %s（正典里哑炮不进霍格沃茨）" % world.player.house_id)
+-	note("观察（§8#70）：姓名来自输入框，性别恒为「%s」（创建界面没有性别输入）" % world.player.gender)
++	check(world.player.gender == "男", "性别取自创建界面下拉（world.player.gender=男）")
++	check(world.player.house_id == "none", "§8#69：哑炮不进霍格沃茨（house_id=none，即使学院下拉默认 gryffindor）")
++	note("观察（§8#69）：哑炮 house_id = %s（已按正典第七章/第二十四章修正为 none）" % world.player.house_id)
++	note("观察（§8#70）：性别取自创建界面下拉 =「%s」" % world.player.gender)
+ 
+ # 清单 3：练魔药收益递减
+ func _part3_train_deduction(node: Node) -> void:

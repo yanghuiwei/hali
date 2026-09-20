@@ -381,3 +381,61 @@
   - 顺手修 Plan Task 12 的两处纪律问题：Step 4 的 `b1_acceptance.sh` 补外部 `timeout 300`；Step 5 的 `git add` 补 `data/wand_cores.json`。
 - **仍缺（阻塞 P3/P5，不阻塞 P1/P2/P4）**：① **CJK 正文字体**（必须全字集、不能子集化）② `interface.psd` 切片 PNG
 - **待人类确认**：`bg_main.ogg` 时长 211.88s vs 原始 mp3 309.09s（ffprobe）——**少了 97 秒**；若非有意剪辑需重转
+
+## Task 12: 顺手项 C —— 哑炮学院（§8#69）· 创建界面姓名/性别（§8#70）· 内容旋钮生效（§8#16/#21）
+- BASE: `d5a56d8`（控制器的 docs 提交 `f036394` / `ebd426f` 不计入审查范围）
+- brief: `task-12-brief.md` ｜ dispatch: worker / deepseek-flash / run `5e45c36a`
+- 实现完成：`973eea8`（8 files, +207/-20）；`test.sh` **EXIT=0**，18 套件 **1746→1760** 断言 / 失败 0 / `SCRIPT ERROR` **2=基线**；`b1` **105→112** / 0 失败
+  - §8#69 哑炮 `house_id="none"`（把 `character_creation.gd:175` 那个**无条件** `assign_house` 移进非哑炮分支）
+  - §8#70 姓名默认空 + placeholder；新增性别下拉（男/女/未定）
+  - §8#16 `rumors.weight` 生效；§8#21 `wand_cores` 权重生效（`data/wand_cores.json` 每条加数值 `weight` 6/1，新增 `RngService.stream_pick_weighted`）
+  - 7 组破坏实验全部精准变红（D1 / D2a-c / D3a-b / D4）。**D3a 是关键证据**：杖芯调用处改回 `"rarity"` 时
+    **helper 层断言全绿、只有端到端红** ⇒ 「修调用处传错参数」必须有一条走真实入口的断言
+- 审查包 `review-d5a56d8..973eea8.diff`（22070B，只含代码提交）｜dispatch: reviewer / run `f1b82873`
+- 审查：**Approved with findings**，Critical 0 / **Important 1** / Minor 4 → 工件 `task-12-review.md`
+- 控制器裁定 **Important #1**（读档路径 `player_state.gd:107` 原样拷贝 `house_id` ⇒ 修前生成的旧存档仍是 `gryffindor`）：
+  **不在本任务修，归「存档格式 v2」批次**（与 `§8#26` 同族）。理由：① `from_dict` 契约是忠实还原，塞内容级归一化 = 隐藏的读时改写；
+  ② 只归一化单字段而 `validate_choices` 照旧不跑 = 任意且不自洽；③ 正确入口是存档 v2 一次性迁移。
+  零成本缓解：旧存档属历史数据，重建角色即得 `none`。**范围声明已写入计划**。附复核：`assign_house` 生产代码只有 1 个调用点 ⇒ 新路径已堵死
+- 控制器两次改计划文本（各自单独 docs 提交 + 实测依据，遵「先改计划再改代码」）：
+  - `f036394` Step 1 测试片段订正（`personality` 必须 ≥3 项否则 nil 解引用中止套件 / `house_id="system"` 无判别力改用 `gryffindor` / 补两条端到端断言）
+  - `ebd426f` 权重抽取契约订正（跳过非正权重 + `roll < acc` + 兜底取最后一个正权重条目）+ Task 12 范围声明
+- 修复轮 1：`ce1594d`（4 files, +84/-14）；`test.sh` **EXIT=0**、**1760→1767**、`SCRIPT ERROR` 2=基线；`b1` 112/0
+  - **F1b 关键做法**：把「按 roll 落区间」抽成可传参私有函数 `_pick_by_roll(entries, key, roll)`，
+    让 `randf()==0.0`（概率≈2⁻³²、黑盒永不可测）这条边界**可直接传 roll 判别**。
+    D5（还原旧写法）→ 恰好 **2 红**，就是那两条新断言 ⇒ 真判别器（而非恒绿假断言）
+  - **D6 诚实结论**：`generate_wand` 改回有类型接收时 **套件 0 红、EXIT=0**，唯一判别通道是外部 `SCRIPT ERROR` 2→3
+    ⇒ 与 Task 4 N1 / Task 6 M3 / Task 10 I1 同族（机制成立、套件内不可判别）
+- scoped 复审：reviewer / run `c715071e`（`review-ebd426f..ce1594d.diff`）→ **Accepted with notes**，0 Critical / 0 Important / 1 Minor（契约①措辞不准）
+- 控制器**独立数值验证**（补上 scoped 复审「未验证 #1」的空白）：真实杖芯表 **20 万次随机 roll 新旧差异 0**、
+  300 组随机全正权重表 × 500 次 **差异 0**、与「恰好一次 `stream_float`」手工路径 **不一致 0**（⇒ 随机流消耗未变、既有断言不会漂移）、
+  仅累积边界 5 处不同（测度零点）。**与 reviewer 纯静态推演逐字吻合** ⇒ 静态反证确实可替代部分破坏实验（快跑模式的依据之一）
+- 控制器收尾（快跑模式：注释改动无行为变化 ⇒ **免复审**，控制器直接改）：`src/core/rng_service.gd` 契约①③ 措辞订正 2 行 + 计划同步
+- Task 12: minor (deferred→**存档 v2**)：读档路径不重判 `house_id`（旧存档上 `§8#69` 可被外部观察者复现）
+- Task 12: minor (deferred)：`wand_woods.json` 无 `weight` ⇒ 木材与均匀抽取分布等价（将来加权重是**纯内容改动、零代码**）·
+  `generate_wand` 的 `(pick as Dictionary)` 未防「非字典项」（当前数据不可达，行为与旧写法等价）·
+  姓名留空时报 `name_text 不得为空` 但**文案无引导**（UX 细项）· `assign_house()` 本身未改（绕过 `create()` 直接传学院仍可）·
+  `data/rumors.json` 权重数值未调（平衡性议题，属 `§8#16` 后续）
+- Task 12: 流程登记：**「只能靠 `SCRIPT ERROR` 计数守住的契约」清单增至 5 条**（`§8#48`/`§8#56` + Task 4 N1 / Task 6 M3 / Task 10 I1 + 本次 D6）
+  → Task 13 写入 HANDOFF §4 踩坑清单
+- 状态：**Task 12 complete**（`973eea8` 实现 + `ce1594d` 修复轮 1 + 本次注释订正）
+
+---
+
+## 流程变更：快跑模式（人类裁定，2026-09-20，**自 Task 13 起生效**）
+
+人类反馈：「每次都走 TDD，测试期间消耗了好多时间，进度太慢」；问「先开发完再统一验证会不会大量返工」，并裁定**相信自己、激进快跑**。
+
+**控制器的证据判断（为什么可以砍）**：本仓库至今所有审查/实跑抓到的真缺陷，修复量全是 **1–20 行**（rarity 字段名、测试输入值、
+2 个类型标注、2 行边界条件、去重键、1 个常量、1 个 quantize 函数）⇒ 属于「局部化小修」型，**晚发现 = 晚修 10 行，不是推翻重做**。
+会产生真返工的只有两类：① **全局且不可逆的选择**（目录名/文件格式/授权/大文件）——已在 Phase 0 做完；
+② **接口/契约扇出**——靠「先冻结接口、不冻结实现」规避。
+
+**砍掉**：独立 reviewer（降级为控制器自查 diff + 静态反证；仅**不变量/契约改动**时临时派）· 修复轮 · scoped 复审 ·
+破坏实验（4–7 组 → **0–1 组**）· 红步原始输出仪式 · 每题 brief/report 长文 · 每题写台账（改 Task 13 一次写全）· 任务拆分（P1–P5 合并派发）
+
+**保留（廉价且真正承重）**：worker 自跑到绿 · 控制器复核绿 + 读 diff · **全量 `test.sh`（90 秒）** ·
+**`SCRIPT ERROR` == 基线 2 条**（唯一能抓住「套件内不可判别」类契约的通道，D6 实测证明不可替代）· 工作区干净 + 无残留 godot 进程
+
+**为什么保留 90 秒的 `test.sh`**：理由不是「质量」，是**让红色可归因**。攒到数千行后一次性跑出几十条红，
+无法判断是哪次改动引起（调试考古的成本远高于 90 秒）。这是新模式下**唯一的硬约束**。

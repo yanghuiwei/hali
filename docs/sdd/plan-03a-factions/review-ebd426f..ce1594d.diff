@@ -1,0 +1,179 @@
+== 审查范围 ==
+BASE ebd426f → HEAD ce1594d（修复轮 1，只含 1 个代码提交）
+首轮范围 d5a56d8..973eea8 已单独审查过；本轮只审修复本身 + 是否引入新问题
+
+== 提交列表 ==
+ce1594d fix(03a-T12): 修复轮 1 —— 权重抽取契约订正（可判别的 roll 边界）+ 空表守卫，处置审查 Minor #2/#3/#4/#5
+
+== 文件统计 ==
+ src/core/rng_service.gd         | 40 ++++++++++++++++++++++++++++++----------
+ src/rules/character_creation.gd | 15 +++++++++++----
+ tests/creation_test.gd          | 22 ++++++++++++++++++++++
+ tests/world_tick_test.gd        | 21 +++++++++++++++++++++
+ 4 files changed, 84 insertions(+), 14 deletions(-)
+
+== 完整 diff ==
+diff --git a/src/core/rng_service.gd b/src/core/rng_service.gd
+index 8d8646c..20f17d4 100644
+--- a/src/core/rng_service.gd
++++ b/src/core/rng_service.gd
+@@ -25,29 +25,49 @@ func stream_pick(name: String, options: Array):
+ 		return null
+ 	return options[stream(name).randi_range(0, options.size() - 1)]
+ 
+-# 计划 03a（§8#16/#21）：按权重抽取。权重非正（≤0）的条目永不被抽中；权重键缺失时默认 1.0（等价均匀）。
+-# 总权重为 0（含全部条目权重≤0）时回退到均匀抽取，保证与 stream_pick 同样「总能抽到点什么」。
+-# ⚠️ 故意**不加**返回类型标注：空列表时本函数返回 null，而 GDScript 对
+-# 「null 赋给有类型变量」是解析期错误（实测 Cannot assign a value of type "null" as "Dictionary"）。
+-# 权重键缺失时默认 1.0 ⇒ 传一个表里没有的键名等价于均匀抽取（不要用它假装「权重已生效」）。
++# 计划 03a（§8#16/#21）：按权重抽取。
++# 契约：
++#   ① 权重 ≤ 0 的条目**永不被抽中**（加权路径里跳过；也不会成为兜底返回）；
++#   ② 权重键缺失 ⇒ 默认 1.0（等价均匀）；
++#   ③ 非字典条目在**加权路径**被跳过；但总权重为 0 时会**整体回退** stream_pick ⇒ 此时非字典条目**可**被抽中。
++#      这个不对称是「全零 = 退化到旧行为」的有意语义，**不是 bug**；
++#   ④ 空表返回 null。
++# ⚠️ 故意**不加**返回类型标注：空表返回 null，而 GDScript 对「可空返回值赋给有类型变量」是**运行期** SCRIPT ERROR
++#    （实测 Trying to assign value of type 'Nil' to a variable of type 'Dictionary'），而且会**中止所在函数**。
+ func stream_pick_weighted(name: String, entries: Array, weight_key: String = "weight"):
+ 	if entries.is_empty():
+ 		return null
+ 	var total := 0.0
+ 	for e in entries:
+ 		if typeof(e) == TYPE_DICTIONARY:
+-			total += maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
++			total += _weight_of(e, weight_key)
+ 	if total <= 0.0:
+ 		return stream_pick(name, entries)
+-	var roll := stream_float(name) * total
++	# 用 `<` 而不是 `<=`，并跳过非正权重：否则「roll == 0.0 且首条权重为 0」会返回一条权重 0 的条目（违反契约 ①）
++	return _pick_by_roll(entries, weight_key, stream_float(name) * total)
++
++static func _weight_of(e: Variant, weight_key: String) -> float:
++	return maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
++
++# 把「按 roll 落区间」抽成独立私有函数，**唯一目的是让 roll == 0.0 这条边界可判别地被测到**：
++# randf() 精确返回 0.0 的概率 ≈ 2^-32，黑盒永远测不出来；直接传 roll 就能测。
++static func _pick_by_roll(entries: Array, weight_key: String, roll: float):
+ 	var acc := 0.0
++	var last_positive: Variant = null
+ 	for e in entries:
+ 		if typeof(e) != TYPE_DICTIONARY:
+ 			continue
+-		acc += maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
+-		if roll <= acc:
++		var w := _weight_of(e, weight_key)
++		if w <= 0.0:
++			continue
++		last_positive = e
++		acc += w
++		if roll < acc:
+ 			return e
+-	return entries[entries.size() - 1]
++	# 浮点累加误差可能让所有区间都落空（roll 理论上 < total）⇒ 兜底也必须是**正权重**条目
++	if last_positive != null:
++		return last_positive
++	return null
+ 
+ func chance(name: String, probability: float) -> bool:
+ 	return stream_float(name) < clampf(probability, 0.0, 1.0)
+diff --git a/src/rules/character_creation.gd b/src/rules/character_creation.gd
+index 644ae00..186e8fa 100644
+--- a/src/rules/character_creation.gd
++++ b/src/rules/character_creation.gd
+@@ -103,17 +103,24 @@ static func generate_wand(rng: RngService, registry: Registry) -> Dictionary:
+ 	# 计划 03a（§8#16/#21）：杖芯的 rarity 只是语义标签（"common"/"rare"），不是权重；
+ 	# 真正的权重是 wand_cores.json 里的数值字段 weight（common=6 / rare=1）。
+ 	# 木材表没有 weight 字段 ⇒ 全部走默认 1.0 = 均匀抽取；仍然走同一个函数，保持两处形式一致。
++	# ⚠️ 不要用有类型接收（`: Dictionary`）接 stream_pick_weighted 的返回值：空表时它返回 null，
++	#    而「可空值赋给有类型变量」是**运行期** SCRIPT ERROR（实测），会中止所在函数、并污染很敏感的
++	#    「SCRIPT ERROR == 2 条」基线指标。当前 registry 表非空 ⇒ 不可达，但不依赖不可达前提。
+ 	var wood_entries: Array = []
+ 	for wid in registry.ids("wand_woods"):
+ 		wood_entries.append(registry.entry("wand_woods", str(wid)))
+-	var wood_entry_pick: Dictionary = rng.stream_pick_weighted("wand_wood", wood_entries, "weight")
+-	var wood := str(wood_entry_pick.get("id", ""))
++	var wood_entry_pick = rng.stream_pick_weighted("wand_wood", wood_entries, "weight")
++	if wood_entry_pick == null:
++		return {}
++	var wood := str((wood_entry_pick as Dictionary).get("id", ""))
+ 	var wood_entry: Dictionary = registry.entry("wand_woods", wood)
+ 	var core_entries: Array = []
+ 	for cid in registry.ids("wand_cores"):
+ 		core_entries.append(registry.entry("wand_cores", str(cid)))
+-	var core_entry_pick: Dictionary = rng.stream_pick_weighted("wand_core", core_entries, "weight")
+-	var core_id := str(core_entry_pick.get("id", ""))
++	var core_entry_pick = rng.stream_pick_weighted("wand_core", core_entries, "weight")
++	if core_entry_pick == null:
++		return {}
++	var core_id := str((core_entry_pick as Dictionary).get("id", ""))
+ 	var core_entry: Dictionary = registry.entry("wand_cores", core_id)
+ 	var flex_ids := registry.ids("wand_flexibilities").duplicate()
+ 	var flex_id := str(rng.stream_pick("wand_flex", flex_ids))
+diff --git a/tests/creation_test.gd b/tests/creation_test.gd
+index 3d45eb9..20981fa 100644
+--- a/tests/creation_test.gd
++++ b/tests/creation_test.gd
+@@ -231,4 +231,26 @@ func run() -> int:
+ 	a.is_true(t12_wand_rare < 120,
+ 		"generate_wand 的稀有杖芯远低于均匀占比（400 支里 %d 支；均匀时≈200，加权时≈57）" % t12_wand_rare)
+ 
++	# ---- 修复轮 1（审查 Minor #4）：generate_wand 的空表守卫 ----
++	# 手法照 Task 6：用 Registry.from_tables() 复制默认内容表，把 wand_woods 换成空数组
++	# ⇒ stream_pick_weighted 返回 null ⇒ 必须走 `if wood_entry_pick == null: return {}`，
++	#    而不是把 null 赋给有类型变量（实测是**运行期** SCRIPT ERROR，会中止所在函数，
++	#    并抬高「SCRIPT ERROR == 2 条」这个很敏感的基线指标）。
++	var f2b_tables := {}
++	for f2b_table in Registry.TABLE_FILES.keys():
++		var f2b_entries: Array = []
++		for f2b_eid in reg.ids(f2b_table):
++			f2b_entries.append(reg.entry(f2b_table, str(f2b_eid)))
++		f2b_tables[f2b_table] = f2b_entries
++	a.is_true(not (f2b_tables["wand_woods"] as Array).is_empty(), "F2b 前置：默认木材表非空（不是拿一个正好为空的夹具冒充）")
++	f2b_tables["wand_woods"] = []
++	var f2b_reg := Registry.from_tables(f2b_tables)
++	a.is_true(f2b_reg.ids("wand_woods").is_empty(), "F2b 前置：夹具里的木材表确实是空的")
++	a.is_true(f2b_reg.ids("wand_cores").size() >= 6, "F2b 前置：其余表未被夹具误伤（杖芯表仍在）")
++	a.eq(CharacterCreation.generate_wand(RngService.new(1), f2b_reg), {},
++		"木材表为空时 generate_wand 返回空魔杖（不返回半成品、不中断）")
++	# ⚠️ 诚实登记：上面这条**不是**「有类型接收 vs 无类型接收」的判别器——两种写法在这条路径上都返回
++	#    Dictionary 的默认值 {} ⇒ 本断言两种情况都绿。真正的判别通道是外部的 `SCRIPT ERROR == 2 条` 基线
++	#    （D6 破坏实验证实：改回有类型接收后 SCRIPT ERROR 从 2 条升到 3 条）。这里钉的是**功能契约**。
++
+ 	return a.report("creation")
+diff --git a/tests/world_tick_test.gd b/tests/world_tick_test.gd
+index 0b48052..9275ed0 100644
+--- a/tests/world_tick_test.gd
++++ b/tests/world_tick_test.gd
+@@ -181,6 +181,18 @@ func run() -> int:
+ 		"全零权重回退到均匀抽取，不返回 null")
+ 	a.is_true(t12_wrng.stream_pick_weighted("w_empty", []) == null, "空列表返回 null")
+ 
++	# ---- 修复轮 1（审查 Minor #2/#3）：把「roll == 0.0 落在首条零权重上」这条不可测的边界变成可判别 ----
++	# randf() 精确返回 0.0 的概率 ≈ 2^-32 ⇒ 黑盒永远测不出来；`_pick_by_roll(entries, key, roll)` 就是为此拆出来的。
++	# 旧写法（`roll <= acc` + 不跳过零权重）会返回首条零权重条目 "z" ⇒ 违反 stream_pick_weighted 注释里的契约①。
++	a.eq(_picked_id(RngService._pick_by_roll([{"id": "z", "weight": 0.0}, {"id": "o", "weight": 1.0}], "weight", 0.0)),
++		"o", "roll=0.0 时不得返回前导的零权重条目（旧写法会返回 z）")
++	# 兜底也必须是正权重条目（旧写法是 entries[entries.size()-1]，零权重排末位时会返回它）
++	a.eq(_picked_id(RngService._pick_by_roll([{"id": "o", "weight": 5.0}, {"id": "z", "weight": 0.0}], "weight", 999.0)),
++		"o", "roll 超出总权重时，兜底不得落在零权重条目上")
++	# 契约③的前半：非字典条目在**加权路径**被跳过（它不得占掉区间、也不得成为兜底）
++	a.eq(_picked_id(RngService._pick_by_roll(["裸字符串", {"id": "o", "weight": 1.0}], "weight", 0.0)),
++		"o", "加权路径跳过非字典条目（不会被它占掉区间）")
++
+ 	# ---- 计划 03a（§8#16）端到端：tick() 本身必须走权重（只测 helper 不足以证明接线）----
+ 	# 夹具：把 rumors 表换成「同一个 zone 两条」，weight=1 的在前、weight=0 的在后。
+ 	# 加权 ⇒ weight=0 那条永远抽不到；均匀（回到 stream_pick）⇒ 40 回合内几乎必然抽到（P(全不中)≈0.5^40）。
+@@ -218,3 +230,12 @@ func run() -> int:
+ 	a.eq(t12_saw_zero, 0, "E2E：weight=0 的传闻 40 回合内一次都不该被抽中（tick 回到 stream_pick ⇒ 必红）")
+ 
+ 	return a.report("world_tick")
++
++# 修复轮 1：安全取 id。_pick_by_roll 可能返回 null / 非字典 ⇒ 直接解引用会让「红」的形态变成套件中止
++# （与台账里 Task 9 M7、Task 12 首轮 personality 那条同源：中止会把后面所有断言掩盖掉）。
++func _picked_id(picked) -> String:
++	if picked == null:
++		return "<null>"
++	if typeof(picked) != TYPE_DICTIONARY:
++		return "<非字典:%s>" % str(picked)
++	return str((picked as Dictionary).get("id", "<无 id>"))
