@@ -318,6 +318,8 @@ taskkill //PID <PID> //F
 ### 计划 02 重跑盲审新增（2026-09-20，对 `fed4767^..15c1ff0` 的独立盲审）
 
 > 完整记录（含原文、三方对照、现网逐条核验）：`docs/sdd/plan-02-llm-narrative/task-811-review-rerun.md`。重跑共 11 条：P1×2 / P2×9；其中 3 条与首轮重合（已修）、1 条（降级路径直改 world）已在 §8#3/#35。以下为本轮**新登记且至今仍成立**的部分。
+>
+> ⚖️ **2026-09-20 人类裁定**：本节 #61–#65 与 §8#58 **不单开加固批次**，一律**留给计划 03 启动后顺手处理**（已列入 `NEXT-STEPS.md` §C 与 B3 的必办清单）。
 
 61. **（重跑盲审新增，Minor，spec §9 偏差）降级原因未透出 + `last_error` 是 write-only**：`llm_game_master.gd:_fallback` 在 `fallback != null` 分支只把 `FALLBACK_NOTE` 追加到叙事，**不带原因**、也不写 `r2.warnings`；`last_error` 全仓只有声明（`:9`）与赋值（`:48`），**无读取者**。spec §9 要求「降级 … 追加系统提示 … **并记 `op_errors`**」。后果：玩家与调用方拿不到降级原因（HTTP 状态码/解析错误），无法区分「网络抖动」与「模型老不吐 JSON」。便宜修法：`r2.warnings.append("LLM 降级：%s" % reason)`（UI 已会打印 `op_errors`）。
 62. **（重跑盲审新增，Minor，后果重）UI 提交路径无失败恢复**：`main.gd:_on_command_submitted` 在 `editable=false` + `_set_buttons_enabled(false)` 之后 `await engine.submit_async(text)`，恢复语句只在正常尾部；`await` 链中任何运行期错误（GDScript 无 `try/catch`）都会让协程提前中止 → 输入与**整排按钮永久禁用，只能重启**。当前 `main` 上 `choices[0]` 类路径已被 `a48f108` 封住，故需要一个尚未封住的运行期错误（如畸形状态让 `PanelFormatter` 报错，见 §8#45）才会触发：概率低、后果重。建议把「提交—恢复」收进**唯一出口**（helper/状态机）；⚠️ **不要**只在 `_on_load` 里补 `editable = true`（按钮同批被禁，读档入口不可达，补那句治不了本）。与 §8#58 同源，本条更锐。
