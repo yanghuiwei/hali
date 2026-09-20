@@ -10,6 +10,9 @@ var world: WorldState = null
 var engine: TurnEngine = null
 var rng: RngService = null
 
+# 计划 03a-P P3：表现层清单 → 主题（清单是唯一事实来源，见 spec §2）
+var presentation: Presentation = null
+
 var root_box: VBoxContainer = null
 var creation_box: VBoxContainer = null
 var play_box: VBoxContainer = null
@@ -46,6 +49,10 @@ func _ready() -> void:
 	var env_timeout := OS.get_environment("HALI_TURN_TIMEOUT_SEC")
 	if not env_timeout.is_empty() and env_timeout.is_valid_float():
 		turn_timeout_sec = maxf(0.1, env_timeout.to_float())
+	# P3：主题在运行期挂到根 Control（整棵子树继承）。**不**提交 `.tres`：
+	# 清单是唯一事实来源，提交二进制主题资源会让「改一行 JSON」变成「还要重新生成 .tres」= 返工。
+	presentation = Presentation.load_default()
+	theme = ThemeBuilder.build(presentation)
 	_build_ui()
 	_show_creation()
 
@@ -62,6 +69,11 @@ func _build_ui() -> void:
 
 	status_label = Label.new()
 	_set_status("《哈利·波特·魔法纪元》魔法世界沙盘·超高自由度人生模拟器")
+	# P3：标题用清单里的 `fonts.title`（拉丁显示体）；缺则保持主题默认（不报错）
+	if presentation != null:
+		var title_font := presentation.font("fonts.title")
+		if title_font != null:
+			status_label.add_theme_font_override("font", title_font)
 	root_box.add_child(status_label)
 
 	creation_box = VBoxContainer.new()

@@ -1,7 +1,6 @@
 {
 	"fonts": {
-		"title": {"path": "res://assets/fonts/Cinzel-Variable.ttf", "size": 28},
-		"numbers": {"path": "res://assets/fonts/IMFeENrm28P.ttf", "size": 15}
+		"title": {"path": "res://assets/fonts/Cinzel-Variable.ttf", "size": 28}
 	},
 	"icons": {
 		"barn_owl": "res://assets/icons/barn-owl.svg",
