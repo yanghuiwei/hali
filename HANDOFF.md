@@ -1,7 +1,19 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-20（**计划 01 / 计划 02 / 计划 03a（含 03a-P 表现层）均已合入 `main`**；本次修订 §0/§1/§2/§3/§4/§5.5/§8/§9 —— 03a 与 03a-P 收尾、新增 **stderr 噪音门禁**、新增 7 条踩坑）。交付点 = 分支 `main` 顶端（以 `git log` 为准）。
+> 最后更新：2026-09-20（计划 01 / 02 / 03a（含 03a-P 与 B8）均已合入 `main`；本次修订：**§5/§6 压缩为索引**（去与台账重复的历史堆积）+ **新增 §4 第 23 条踩坑**）。交付点 = 分支 `main` 顶端（以 `git log` 为准）。
+>
+> 📚 **本项目四份文档的职责（2026-09-20 定；目的：别每次任务都改四份）**
+>
+> | 文档 | 职责 | 每任务要改吗 |
+> | --- | --- | --- |
+> | `docs/sdd/<plan>/progress.md` | **耐久台账**（唯一权威：提交 / 断言数 / 审查结论 / 挂账） | ✅ **每次都改** |
+> | [`NEXT-STEPS.md`](NEXT-STEPS.md) | **唯一「状态 + 待办」源头** + 工作模式 + 门禁 + 收尾清单 | ✅ 每次都改（**只 3 处**） |
+> | [`NEXT-SESSION-PROMPT.md`](NEXT-SESSION-PROMPT.md) | 新会话开场语（体检命令 + 读什么 + 纪律；**不放易变数字**） | ❌ 只在**阶段变化**时 |
+> | **本文件（HANDOFF）** | **知识库**：现状 / 铁律 / **§4 踩坑** / **§8 裁定登记** / 环境 | ❌ 只在出现**新踩坑或新裁定**时 |
+>
+> ⇒ 日常一个任务 = **2 处编辑**（台账 + `NEXT-STEPS.md` 3 行）。**三份冲突时以台账为准。**
+> 🧹 已知待压缩：**§8（约 154 行，32% 是计划 01/02 的已闭合项）** ⇒ 拟压成「已闭合索引表 + 仍开放表」，不删结论（登记在 `NEXT-STEPS.md` §A3）。
 
 ---
 
@@ -118,14 +130,18 @@ ALL TESTS PASSED
 全部通过。
 ```
 
-> 套件 `SUITES` 共 **21** 项（+1 个不计入的 `[probe]` 探针），断言合计 **1985**。若你看到的数字更小，说明文档/分支过旧（**不是回归**）——计划 03a / 03a-P 期间 `[factions]`/`[world_tick]`/`[creation]`/`[prompt]`/`[gm]`/`[llm]`/`[registry]`/`[save]`/`[panel]` 都长过，并新增了 `[presentation]`/`[theme_audio]`/`[asset_slots]` 三个套件。
+> 套件数/断言数的**当前值见 [`NEXT-STEPS.md`](NEXT-STEPS.md) §0B（唯一维护点，本文件不再重复维护数字）**。
+> 若你在本文件里看到具体数字，那是**当时的快照**；判定「文档/分支是否过旧」一律以 §0B 与 `test.sh` 实测为准（**数字变小不是回归**）。
+> 历史上 `[factions]`/`[world_tick]`/`[creation]`/`[prompt]`/`[gm]`/`[llm]`/`[registry]`/`[save]`/`[panel]` 都长过，
+> 并新增了 `[presentation]`/`[theme_audio]`/`[asset_slots]` 三个套件。
 >
 > **stderr 噪音是自动门禁（不是“盯一下”）**：`tools/test.sh` 的第 `2/4` 步会把单测输出 tee 到临时文件，并计数两条通道：
 > `SCRIPT ERROR` 必须恰好 **2** 条（`save` 的坏档负例）、`ERROR` 必须恰好 **7** 条（5 条畸形 JSON 负例 + 2 条 `gm_test` 的「`submit()` 不能驱动协程 GM」负例）；
 > 不符即 `unit=1` → `EXIT=1`，报文会写明期望值。临时实验可用 `EXPECTED_SCRIPT_ERRORS=` / `EXPECTED_PLAIN_ERRORS=` 覆盖。
 > **这两个数字是健康指标，不是“失败”**；只有**故意增删负例**时才改常量，并在提交信息里写明原因。两个常量与原因就写在 `tools/test.sh` 里那一段注释里。
 > **为什么要这道门禁**：「解析 JSON 失败 / 资源加载失败 / 类型赋值错误」这类噪音**套件内的断言拓不到**——03a-P 的破坏实验里出现过三次：拆掉守卫后套件全绿（甚至 `[presentation]` 81/0），而外部 `ERROR` 2→3 / 7→12。见 §4 第 16 条。
-> **`tools/b1_acceptance.sh`**（B1 人工验收的自动通道，**不进 `test.sh`**：它会写 `user://`）→ 期望 `EXIT=0`、**151 断言 / 0 失败**；它自带 `llm_settings.json` / `saves/slot1.json` 的备份与逐字还原。**跑它一定要加外部 `timeout`**（见 §4 第 12 条）。
+> **`tools/b1_acceptance.sh`**（B1 人工验收的自动通道，**不进 `test.sh`**：它会写 `user://`）→ 期望 `EXIT=0`、**失败 0**
+> （断言数见 `NEXT-STEPS.md` §0B）；它自带 `llm_settings.json` / `saves/slot1.json` 的备份与逐字还原。**跑它一定要加外部 `timeout`**（见 §4 第 12 条）。
 
 窗口程序已可用：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。
 
@@ -210,55 +226,18 @@ taskkill //PID <PID> //F
 
 ---
 
-## 5. 进度台账（计划 01 · 11 个任务）
+## 5. 已完成的计划（**索引** —— 详情一律看台账，不再在这里重复）
 
-| 任务 | 内容 | 状态 | 提交 |
-| --- | --- | --- | --- |
-| 1 | 仓库引导 + Godot 工程 + 无头测试骨架 | ✅ 完成（含 1 轮修复） | `04808e2..b2ca0f4` + `52b68ba..281fdd6` |
-| 2 | 内容注册表 + 正典内容表 | ✅ 完成 | `b2ca0f4..52b68ba` |
-| 3 | 货币 + 魔法等级与失败率 | ✅ 完成（审查 Approved with findings） | `61d4ac1` + `50fc993`（范围 `281fdd6..50fc993`） |
-| — | 交接文档 + 台账耐久副本 | ✅ | `055d9ef` |
-| 4 | 玩家与世界数据模型 | ✅ 完成（含 1 轮修复 + scoped 复审） | `2e3deb8` + `8264ef9` |
-| 5 | 确定性随机 + 月度世界演化 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `23e67cd` + `f9038ca` + `24d5d43` |
-| 6 | 角色创建流水线 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f3d8a31` + `2341540` + `61ad053` |
-| 7 | 魔咒解析器与反漏洞守卫 | ✅ 完成（含 2 轮修复 + 2 次 scoped 复审） | `f323b55` + `3499881` + `d52ebda` |
-| 8 | 叙事接口 + 状态操作 + 反刷成长 + 回合引擎 | ✅ 完成（审查 Approved with findings；3 Important 计划级，已登记 §8） | `432adc8` |
-| 9 | 状态面板格式化 + 强制自检 | ✅ 完成（审查 Approved with findings；0 Critical / 0 Important / 6 Minor，已登记 §8） | `d9135ab` |
-| 10 | 存档与读档 | ✅ 完成（审查 Approved with findings；2 Important 已两轮修复 + scoped 复审通过；残余 Minor 登记 §8） | `dbd93d2` + `09661d0` + `4729352` |
-| 11 | 主界面与运行说明 | ✅ 完成（审查 Approved with findings；2 Important 已修复 + scoped 复审通过；人工 GUI 验收待人类） | `70ad341` + `ecf523c` |
+| 计划 | 内容 | 耐久台账（每任务的提交 / 断言数 / 审查结论 / 挂账） |
+| --- | --- | --- |
+| 01 | 核心模拟地基（Tasks 1–11 + 收尾加固批次） | `docs/sdd/plan-01-core-foundation/progress.md` |
+| 02 | LLM 叙事引擎（Tasks 1–12） | `docs/sdd/plan-02-llm-narrative/progress.md` |
+| 03a | 派系与政治骨架（Tasks 1–13） | `docs/sdd/plan-03a-factions/progress.md` |
+| 03a-P | 表现层与素材接线（P1–P5 + B8）+ 素材线 | 同上（含 Phase 0 素材落位与素材合并） |
 
-逐事件台账（含每次审查的原始结论、发现的严重度、控制器补跑证据）：
-**`docs/sdd/plan-01-core-foundation/progress.md`** ← 接手前先通读。
-
-### 已完成任务的关键结论
-
-- **Task 1**：修复过「套件解析失败 → 运行器挂住」的缺陷（违反 Task 1 自身"任何情况下都要 `quit()`"的要求），已 scoped re-review 通过。遗留 minor（deferred）：`tools/test.sh` 丢弃 `--import` 的退出码；空 `SUITES` 会打印 ALL TESTS PASSED。
-- **Task 2**：7 张正典内容表 + 注册表完整性校验，review clean。遗留 1 条 Important + minors 在人类批次里。
-- **Task 3**：`Money`（值语义、负值、`to_dict`/`from_dict` 往返）+ `MagicLevel`（十级 Tier、失败率区间、六项环境修正、clamp 到 `[0.005, 0.95]`）。审查 **Spec ✅ / Approved with findings**，0 Critical；采用了两处计划修正（见第 4 节第 9 条）。
-- **Task 4**：`GameClock`（跨年进位 / `months_between`）+ `JsonUtil`（数值归一，存读档往返一致性的唯一保障）+ `PlayerState`（技能钳制 0..100、魔咒去重、面板骨架、`to_dict`/`from_dict`）+ `WorldState`（时代锚点、世界变量基线、历史/日志、registry 瞬态不入档）。审查第一轮 **Approved with findings**（0 Critical / 2 Important / 6 Minor），当轮修掉其中 1 Important（`create` 与 `from_dict` 的 `world_vars` 类型不对称）+ 1 Minor（键名拼写），并加 3 条回归断言，scoped 复审 **通过**。
-- Task 4 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-4-review.md`（含两份独立 reviewer 输出与反证）
-- **Task 5**：`RngService`（命名流、同 seed 可复现、`state_dict`/`load_state` 存档恢复且 int64 字符串化防 JSON 精度丢失）+ `WorldState.tick()`（世界变量向时代基线回归并 clamp 到 [0,1]、按地点/身份/年份筛传言、major 双闸门 + 同月去重、日志裁剪）+ `locations`/`rumors` 两张表。第一轮审查 Critical=0 / Important=4 / Minor=9；两轮修复后 scoped 复审 **通过**。
-- Task 5 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-5-review.md`（含三轮独立 reviewer 输出与反证）
-- **Task 6**：`CharacterCreation`（`choices → PlayerState` 的校验与创建、血统/资质自洽、哑炮无魔法无魔杖、随机资质不掷哑炮、学院判定、技能初始偏置）+ `skills` / 四张魔杖表。第一轮 Critical=0 / Important=3 / Minor=5；两轮修复（封堵 `aptitude_special` 注入、校验 `birthplace`、随机池排除 `special`）后 scoped 复审 **通过**。
-- Task 6 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-6-review.md`（含三轮独立 reviewer 输出与反证）
-- **Task 7**：`SpellResolver`（等级拦截、失败率 = 等级区间 + 环境 + 资质 + 难度、成功/失败旁白与副作用）+ `data/spells.json`（32 条）+ 五十五条反漏洞守卫（复制/复活/时间回溯/能量叠加/fail-closed 稀有度白名单、终身禁忌、登记与审批）。第一轮 Critical=0 / Important=2 / Minor=4；两轮修复后 scoped 复审 **通过**。
-- Task 7 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-7-review.md`（含三轮独立 reviewer 输出与反证）
-- **Task 8**：`GameMaster`/`GmResult` 接口 + `ScriptedGameMaster`（确定性关键词裁决）+ `StateOps`（唯一审计状态入口）+ `Progression`（第七十章反刷，同（技能,地点）重复收益递减）+ `TurnEngine`（一回合 = 一月；死亡不可逆、自检挂起、世界照常 `tick()`）+ `SelfCheck` 最小桩。审查 **Approved with findings**（Critical=0 / Important=3 / Minor=5）；3 条 Important 均为计划级/架构级（同回合同掷骰、叙事 RNG 未入档、GM 直改世界），已登记 §8。
-- Task 8 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-8-review.md`
-- **Task 9**：`PanelFormatter`（第六十二至六十五章文本面板：人生状态 / 魔法能力 / 社会关系 / 势力）+ 完整 `SelfCheck`（第七十二章：`snapshot` 七项 + `ooc_report` 四项 + `report`）替换 Task 8 最小桩，新增 `src/ui/` 目录。审查 **Approved with findings**（Critical=0 / Important=0 / Minor=6）。开工中裁定计划内部矛盾（`player_panel` 不输出姓名 vs 测试断言 `contains("张三")`），作最小修正新增 `【姓名】` 行并同步计划；审查批准该偏离为唯一正确且无夹带。
-- Task 9 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-9-review.md`
-- **Task 10**：`SaveCodec`（`《…完整人生存档》` 头 + SHA-256 校验和 + `payload:` 标记 + 版本/结构校验 + `full_precision` JSON）+ `SaveStore`（槽路径净化、保存/读取/列举/删除）。审查 **Approved with findings**（Critical=0 / **Important=2** / Minor=4）；两轮修复 + 两次 scoped 复审 **通过**：
-  (1) `decode` 对「校验和正确但结构畸形」的载荷现 `ok=false`（顶层类型校验 + `from_dict` 后 null 兜底）；
-  (2) 端到端测试现真能判别 §8#34（改为消费 `work` 流的「打工→打工」；反证删 `turn_engine.gd:46` → `[save]` 变红）。
-  计划内两处缺陷也已修正：`JSON.stringify` 开 `full_precision`、随机流对比块 off-by-20。
-- Task 10 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-10-review.md`（+ `task-10-rereview.md` / `task-10-rereview2.md`）
-- **Task 11**：`src/ui/main.tscn` + `src/ui/main.gd`（创建界面 + 主循环：命令输入 → 叙事/事件/面板/存档/自检按钮）+ `project.godot` 主场景 + `tools/test.sh` 冒烟路径 + `README.md` 收尾。审查 **Approved with findings**（Critical=0 / **Important=2** / Minor=5）；修复轮 + scoped 复审 **通过**：
-  (1) 创建失败错误改写到可见的 `creation_error`（原本写进隐藏的 `log_view`）；
-  (2) 创建界面新增「读取存档」按钮（原本读档入口只在隐藏的 `play_box`，重启后不可达）。
-  预检还裁定：路径统一为 `src/ui/`（计划 `ui/` vs `src/ui/` 矛盾会导致冒烟永远跳过 + 主场景指向不存在场景）、GM 与 `TurnEngine` 共享同一 `RngService`（保 §8#34）。
-- Task 11 的完整审查记录：`docs/sdd/plan-01-core-foundation/task-11-review.md`（+ `task-11-rereview.md`）
-
----
+> ⚠️ **本节有意不再列逐任务的提交哈希与历史结论**：那些在台账里是**唯一权威**，且每任务都会更新 ——
+> 两处维护必然漂移（本节的旧版本就曾把计划 02/03a 写成「未开始」）。
+> 需要「计划 01 各任务的关键结论」时，直接读 `docs/sdd/plan-01-core-foundation/progress.md`。
 
 ## 5.5 计划 03a / 03a-P 的关键结论（2026-09-20）
 
@@ -289,23 +268,12 @@ taskkill //PID <PID> //F
 
 ---
 
-## 6. 计划 01 已完成，后续怎么做
+## 6. 接下来怎么做
 
-> ✅ 计划 01（共 11 个任务）已全部完成，`bash tools/test.sh` 全绿（**当时** 13 套件 + 主场景冒烟；**现在的基线是 21 套件 / 1985 断言，见 §2**）。窗口程序可直接运行。
-> 📌 **2026-09-20 补注**：本节保留为**计划 01 的历史**（下面列的第 2–4 项已全部做完：§8 裁定批次、计划 02、以及再往后的计划 03a/03a-P）。
-> **下一步请看 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（§0 快跑模式 / §B 队列 B / §C 待裁定项）。
+**待办与下一步一律看 [`NEXT-STEPS.md`](NEXT-STEPS.md)** —— 它是唯一的「状态 + 待办」源头：
+§0 文档职责 · §0A **快跑模式** · §0B 门禁与基线数字 · §0C 每任务收尾清单 · §A 待办 · §C 待裁定项 · §D 协作约定。
 
-1. **人工 GUI 验收（必做一次）**：`./Godot_v4.7.2-stable_win64_console.exe --path .`，按计划 Step 6 的 8 项清单逐项确认
-   （创建界面 7 个下拉框 / 哑炮角色 / 练魔药收益递减 / 打工加钱 / 魔法·关系·势力面板 / 存档·读档 / 重启后创建界面直接读档 / 第 15 回合自检挂起与「确认自检」）。headless 冒烟只验证「场景与脚本能加载、UI 能构建」。
-2. **§8 的人类裁定**：哑炮失败率、`ScriptedGameMaster` 直改世界、`game_seed` int64、嵌套存档校验、测试加固批次等。
-3. **计划 02「LLM 叙事引擎」**：用 `LlmGameMaster` 实现同一个 `GameMaster` 接口，不动 `TurnEngine`/`StateOps`/`WorldState`。
-4. 继续用 **subagent-driven-development**：每任务 = 简报（brief）→ 实现（worker）→ 自跑 `bash tools/test.sh` 到绿 → **先写报告文件再返回** → 独立 reviewer 审 diff → 台账记录；子代理与主会话同模型（`deepseek/deepseek-flash`）；提交前必须绿灯；审查者只读。
-3. **子代理必须使用与主会话相同的大模型**（本机为 `deepseek/deepseek-flash`）：`pi -p --provider deepseek --model deepseek-flash ...`，不要用 harness 默认模型。
-4. **提交前必须有绿灯**：`bash tools/test.sh` 输出 + 原始文本留存到报告里。Task 3 的流程教训（实现者没跑 Step 5、没写报告，控制器事后补跑）已在台账登记为 P1 流程发现，Task 4 起未重演。
-5. 实现者的报告必须在 commit 之后**立刻**写盘：Task 1 的实现者曾在提交后超时，报告永久缺失。
-6. 审查者必须只读（`pi -p --tools read,bash`）；Critical/Important 要么当轮修掉并做 scoped 复审，要么明确登记进人类批次（Task 4 两种都出现过）。
-
----
+> 本节旧版本维护过一份「后续计划列表」（计划 02/03a/03b…），**已多次漂移**（把已完成的写成「未开始」）⇒ 删除，改为指向。
 
 ## 7. 过程状态怎么跟着源码走（重要）
 
@@ -478,9 +446,9 @@ taskkill //PID <PID> //F
 - 换机器后的自检清单：
 
 1. `git log --oneline -1` 是 `main` 顶端的最近一次提交（应含 03a Task 13 的合入记录；**以 `git log` 为准，不要照抄本文里的旧哈希**）
-2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0（**21 套件 / 1985 断言** / 失败 0）
+2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0 / 失败 0（**套件数与断言数见 `NEXT-STEPS.md` §0B**）
 3. `tools/test.sh` 会**同时校验两个 stderr 噪音计数**（`SCRIPT ERROR` == 2 且 `ERROR` == 7），不符即退出码 1——见 §2 与 §4 第 16 条
-4. `timeout 300 bash tools/b1_acceptance.sh` → 退出码 0、**151 断言 / 0 失败**（人工验收的自动通道；必须带外部 `timeout`，见 §4 第 12 条）
+4. `timeout 300 bash tools/b1_acceptance.sh` → 退出码 0、失败 0（人工验收的自动通道；必须带外部 `timeout`，见 §4 第 12 条）
 5. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
 6. 读 `docs/sdd/plan-03a-factions/progress.md` 末尾，确认与本文 §0/§8 一致；接手前先读 [`NEXT-STEPS.md`](NEXT-STEPS.md) §0（快跑模式）/§0.5（恢复指引）
 7. **干完一个任务就 `git push`**（本轮曾攒了 10 个提交才推；新会话请每任务一推）

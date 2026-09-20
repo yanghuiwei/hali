@@ -68,10 +68,11 @@
 bash tools/test.sh
 ```
 
-当前基线：**21 套件 / 1985 断言 / 失败 0**（不含故意失败的自检探针 `[probe]`）。
+当前基线（套件数与断言数的**唯一维护点**）：见 [`NEXT-STEPS.md`](NEXT-STEPS.md) §0B。
+本文件不再重复维护具体数字（避免两处漂移）。
 第 `2/4` 步还会校验 **stderr 噪音计数**：`SCRIPT ERROR` 必须恰好 **2** 条、`ERROR` 必须恰好 **7** 条，不符即判失败——
 「解析 JSON 失败 / 资源加载失败 / 类型赋值错误」这类噪音**套件内的断言抓不到**，只有这个外部计数能守（详见 HANDOFF §2/§4）。
-B1 人工验收的自动通道：`timeout 300 bash tools/b1_acceptance.sh` → **151 断言 / 0 失败**（它写 `user://`，故不进 `test.sh`）。
+B1 人工验收的自动通道：`timeout 300 bash tools/b1_acceptance.sh` → **失败 0 / 退出码 0**（断言数见 `NEXT-STEPS.md` §0B；它写 `user://`，故不进 `test.sh`）。
 
 Windows 上 `bash` 来自 Git Bash。Godot 可执行文件不入库，请放在仓库根目录；若路径不同，用 `GODOT=/path/to/godot bash tools/test.sh` 覆盖。
 
