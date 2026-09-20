@@ -83,11 +83,7 @@ func complete(request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
 		var miss := LlmProvider.LlmResponse.new()
 		miss.error = "provider 未配置"
 		return miss
-	if _http == null:
-		_http = HTTPRequest.new()
-		_http.timeout = maxf(1.0, float(request.timeout_ms) / 1000.0)
-		if _host != null:
-			_host.add_child(_http)
+	ensure_http(request.timeout_ms)
 	var started := Time.get_ticks_msec()
 	var err := _http.request(_chat_url(), _build_headers(), HTTPClient.METHOD_POST, _build_body(request))
 	if err != OK:
@@ -98,8 +94,35 @@ func complete(request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
 	var status := int(result[1])
 	var body := (result[3] as PackedByteArray).get_string_from_utf8()
 	var resp := _parse_http(status, body)
-	# 脱敏：错误串可能回显服务端 body，绝不能带出 api_key
-	if not resp.ok and not api_key.is_empty():
-		resp.error = resp.error.replace(api_key, "***")
+	# 脱敏：错误串可能回显服务端 body，绝不能带出 api_key（§8#64③）
+	if not resp.ok:
+		resp.error = mask(resp.error, api_key)
 	resp.latency_ms = Time.get_ticks_msec() - started
 	return resp
+
+# §8#63：懒建一次并复用；timeout 每次请求都重新设（旧实现只在建节点时设一次）。
+func ensure_http(timeout_ms: int) -> HTTPRequest:
+	if _http == null:
+		_http = HTTPRequest.new()
+		if _host != null:
+			_host.add_child(_http)
+	_http.timeout = maxf(1.0, float(timeout_ms) / 1000.0)
+	return _http
+
+func http_timeout_sec() -> float:
+	return _http.timeout if _http != null else 0.0
+
+# §8#63：每次「开始人生」/「读档」都会重建 provider，旧 provider 的 HTTPRequest 必须释放，
+# 否则每切换一次生命周期就泄漏一个 Node（而且它仍然挂在场景树上接收信号）。
+func dispose() -> void:
+	if _http != null:
+		if _http.get_parent() != null:
+			_http.get_parent().remove_child(_http)
+		_http.queue_free()
+		_http = null
+
+# 错误串可能回显服务端 body，绝不能带出 api_key（§8#64③ 的负向断言靠它）
+static func mask(text: String, api_key: String) -> String:
+	if api_key.is_empty():
+		return text
+	return text.replace(api_key, "***")

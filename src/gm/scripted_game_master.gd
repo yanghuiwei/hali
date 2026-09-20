@@ -55,7 +55,12 @@ func _detect_faction(world: WorldState, text: String) -> String:
 		var label := str(entry.get("label", ""))
 		if not label.is_empty() and text.contains(label):
 			return id
-		for alias in (entry.get("aliases", []) as Array):
+		# Task 9 审查 M1：内容畸形（aliases 不是数组）时 `as Array` 会**运行期报错并中止本函数**，
+		# 于是 id 字典序靠后的派系再也扫不到（静默降级为“未命中”）。这里先做类型守卫。
+		var aliases = entry.get("aliases", [])
+		if typeof(aliases) != TYPE_ARRAY:
+			continue
+		for alias in (aliases as Array):
 			if not str(alias).is_empty() and text.contains(str(alias)):
 				return id
 	return ""
@@ -89,8 +94,16 @@ func act(world: WorldState, action_text: String) -> GmResult:
 		var faction_label := str(world.registry.entry("factions", faction_id).get("label", faction_id))
 		if _contains_any(text, FACTION_LEAVE):
 			r.tags.append("faction")
-			r.deltas.append({"op": "leave_faction"})
-			r.narration = "你与%s断了关系。名字从名单上划掉，代价还看不出来。" % faction_label
+			# Task 9 审查 M3：旧实现无条件清空所属，于是「已是魔法部成员时输入『我要退出古灵阁』」
+			# 会清掉魔法部却旁白说古灵阁（旁白与效果不一致）。现在只有真的属于该派系才产出 op。
+			if world.player.faction_id == faction_id:
+				r.deltas.append({"op": "leave_faction", "faction_id": faction_id})
+				r.narration = "你与%s断了关系。名字从名单上划掉，代价还看不出来。" % faction_label
+			else:
+				var current_label := "无归属"
+				if not world.player.faction_id.is_empty():
+					current_label = str(world.registry.entry("factions", world.player.faction_id).get("label", world.player.faction_id))
+				r.narration = "你并不属于%s（你当前归属：%s）。这句话没掀起任何波澜。" % [faction_label, current_label]
 			return r
 		if _contains_any(text, FACTION_JOIN):
 			r.tags.append("faction")

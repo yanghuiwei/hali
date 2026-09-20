@@ -31,7 +31,7 @@ static func system_prompt(world: WorldState) -> String:
 	lines.append("4) 不得泄露玩家尚未通过行动获知的信息。")
 	lines.append("输出格式：{\"narration\":\"中文叙事\",\"ops\":[{\"op\":\"...\",...}],\"tags\":[\"train\"]}")
 	lines.append("可用 ops：add_money{knuts} gain_skill{skill_id,amount} learn_spell{spell_id} set_flag{key,value} set_player_flag{key,value} know_fact{fact_id,source} set_location{location_id} set_job{job} relation_delta{npc_id,trust,interest,hostility} set_magic_tier{tier} cast_spell{spell_id,conditions}")
-	lines.append("tags 白名单：train/work/social/rest/cast/idle")
+	lines.append("tags 白名单：train/work/social/rest/cast/idle/faction")
 	lines.append("内容 id 索引：%s" % JSON.stringify(content_index(world)))
 	return "\n".join(lines)
 

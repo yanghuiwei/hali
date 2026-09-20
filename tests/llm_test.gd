@@ -248,4 +248,28 @@ func run() -> int:
 	var num_content := OpenAiCompatProvider._parse_http(200, '{"choices":[{"message":{"content":123}}]}')
 	a.is_false(num_content.ok, "content 为数字同样失败")
 
+	# ---- 计划 03a（§8#63）：HTTPRequest 复用、timeout 每请求更新、dispose 不泄漏 ----
+	var host := Node.new()
+	Engine.get_main_loop().root.add_child(host)
+	var prov := OpenAiCompatProvider.new(host, "https://example.invalid/v1", "m", "k")
+	prov.ensure_http(30000)
+	a.eq(host.get_child_count(), 1, "懒建一个 HTTPRequest")
+	prov.ensure_http(60000)
+	a.eq(host.get_child_count(), 1, "第二次不重复建（不泄漏）")
+	a.near(prov.http_timeout_sec(), 60.0, 0.001, "timeout 每次请求都更新（不再只生效一次）")
+	prov.dispose()
+	await Engine.get_main_loop().process_frame
+	a.eq(host.get_child_count(), 0, "dispose 释放节点")
+
+	# ---- 计划 03a（§8#64③）：错误串脱敏的负向断言 ----
+	var masked := OpenAiCompatProvider.mask("HTTP 401（boom sk-secret end）", "sk-secret")
+	a.is_false(masked.contains("sk-secret"), "脱敏后不含 api_key")
+	a.is_true(masked.contains("***"), "脱敏后出现掩码")
+	a.eq(OpenAiCompatProvider.mask("nothing", ""), "nothing", "空 key 不替换")
+
+	# ---- 计划 03a（Task 9 审查 M2）：faction 必须在两条 GM 路径的标签白名单里 ----
+	var faction_tag := GmResponseParser.parse('{"narration":"你在部里走动","ops":[],"tags":["faction"]}')
+	a.is_true(faction_tag.ok, "含 faction tag 的响应可解析")
+	a.eq(faction_tag.tags, PackedStringArray(["faction"]), "faction tag 不再被白名单过滤")
+
 	return a.report("llm")

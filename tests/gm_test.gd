@@ -306,4 +306,56 @@ func run() -> int:
 	a.eq(sg._detect_faction(sw, "我要加入翻倒巷黑市"), "black_market", "揭示后：正式别名「翻倒巷黑市」可识别")
 	a.eq(sg._detect_faction(sw, "我要加入黑市"), "black_market", "揭示后：简称「黑市」可识别")
 
+	# ---- Task 9 审查 M1：畸形 aliases（非数组）不得中止整个套件 ----
+	var copied := {}
+	for table_name in Registry.TABLE_FILES.keys():
+		var rows := []
+		for rid in sw.registry.ids(table_name):
+			rows.append(sw.registry.entry(table_name, str(rid)).duplicate(true))
+		copied[table_name] = rows
+	for row in copied["factions"]:
+		if str(row.get("id", "")) == "black_market":
+			row["aliases"] = "黑市"        # 畸形：应为数组，这里故意给字符串
+	var bad_reg := Registry.from_tables(copied)
+	var bad_p := PlayerState.new_default()
+	bad_p.location_id = "diagon_alley"
+	var bad_w := WorldState.create("modern", bad_p, 7, bad_reg)
+	WorldFactions.ensure_state(bad_w, "black_market")["revealed"] = true
+	var bad_sg := ScriptedGameMaster.new(RngService.new(7))
+	a.eq(bad_sg._detect_faction(bad_w, "我要加入黑市"), "", "畸形 aliases 被安全跳过（不崩、也不误匹配）")
+	a.eq(bad_sg._detect_faction(bad_w, "我要加入翻倒巷黑市"), "black_market", "畸形 aliases 不影响 label 匹配")
+	# 判别性证据：`as Array` 遇非数组会**运行期报错并中止本函数**（实测不是返回 null）——
+	# 旧实现在遇到 black_market（id 字典序靠前）时直接中止，后续派系再也扫不到。
+	a.eq(bad_sg._detect_faction(bad_w, "我要支持古灵阁"), "gringotts",
+		"畸形 aliases 不得阻断后续派系的识别（旧实现必红）")
+	var bad_res := bad_sg.act(bad_w, "我要加入黑市")
+	a.eq(bad_res.deltas.size(), 0, "畸形 aliases 下产出的 deltas 为空（落 idle）")
+
+	# ---- Task 9 审查 M3：退出派系必须与旁白一致（旧行为会清错归属） ----
+	var lw := make_world()
+	WorldFactions.initialize(lw)
+	lw.player.faction_id = "ministry"
+	var lres := ScriptedGameMaster.new(RngService.new(5)).act(lw, "我要退出古灵阁")
+	a.eq(lres.deltas.size(), 0, "非成员退出某派系：不产出 op")
+	a.is_true(lres.narration.contains("并不属于"), "并如实说明并不属于该派系")
+	a.is_true(lres.narration.contains("魔法部"), "旁白指出当前归属")
+	StateOps.apply(lw, lres.deltas)
+	a.eq(lw.player.faction_id, "ministry", "原归属不被误清")
+	var ok_res := ScriptedGameMaster.new(RngService.new(5)).act(lw, "我要退出魔法部")
+	var has_leave := false
+	for d in ok_res.deltas:
+		if str(d.get("op", "")) == "leave_faction":
+			has_leave = true
+	a.is_true(has_leave, "成员退出自己的派系：产出 leave_faction")
+	StateOps.apply(lw, ok_res.deltas)
+	a.eq(lw.player.faction_id, "", "退出后无所属")
+	# StateOps 侧的第二道门（LLM 路径也一并堵住）
+	lw.player.faction_id = "ministry"
+	var lerrs := StateOps.apply(lw, [{"op": "leave_faction", "faction_id": "gringotts"}])
+	a.is_true(" | ".join(lerrs).contains("不是该派系"), "指定别的派系退出被拒并给出警告")
+	a.eq(lw.player.faction_id, "ministry", "被拒的退出不改变归属")
+	var lerrs2 := StateOps.apply(lw, [{"op": "leave_faction"}])
+	a.eq(lerrs2.size(), 0, "不带 faction_id 的退出仍兼容（清空）")
+	a.eq(lw.player.faction_id, "", "兼容路径真的清空")
+
 	return a.report("gm")

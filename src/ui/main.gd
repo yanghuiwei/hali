@@ -25,6 +25,12 @@ var button_row: HBoxContainer = null
 # B1 人工验收用：HALI_DEBUG_LOG=1 时把界面文本镜像到 stdout（默认关闭，行为完全不变）。
 var _debug_mirror: bool = false
 
+# §8#58/#62：等待期的上限（秒）。不设 HALI_TURN_TIMEOUT_SEC 时行为与改造前一致，
+# 只是多了一层「有上限的等待」——超时后一定恢复输入与按钮。
+var turn_timeout_sec: float = 180.0
+var _turn_state: Dictionary = {}
+var _llm_provider: OpenAiCompatProvider = null
+
 func _ready() -> void:
 	registry = Registry.load_default()
 	var errors := registry.validate()
@@ -35,6 +41,9 @@ func _ready() -> void:
 	_debug_mirror = DebugMirror.from_env()
 	if _debug_mirror:
 		print(DebugMirror.format("调试镜像已启用：界面文本将镜像到 stdout（user://logs/*.log）；内容表问题 %d 条" % errors.size()))
+	var env_timeout := OS.get_environment("HALI_TURN_TIMEOUT_SEC")
+	if not env_timeout.is_empty() and env_timeout.is_valid_float():
+		turn_timeout_sec = maxf(0.1, env_timeout.to_float())
 	_build_ui()
 	_show_creation()
 
@@ -227,9 +236,13 @@ func _personality_words() -> Array:
 	return words
 
 func _build_gm() -> GameMaster:
+	if _llm_provider != null:
+		_llm_provider.dispose()      # §8#63：避免每切一次生命周期泄漏一个 HTTPRequest
+		_llm_provider = null
 	var settings := LlmSettings.load_from()
 	if settings.is_configured():
-		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng), settings)
+		_llm_provider = OpenAiCompatProvider.from_settings(self, settings)
+		return LlmGameMaster.new(_llm_provider, ScriptedGameMaster.new(rng), settings)
 	_set_status(status_label.text + "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）")
 	return ScriptedGameMaster.new(rng)
 
@@ -270,7 +283,29 @@ func _on_command_submitted(text: String) -> void:
 	_set_buttons_enabled(false)
 	_append(">>> %s" % text)
 	_append("（世界正在回应…）")
-	var result: Dictionary = await engine.submit_async(text)
+	# §8#58/#62：把等待变成「有上限的等待」。GDScript 的 await 链一旦在内部抛错，调用方永远不会
+	# 被唤醒（无 try/catch），旧实现会把输入框与整排按钮永久留在禁用态。看门狗保证恢复出口一定会走到。
+	_turn_state = {"done": false, "result": {}}
+	_run_turn(text)
+	var deadline := Time.get_ticks_msec() + int(maxf(turn_timeout_sec, 0.1) * 1000.0)
+	while not bool(_turn_state.get("done", false)) and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	if not bool(_turn_state.get("done", false)):
+		_append("（本回合超过 %.0f 秒仍未返回，已恢复输入。请求可能仍在后台；若反复发生，请检查 LLM 配置或改用本地替身。）" % turn_timeout_sec)
+	else:
+		_render_turn_result(_turn_state["result"])
+	# 恢复出口只有这一处：无论上面走的是超时还是正常分支，输入与按钮都会回来。
+	_set_status(PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn)
+	_set_buttons_enabled(true)
+	_set_input_enabled(true)
+	command_edit.text = ""
+
+# 单独的协程：它的失败（运行期错误使协程中止）不会阻止 _on_command_submitted 的看门狗循环（§8#62）
+func _run_turn(text: String) -> void:
+	_turn_state["result"] = await engine.submit_async(text)
+	_turn_state["done"] = true
+
+func _render_turn_result(result: Dictionary) -> void:
 	_append(str(result["narration"]))
 	var events: Array = result["events"]
 	if not events.is_empty():
@@ -280,10 +315,6 @@ func _on_command_submitted(text: String) -> void:
 	if str(result["audit"]) != "":
 		_append(str(result["audit"]))
 		_append("（自检完毕。等待你的指令——输入“确认自检”继续。）")
-	_set_status(PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn)
-	_set_buttons_enabled(true)
-	_set_input_enabled(true)
-	command_edit.text = ""
 
 # 等待 LLM 期间禁用整排按钮，防止“读档”等操作在 in-flight 回合中替换 world/engine。
 func _set_buttons_enabled(enabled: bool) -> void:

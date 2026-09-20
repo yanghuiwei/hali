@@ -88,7 +88,12 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
 						world.flags["illegal_affiliation"] = join_id
 						errors.append("警告：加入非法组织（%s），法律后果留待后续结算" % join_id)
 			"leave_faction":
-				world.player.faction_id = ""
+				# Task 9 审查 M3 的第二道门（LLM 路径也走这里）：携带 faction_id 时只在真的是成员时才清空。
+				var leave_id := str(raw.get("faction_id", ""))
+				if not leave_id.is_empty() and leave_id != world.player.faction_id:
+					errors.append("你不是该派系成员: %s" % leave_id)
+				else:
+					world.player.faction_id = ""
 			"faction_standing_delta":
 				var standing_id := str(raw.get("faction_id", ""))
 				if not world.registry.has("factions", standing_id):

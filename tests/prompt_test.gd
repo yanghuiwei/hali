@@ -84,4 +84,7 @@ func run() -> int:
 	a.is_true(str(fdigest3.get("known_factions", "")).contains("魔法部(0.75,立场+30,所属)"),
 		"所属与立场随派系一起标注（格局未演化时 power = base_power）")
 
+	# ---- 计划 03a（Task 9 审查 M2）：提示词的 tags 白名单必须含 faction（与解析器白名单一致） ----
+	a.is_true(PromptBuilder.system_prompt(fw).contains("faction"), "提示词 tags 白名单含 faction")
+
 	return a.report("prompt")

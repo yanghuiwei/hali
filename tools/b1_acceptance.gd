@@ -32,6 +32,23 @@ class SlowProvider extends LlmProvider:
 		await Engine.get_main_loop().create_timer(delay_ms / 1000.0).timeout
 		return inner.complete(request)
 
+# 永不返回的 provider：验证等待期看门狗（§8#58）
+class HangProvider extends LlmProvider:
+	func complete(_request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
+		await Engine.get_main_loop().create_timer(3600.0).timeout
+		return LlmProvider.LlmResponse.new()
+
+# await 链内部抛运行期错误的 provider：验证提交失败也能恢复（§8#62）
+# GDScript 无 try/catch：nil 访问会中止本协程，且**调用方永远不会被唤醒**（旧实现的死锁根源）。
+class BrokenProvider extends LlmProvider:
+	func complete(_request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
+		await Engine.get_main_loop().create_timer(0.05).timeout
+		var broken: Node = null
+		var parent_node: Node = broken.get_parent()
+		if parent_node != null:
+			return LlmProvider.LlmResponse.new()
+		return LlmProvider.LlmResponse.new()
+
 func check(cond: bool, msg: String) -> void:
 	_checks += 1
 	if cond:
@@ -109,6 +126,21 @@ func _submit(node: Node, text: String) -> String:
 	await node.call("_on_command_submitted", text)
 	return _log_of(node).substr(before)
 
+# 有上限的提交：不 await 协程本身（若被测代码没有看门狗，await 会永久挂住、破坏实验就无法产出“红”）。
+# 改为观测可观测信号：提交开始 → 输入框置灰；恢复 → 输入框可编辑。
+func _submit_bounded(node: Node, text: String, timeout_sec: float) -> Dictionary:
+	var before := _log_len(node)
+	node.call("_on_command_submitted", text)
+	var greyed := not (node.get("command_edit") as LineEdit).editable
+	var deadline := Time.get_ticks_msec() + int(timeout_sec * 1000.0)
+	while Time.get_ticks_msec() < deadline and not (node.get("command_edit") as LineEdit).editable:
+		await process_frame
+	return {
+		"greyed": greyed,
+		"recovered": (node.get("command_edit") as LineEdit).editable,
+		"block": _log_of(node).substr(before),
+	}
+
 func _backup_user_files() -> void:
 	if FileAccess.file_exists(SETTINGS_PATH):
 		_settings_existed = true
@@ -168,6 +200,7 @@ func _initialize() -> void:
 	var restarted: Node = await _part7_restart_and_load()
 	await _part8_turn15_audit(restarted)
 	await _part9_waiting_gate(restarted)
+	await _part11_watchdog(restarted)
 
 	_part10_summary()
 	_restore_user_files()
@@ -370,7 +403,43 @@ func _part9_waiting_gate(node: Node) -> void:
 	check((node.get("command_edit") as LineEdit).editable, "结束后输入框恢复")
 	check(_buttons_all(node, false), "结束后整排按钮恢复")
 	check(_log_of(node).contains("（慢速模拟）你在练习魔药学。"), "慢 provider 的叙事真的进了日志")
-	note("观察：本条不覆盖「等待期真的永不恢复」的情形（§8#58/#62 仍开放）")
+	note("观察：本条不覆盖「等待期真的永不恢复」的情形（§8#58/#62）——下一条 Part 11 专门验")
+
+func _part11_watchdog(node: Node) -> void:
+	part("计划 03a 顺手项 · 等待期看门狗（§8#58/#62）")
+	# (a) 永不返回的 provider：有上限的等待
+	node.set("turn_timeout_sec", 0.4)
+	node.set("engine", TurnEngine.new(_world(node),
+		LlmGameMaster.new(HangProvider.new(), ScriptedGameMaster.new(RngService.new(11)), null),
+		node.get("rng")))
+	var a_res := await _submit_bounded(node, "我要练习魔药学", 5.0)
+	check(bool(a_res["greyed"]), "永不返回时：等待期已置灰（提交真的开始了）")
+	check(bool(a_res["recovered"]), "永不返回时：协程仍能返回（看门狗生效，不会永久禁用）")
+	check(str(a_res["block"]).contains("已恢复输入"), "永不返回时：给出恢复提示")
+	check(_buttons_all(node, false), "永不返回时：整排按钮恢复")
+
+	# (b) await 链内部抛运行期错误：同样必须恢复
+	node.set("engine", TurnEngine.new(_world(node),
+		LlmGameMaster.new(BrokenProvider.new(), ScriptedGameMaster.new(RngService.new(12)), null),
+		node.get("rng")))
+	var b_res := await _submit_bounded(node, "我要练习魔药学", 5.0)
+	check(bool(b_res["greyed"]), "await 链抛错时：等待期已置灰")
+	check(bool(b_res["recovered"]), "await 链抛错时：提交仍能返回（§8#62 不再需要重启）")
+	check((node.get("command_edit") as LineEdit).editable, "await 链抛错时：输入框恢复")
+	check(_buttons_all(node, false), "await 链抛错时：整排按钮恢复")
+
+	# (c) provider 卫生（§8#63）：切一次生命周期不得净增 HTTPRequest 节点
+	var host := Node.new()
+	root.add_child(host)
+	var old_prov := OpenAiCompatProvider.new(host, "https://example.invalid/v1", "m", "k")
+	old_prov.ensure_http(30000)
+	var before_nodes := host.get_child_count()
+	old_prov.dispose()
+	var new_prov := OpenAiCompatProvider.new(host, "https://example.invalid/v1", "m", "k")
+	new_prov.ensure_http(30000)
+	await process_frame
+	check(host.get_child_count() <= before_nodes, "切换 provider 不净增 HTTPRequest（dispose 生效）")
+	new_prov.dispose()
 
 func _part10_summary() -> void:
 	part("汇总")
