@@ -333,6 +333,9 @@ taskkill //PID <PID> //F
 
 66. ~~**🔴（B2，Important）`llm_settings.json` 的 `temperature` / `max_tokens` / `timeout_ms` 三个字段完全不生效**~~ **已修（`3240af6`，2026-09-20）**：`LlmGameMaster` 新增可选 `settings` 参 + `_apply_settings()`，在 `act()` 的 `build` 与 `build_repair` 两处 request 上都覆盖这三个字段；`main.gd:_build_gm()` 同步传参。`[llm]` 65→79（新增「settings 真的进请求」「重试请求同样进」「不传 settings 时沿用类默认值」等断言）；反证：把 `_apply_settings` 变空操作 → 5 条红；真机回归 → 不再降级（叙事 346 字、4 条 ops 落地）。原问题描述：`grep -rn "settings\.\(temperature\|max_tokens\|timeout_ms\)" src/` 零命中——`PromptBuilder.build()` 造出的 `LlmRequest` 带的是 `llm_provider.gd:7-9` 的**类默认值**（0.8 / 1024 / 30000），而 `OpenAiCompatProvider.complete()` 用的是 `request.max_tokens`/`request.timeout_ms`。两处类默认值恰与 `LlmSettings` 默认值相同，所以单测与计划 01/02 都发现不了。**后果**：遇到「始终思考」型模型时思维链吃光 1024 预算 → `content` 恒空 → 每回合降级 `ScriptedGameMaster`，**玩家改配置也救不回来**。
 67. ~~**（B2，Minor）LLM 错误串诊断性不足 + 思考模型默认值**~~ **已修（`3240af6`）**：`_parse_http` 现对 `status == 0` 报「请求未到达服务端（HTTP 状态 0：连接失败/超时中断）」（原为 `HTTP 0（）`），对空 `content` 带上 `finish_reason`，并在 `length` 时提示「思考型模型需提高 max_tokens」；`[llm]` 新增 6 条断言（反证：退回含糊版 → 3 条红）。**残留（未改代码，已在 README/B2 报告写明）**：`LlmSettings` 的 `max_tokens` 默认值仍为 1024 —— 思考型模型需使用者显式配 `max_tokens ≥ 8192`、`timeout_ms ≥ 120000`（实测：1024 → `finish_reason=length`/`content` 空；8192 → `stop`/738 字；`timeout=30s` 处临界）。
+68. **（复审新增，Minor，范围外）`LlmSettings.provider` 无读取端**：`provider` 字段（`llm_settings.gd:6`）全仓无 `grep settings\.provider` 命中，仅作 JSON 往返保留——当前只有 `openai_compat` 一种实现。等计划 03 做 provider 路由/本地模型时顺手处理（要么消费它，要么从配置里删掉）。
+
+> 📝 **修复的复审记录**（`fix/plan-02-llm-settings`，独立只读 reviewer）：`docs/sdd/plan-02-llm-narrative/fix-settings-review.md`（含原文）。结论 **通过 / 0 Critical / 0 Important**；其 3 条 Minor 已分别处置（M-a → 本条 #68 登记；M-b `content:null` 经实证为真缺陷 → 已修 `c9a0c95`；M-c 断言强度 → 已采纳）。
 
 ---
 

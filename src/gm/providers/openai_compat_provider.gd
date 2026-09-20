@@ -65,7 +65,10 @@ static func _parse_http(status: int, body: String) -> LlmProvider.LlmResponse:
 		r.error = "响应缺少 message"
 		return r
 	var finish := str((first as Dictionary).get("finish_reason", ""))
-	r.text = str((message as Dictionary).get("content", ""))
+	var raw_content = (message as Dictionary).get("content", "")
+	# content 必须是字符串：JSON `null` / 数字 / 对象经 `str()` 会变成**非空串**（如 `<null>`），
+	# 会让 ok 误判为 true，把垃圾文本送去解析并白烧一次重试（复审 M-b 实证）。
+	r.text = raw_content if typeof(raw_content) == TYPE_STRING else ""
 	r.ok = not r.text.is_empty()
 	if not r.ok:
 		# §8#67：区分「模型没吐内容」与「预算被思维链/截断耗尽」——否则两者错误串一样，无法定位

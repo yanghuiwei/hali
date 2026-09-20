@@ -156,7 +156,9 @@ func run() -> int:
 	a.eq(sp.requests[1].timeout_ms, 55555, "重试请求同样带上 settings.timeout_ms")
 	a.is_true(sres.narration.contains("修复轮"))
 	# 向后兼容：不传 settings 时仍用 `LlmRequest` 类默认值（不得崩）
-	a.eq(provider.requests[0].max_tokens, 1024, "未传 settings 时沿用类默认值")
+	a.eq(provider.requests[0].max_tokens, 1024, "未传 settings 时沿用类默认值 max_tokens")
+	a.eq(provider.requests[0].temperature, 0.8, "未传 settings 时沿用类默认值 temperature")
+	a.eq(provider.requests[0].timeout_ms, 30000, "未传 settings 时沿用类默认值 timeout_ms")
 
 	# ---- TurnEngine.submit_async 端到端（mock GM，不联网） ----
 	var ereg := Registry.load_default()
@@ -224,5 +226,11 @@ func run() -> int:
 	a.is_true(truncated.error.contains("max_tokens"), "并提示思考型模型需提高 max_tokens")
 	var empty_other := OpenAiCompatProvider._parse_http(200, '{"choices":[{"finish_reason":"stop","message":{"content":""}}]}')
 	a.is_true(empty_other.error.contains("stop"), "非 length 的 finish_reason 也如实报出")
+	# 复审 M-b：content 非字符串（JSON null / 数字）不得被 str() 变成非空垃圾文本
+	var null_content := OpenAiCompatProvider._parse_http(200, '{"choices":[{"finish_reason":"stop","message":{"content":null}}]}')
+	a.is_false(null_content.ok, "content=null 不得被判为成功")
+	a.eq(null_content.text, "", "content=null 时 text 为空（不再是 <null>）")
+	var num_content := OpenAiCompatProvider._parse_http(200, '{"choices":[{"message":{"content":123}}]}')
+	a.is_false(num_content.ok, "content 为数字同样失败")
 
 	return a.report("llm")
