@@ -260,6 +260,16 @@ func run() -> int:
 	for fid in e1.registry.ids("factions"):
 		a.near(WorldFactions.power_of(e1, str(fid)), WorldFactions.power_of(e2, str(fid)), 0.0000001,
 			"%s 实力演化可复现（同 seed）" % str(fid))
+	# 逐字段对比：整个 factions 字典（power / control / revealed / stance_to_player / last_change_turn / notes）
+	var compared_fields := 0
+	var expected_fields := 0
+	for fid in e1.registry.ids("factions"):
+		var st1: Dictionary = WorldFactions.state_of(e1, str(fid))
+		compared_fields += 1 + (st1.get("control", {}) as Dictionary).size() + 4
+		expected_fields += 5 + (e1.registry.entry("factions", str(fid)).get("institutions", []) as Array).size()
+	a.eq(compared_fields, expected_fields, "确定性对比逐字段覆盖 5 + 机构数 个字段/派系（共 %d）" % expected_fields)
+	a.eq(JSON.stringify(e1.factions), JSON.stringify(e2.factions),
+		"同 seed 双世界的 factions 字典整体逐字段一致（%d 字段）" % compared_fields)
 	a.eq(str(e1.flags.get(WorldFactions.GOVERNMENT_FLAG, "")), WorldFactions.government_type(e1),
 		"演化后政体缓存与本回合推导一致")
 	a.is_true(e1.registry.has("governments", str(e1.flags[WorldFactions.GOVERNMENT_FLAG])),
