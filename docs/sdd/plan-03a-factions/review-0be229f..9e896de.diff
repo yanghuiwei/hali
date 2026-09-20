@@ -1,0 +1,299 @@
+# Review package: 0be229f..9e896de
+
+## Commits
+9e896de feat(ui): 势力面板重写——机构控制权 + 已知势力（修 §8#7）（计划 03a Task 7）
+
+## Files changed
+ src/ui/panel_formatter.gd | 77 ++++++++++++++++++++++++++++++++++++++---------
+ tests/factions_test.gd    | 12 ++++++++
+ tests/panel_test.gd       | 67 +++++++++++++++++++++++++++++++++++++++++
+ tests/save_test.gd        | 10 ++++++
+ tests/world_tick_test.gd  | 10 ++++++
+ 5 files changed, 161 insertions(+), 15 deletions(-)
+
+## Diff
+diff --git a/src/ui/panel_formatter.gd b/src/ui/panel_formatter.gd
+index bd52ff3..c490c4c 100644
+--- a/src/ui/panel_formatter.gd
++++ b/src/ui/panel_formatter.gd
+@@ -91,46 +91,93 @@ static func relation_panel(world: WorldState) -> String:
+ 	ids.sort()
+ 	for npc_id in ids:
+ 		var rel: Dictionary = p.relations[npc_id]
+ 		lines.append("【关键人物】姓名：%s 身份：%s 血统：%s" % [
+ 			str(rel.get("name", npc_id)), str(rel.get("identity", UNKNOWN)), str(rel.get("bloodline", UNKNOWN))])
+ 		lines.append("关系：%s 信任：%d 利益：%d 敌意：%d" % [
+ 			str(rel.get("relation", UNKNOWN)), int(rel.get("trust", 0)), int(rel.get("interest", 0)), int(rel.get("hostility", 0))])
+ 		lines.append("最近动态：%s" % str(rel.get("recent", "无")))
+ 	return "\n".join(lines)
+ 
+-# 第六十五章
++# 第六十五章（计划 03a 重写）：机构级指标（法律执行/傲罗/威森加摩/国际/校方）来自**派系的机构控制权**，
++# 标量级指标（财政/稳定度/腐败度/纯血影响/麻瓜关系）来自 `world_vars`。
++# 这修掉 HANDOFF §8#7：「7 个标签被硬映射到 4 个 world_vars」（机构本来就该是实体属性，第十二章权力四角 + 第二十六章魔法部体系）。
+ static func power_panel(world: WorldState) -> String:
+ 	var vars := world.world_vars
++	var ic := WorldFactions.institution_control(world)
++	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
++	if gov_id.is_empty():
++		gov_id = WorldFactions.government_type(world)
+ 	var lines: Array[String] = []
+ 	lines.append("《哈利·波特·魔法纪元·势力面板》")
+-	lines.append("【魔法部状态】部长：%s 法律执行：%.2f 傲罗：%.2f 威森加摩：%.2f 财政：%.2f 国际：%.2f 稳定度：%.2f 腐败度：%.2f 纯血影响：%.2f 麻瓜关系：%.2f" % [
+-		str(vars.get("minister", "待定")),
+-		float(vars.get("war_pressure", 0.0)), float(vars.get("ministry_stability", 0.0)),
+-		float(vars.get("corruption", 0.0)), float(vars.get("economy_index", 0.0)),
+-		float(vars.get("muggle_relations", 0.0)), float(vars.get("ministry_stability", 0.0)),
+-		float(vars.get("corruption", 0.0)), float(vars.get("pureblood_influence", 0.0)),
+-		float(vars.get("muggle_relations", 0.0))])
+-	lines.append("【霍格沃茨】学院：%s 院长：待定 学业：%s 学院杯：待定 魁地奇：待定 禁林状况：%s 秘密：未知 派系：未知 师生关系：%d人" % [
++	lines.append("【魔法部状态】政体：%s 部长：%s 法律执行：%.2f（%s） 傲罗：%.2f（%s） 威森加摩：%.2f（%s） 财政：%.2f 国际：%.2f（%s） 稳定度：%.2f 腐败度：%.2f 纯血影响：%.2f 麻瓜关系：%.2f" % [
++		_label(world, "governments", gov_id),
++		_institution_holder_label(world, ic, "law_enforcement"),
++		_institution_value(ic, "law_enforcement"), _institution_holder_label(world, ic, "law_enforcement"),
++		_institution_value(ic, "auror_office"), _institution_holder_label(world, ic, "auror_office"),
++		_institution_value(ic, "wizengamot"), _institution_holder_label(world, ic, "wizengamot"),
++		float(vars.get("economy_index", 0.0)),
++		_institution_value(ic, "international"), _institution_holder_label(world, ic, "international"),
++		float(vars.get("ministry_stability", 0.0)), float(vars.get("corruption", 0.0)),
++		float(vars.get("pureblood_influence", 0.0)), float(vars.get("muggle_relations", 0.0))])
++	lines.append("【霍格沃茨】学院：%s 校方控制：%.2f（%s） 学业：%s 学院杯：仅 NPC 系统（计划 05） 魁地奇：仅 NPC 系统（计划 05） 禁林状况：%s 秘密：未调查 师生关系：%d人" % [
+ 		_label(world, "houses", world.player.house_id),
++		_institution_value(ic, "hogwarts"), _institution_holder_label(world, ic, "hogwarts"),
+ 		_top_skill(world.player, world),
+ 		str(world.flags.get("forbidden_forest_status", "常态")),
+ 		world.player.relations.size()])
+ 	var family: Dictionary = world.player.flags.get("family", {})
+-	lines.append("【家族】姓氏：%s 祖宅：%s 财富：%s 成员：%d 婚姻：%s 盟友：%d 敌人：%d 声望：%d 家族秘密：%s 继承人：%s 魔杖传承：%s" % [
+-		str(family.get("surname", "无家族")), str(family.get("seat", "无")),
+-		world.player.money().formatted(), int(family.get("members", 0)),
+-		str(family.get("marriage", "未婚")), int(family.get("allies", 0)), int(family.get("enemies", 0)),
+-		world.player.reputation, str(family.get("secret", "未知")),
+-		str(family.get("heir", "未定")), str(family.get("wand_legacy", "无"))])
++	if family.is_empty():
++		lines.append("【家族】姓氏：无家族（家族制度属计划 03c） 祖宅：无 财富：%s 成员：0 婚姻：未婚 盟友：0 敌人：0 声望：%d 家族秘密：无 继承人：未定 魔杖传承：无" % [
++			world.player.money().formatted(), world.player.reputation])
++	else:
++		lines.append("【家族】姓氏：%s 祖宅：%s 财富：%s 成员：%d 婚姻：%s 盟友：%d 敌人：%d 声望：%d 家族秘密：%s 继承人：%s 魔杖传承：%s" % [
++			str(family.get("surname", "无家族")), str(family.get("seat", "无")),
++			world.player.money().formatted(), int(family.get("members", 0)),
++			str(family.get("marriage", "未婚")), int(family.get("allies", 0)), int(family.get("enemies", 0)),
++			world.player.reputation, str(family.get("secret", "未知")),
++			str(family.get("heir", "未定")), str(family.get("wand_legacy", "无"))])
++	lines.append(_known_factions_line(world))
+ 	return "\n".join(lines)
+ 
++static func _institution_value(ic: Dictionary, institution_id: String) -> float:
++	return float((ic[institution_id] as Dictionary).get("value", 0.0))
++
++# 信息保护（第四十三/五十七章）：控制权值（世界事实）照常显示，
++# 但**未揭示**的 holder 一律显示为「未知势力」——`institution_control()` 不知道揭示状态，
++# 而未公开的派系（如食死徒对执法司/威森加摩、凤凰社）演化后完全可能成为某机构的 holder。
++static func _institution_holder_label(world: WorldState, ic: Dictionary, institution_id: String) -> String:
++	var holder := str((ic[institution_id] as Dictionary).get("holder", ""))
++	if holder.is_empty():
++		return "无人"
++	if not WorldFactions.visible_faction_ids(world).has(holder):
++		return "未知势力"
++	return _label(world, "factions", holder)
++
++# 【已知势力】：只列 revealed 派系，按实力降序；标出玩家所属与立场。
++static func _known_factions_line(world: WorldState) -> String:
++	var visible := WorldFactions.visible_faction_ids(world)
++	if visible.is_empty():
++		return "【已知势力】暂无已知势力（魔法世界对你是沉默的）"
++	var rows: Array = []
++	for fid in visible:
++		var id := str(fid)
++		rows.append({"id": id, "label": _label(world, "factions", id),
++			"power": WorldFactions.power_of(world, id), "standing": world.player.standing_of(id),
++			"member": world.player.faction_id == id})
++	rows.sort_custom(func(x, y): return float(x["power"]) > float(y["power"]))
++	var parts: Array[String] = []
++	for row in rows:
++		parts.append("%s：%.2f 立场 %+d%s" % [str(row["label"]), float(row["power"]),
++			int(row["standing"]), "[所属]" if bool(row["member"]) else ""])
++	return "【已知势力】" + " ".join(parts)
++
+ static func status_line(world: WorldState) -> String:
+ 	return "%s ｜ %s ｜ %s ｜ %s" % [
+ 		world.clock.formatted(),
+ 		_label(world, "locations", world.player.location_id),
+ 		world.player.name_text,
+ 		MagicLevel.label_of(world.player.magic_tier),
+ 	]
+ 
+ static func events_block(events: Array) -> String:
+ 	if events.is_empty():
+diff --git a/tests/factions_test.gd b/tests/factions_test.gd
+index 95ee9e5..210efc1 100644
+--- a/tests/factions_test.gd
++++ b/tests/factions_test.gd
+@@ -753,11 +753,23 @@ func run() -> int:
+ 			reveal_facts += 1
+ 	a.eq(reveal_facts, 1, "E2E：第一次 tick 写一条揭示记录")
+ 	e2e.tick()
+ 	var reveal_facts_after := 0
+ 	for fact in e2e.history:
+ 		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
+ 			reveal_facts_after += 1
+ 	a.eq(reveal_facts_after, 1, "E2E：第二次 tick 走幂等路径，不重复写揭示记录")
+ 	a.is_true(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E：已揭示后仍可见")
+ 
++	# ---- 计划 03a（Task 6 复审收口 Minor）：reveal() 的畸形世界守卫必须「不留部分写入」 ----
++	# 与既有三条 is_false 断言的区别：那三条在删掉守卫后仍会绿（GDScript 中止时返回类型默认值 false），
++	# 本条断言的是**状态**：无守卫时 ensure_state 会先建好条目、reveal 再置 revealed=true，
++	# 直到 add_fact 读 clock.turn 才中止 → 部分写入留在 world.factions 里 ⇒ 本条必红。
++	var half_world := make_world("modern")
++	half_world.clock = null
++	half_world.factions.clear()
++	a.is_false(WorldFactions.reveal(half_world, "death_eaters", "破釜酒吧传闻"),
++		"畸形世界（clock=null）不得返回 true")
++	a.is_true(WorldFactions.state_of(half_world, "death_eaters").is_empty(),
++		"畸形世界不得留下部分写入（删掉 reveal 的早退 → 该断言必红）")
++
+ 	return a.report("factions")
+diff --git a/tests/panel_test.gd b/tests/panel_test.gd
+index 199b38f..9ef5f32 100644
+--- a/tests/panel_test.gd
++++ b/tests/panel_test.gd
+@@ -94,11 +94,78 @@ func run() -> int:
+ 	a.is_true(PanelFormatter.player_panel(w_empty).contains("未知"), "空政治倾向回退为未知")
+ 	# 非哑炮但无魔杖 → 未拥有
+ 	var no_wand := PlayerState.new_default()
+ 	no_wand.name_text = "王五"
+ 	no_wand.magic_tier = MagicLevel.Tier.FIRST_YEAR
+ 	no_wand.wand = {}
+ 	var w_nw := WorldState.create("modern", no_wand, 1, reg)
+ 	a.is_true(PanelFormatter.magic_panel(w_nw).contains("未拥有"), "无魔杖的巫师显示未拥有")
+ 	a.is_true(PanelFormatter.magic_panel(w_nw).contains("未成形"), "无守护神显示未成形")
+ 
++	# ---- 计划 03a：势力面板（第六十五章 + 【已知势力】） ----
++	WorldFactions.initialize(w)
++	power = PanelFormatter.power_panel(w)   # 复用 :74 已声明的 power（同函数内不得重复声明）
++	a.is_true(power.contains("《哈利·波特·魔法纪元·势力面板》"), "势力面板标题")
++	a.is_true(power.contains("政体：魔法部官僚制"), "政体来自内容表")
++	a.is_true(power.contains("法律执行：0.75（魔法部）"), "机构指标来自控制权 + holder 标签")
++	a.is_true(power.contains("傲罗：0.60（傲罗指挥部）"), "傲罗控制权来自傲罗指挥部")
++	a.is_true(power.contains("威森加摩：0.58（威森加摩）"), "威森加摩控制权来自威森加摩派系")
++	a.is_true(power.contains("国际："), "含国际指标")
++	a.is_true(power.contains("财政："), "含财政指标")
++	a.is_true(power.contains("稳定度："), "含稳定度指标")
++	a.is_true(power.contains("腐败度："), "含腐败度指标")
++	a.is_true(power.contains("纯血影响："), "含纯血影响指标")
++	a.is_true(power.contains("麻瓜关系："), "含麻瓜关系指标")
++	a.is_false(power.contains("待定"), "不再有占位「待定」")
++	a.is_true(power.contains("【已知势力】"), "含【已知势力】行")
++	a.is_true(power.contains("【已知势力】魔法部：0.75"), "已知势力按实力降序（魔法部居首）")
++	a.is_true(power.contains("食死徒") == false, "未揭示的派系不得出现（第四十三/五十七章）")
++
++	WorldFactions.ensure_state(w, "death_eaters")["revealed"] = true
++	w.player.faction_id = "ministry"
++	w.player.add_standing("ministry", 30)
++	var power2 := PanelFormatter.power_panel(w)
++	a.is_true(power2.contains("食死徒"), "揭示后出现在面板里")
++	a.is_true(power2.contains("立场 +30"), "显示玩家立场")
++	a.is_true(power2.contains("[所属]"), "标出玩家所属派系")
++
++	# ---- §8#7 修好的证据：机构指标取自派系控制权（world_vars 里根本没有这些键） ----
++	a.is_false(w.world_vars.has("auror_office"), "world_vars 不含机构键（下面那条不可能是从标量读的）")
++	WorldFactions.ensure_state(w, "auror_office")["control"]["auror_office"] = 0.90
++	a.is_true(PanelFormatter.power_panel(w).contains("傲罗：0.90（傲罗指挥部）"),
++		"傲罗指标随派系控制权变化（若仍读 world_vars 会是 0.00）")
++	WorldFactions.ensure_state(w, "auror_office")["control"]["auror_office"] = 0.60
++	# 注意：神圣二十八族也声明了 wizengamot（0.55），所以必须设到 0.91 才会成为 holder
++	# （设 0.31 时 holder 仍是神圣二十八族——面板显示 0.55（神圣二十八族），本断言当年因此红过）
++	WorldFactions.ensure_state(w, "wizengamot")["control"]["wizengamot"] = 0.91
++	a.is_true(PanelFormatter.power_panel(w).contains("威森加摩：0.91（威森加摩）"), "威森加摩指标随控制权变化")
++	WorldFactions.ensure_state(w, "wizengamot")["control"]["wizengamot"] = 0.58
++
++	# ---- 信息保护：未揭示的派系不得通过机构 holder 泄漏 ----
++	var w_hidden := make_world()
++	WorldFactions.initialize(w_hidden)
++	WorldFactions.ensure_state(w_hidden, "death_eaters")["control"]["law_enforcement"] = 0.99
++	var hidden_panel := PanelFormatter.power_panel(w_hidden)
++	a.is_true(hidden_panel.contains("法律执行：0.99（未知势力）"),
++		"未揭示的 holder 显示为「未知势力」（控制权值照常显示）")
++	a.is_false(hidden_panel.contains("食死徒"), "未揭示派系的 label 一个字都不得出现")
++	WorldFactions.reveal(w_hidden, "death_eaters", "破釜酒吧传闻")
++	a.is_true(PanelFormatter.power_panel(w_hidden).contains("法律执行：0.99（食死徒）"),
++		"揭示后同一 holder 显示真名")
++
++	# ---- 政体优先读 world.flags 缓存（evolve 每回合刷新），无缓存才现算 ----
++	var w_flag := make_world()
++	WorldFactions.initialize(w_flag)
++	a.is_false(w_flag.flags.has(WorldFactions.GOVERNMENT_FLAG), "新建世界尚未缓存政体")
++	a.is_true(PanelFormatter.power_panel(w_flag).contains("政体：魔法部官僚制"), "无缓存时现算政体")
++	w_flag.flags[WorldFactions.GOVERNMENT_FLAG] = "pureblood_oligarchy"
++	a.is_true(PanelFormatter.power_panel(w_flag).contains("政体：纯血寡头制"),
++		"有缓存时以 flags 为准（若忽略缓存而现算，这里会是官僚制 → 必红）")
++
++	# ---- 全部派系都未揭示时，已知势力行为占位文案 ----
++	var w_dark := make_world()
++	WorldFactions.initialize(w_dark)
++	for fid in w_dark.registry.ids("factions"):
++		WorldFactions.ensure_state(w_dark, str(fid))["revealed"] = false
++	a.is_true(PanelFormatter.power_panel(w_dark).contains("【已知势力】暂无已知势力"), "全隐藏时显示占位文案")
++
+ 	return a.report("panel")
+diff --git a/tests/save_test.gd b/tests/save_test.gd
+index cbf6981..4b167f8 100644
+--- a/tests/save_test.gd
++++ b/tests/save_test.gd
+@@ -179,11 +179,21 @@ func run() -> int:
+ 	w.flags["government_type"] = "ministry_bureaucracy"
+ 	var f_text := SaveCodec.encode(w)
+ 	var f_back := SaveCodec.decode(f_text, reg)
+ 	a.is_true(bool(f_back["ok"]), "含 standing 的存档可解码")
+ 	var f_world: WorldState = f_back["world"]
+ 	a.eq(f_world.player.faction_id, "ministry", "faction_id 往返一致")
+ 	a.eq(f_world.player.standing_of("ministry"), 42, "standing 往返一致")
+ 	a.eq(f_world.flags.get("government_type", ""), "ministry_bureaucracy", "政体缓存往返一致")
+ 	a.eq(f_world.factions.size(), 17, "factions 往返一致（17 条）")
+ 
++	# ---- 计划 03a（Task 6 复审收口 Minor）：揭示状态必须随存档往返 ----
++	a.is_true(WorldFactions.reveal(w, "death_eaters", "破釜酒吧传闻"), "揭示一个非公开派系")
++	a.is_true(WorldFactions.visible_faction_ids(w).has("death_eaters"), "揭示后立即可见")
++	var r_back := SaveCodec.decode(SaveCodec.encode(w), reg)
++	a.is_true(bool(r_back["ok"]), "含揭示状态的存档可解码")
++	var r_world: WorldState = r_back["world"]
++	a.is_true(WorldFactions.visible_faction_ids(r_world).has("death_eaters"),
++		"读档后仍可见（revealed 随存档往返）")
++	a.eq(r_world.factions.size(), 17, "读档后派系数仍 17")
++
+ 	return a.report("save")
+diff --git a/tests/world_tick_test.gd b/tests/world_tick_test.gd
+index 5a819db..07a7a15 100644
+--- a/tests/world_tick_test.gd
++++ b/tests/world_tick_test.gd
+@@ -30,20 +30,30 @@ func run() -> int:
+ 	for i in 24:
+ 		var events := w.tick()
+ 		a.eq(w.clock.turn, 13 + i, "tick 每次推进一个回合")
+ 		if events.size() > 0:
+ 			a.has_key(events[0], "kind", "事件含 kind")
+ 			a.has_key(events[0], "text", "事件含 text")
+ 
+ 	a.eq(w.clock.turn > 0, true, "回合推进")
+ 	a.is_true(w.log.size() > 0, "世界产生日志（第四十三章：传闻与新闻）")
+ 
++	# ---- 计划 03a（Task 6 复审收口 Minor）：每个传闻事件必须带非空 rumor_id ----
++	# Task 6 的 apply_rumor_reveals() 依赖它把传闻映射到 reveals_faction；先前无任何护栏。
++	var rumor_log_events := 0
++	for e in w.log:
++		if str(e.get("kind", "")) == "rumor":
++			rumor_log_events += 1
++			a.is_true(not str(e.get("rumor_id", "")).is_empty(),
++				"传闻事件带 rumor_id（第 %d 回合）" % int(e.get("turn", 0)))
++	a.is_true(rumor_log_events >= 1, "至少有一条传闻事件可核对 rumor_id（实际 %d）" % rumor_log_events)
++
+ 	# 世界变量必须始终落在 [0,1]（第四十九章：阶层与权力流动，不能失控）
+ 	for key in w.world_vars.keys():
+ 		var v := float(w.world_vars[key])
+ 		a.between(v, 0.0, 1.0, "世界变量 %s 在界内" % key)
+ 
+ 	# 第六十八章防过度热闹：major 事件必须稀少，且相邻 major 至少相隔 12 个月
+ 	var w2 := WorldState.create("second_wizarding_war", p, 38, reg)
+ 	w2.player.sim_style_id = "epic_wizard_war_typo"   # 未知风格必须被安全处理
+ 	w2.player.location_id = "ministry_of_magic"       # 让 major 候选真的进入候选集，避免断言空转
+ 	var major_count := 0

@@ -1,0 +1,628 @@
+# Review package: b257c54..17ff8e5
+
+## Commits
+17ff8e5 fix(gm): 降级原因透出 + is_async 鸭子类型 + 测试可判别性（§8#61/#64/#65）（计划 03a Task 11）
+
+## Files changed
+ ...6-09-19-hp-magic-era-02-llm-narrative-design.md |  5 ++-
+ src/core/turn_engine.gd                            |  7 +++-
+ src/gm/game_master.gd                              | 10 +++++
+ src/gm/llm_game_master.gd                          | 10 +++++
+ src/gm/prompt_builder.gd                           |  4 +-
+ src/rules/factions.gd                              |  8 ++++
+ src/rules/state_ops.gd                             |  5 +++
+ src/ui/main.gd                                     |  4 +-
+ src/ui/panel_formatter.gd                          |  4 +-
+ tests/factions_test.gd                             | 26 +++++++++++++
+ tests/gm_test.gd                                   | 44 ++++++++++++++++++++++
+ tests/llm_test.gd                                  | 44 +++++++++++++++++++++-
+ tests/prompt_test.gd                               | 11 ++++++
+ tools/b1_acceptance.gd                             |  9 +++--
+ 14 files changed, 173 insertions(+), 18 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md b/docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md
+index 9b234ec..07d913e 100644
+--- a/docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md
++++ b/docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md
+@@ -63,21 +63,21 @@ UI (main.gd)  --await-->  TurnEngine.submit_async()
+ | --- | --- |
+ | `src/gm/llm_provider.gd` | `LlmProvider` 接口 + 内嵌 `LlmRequest` / `LlmResponse` |
+ | `src/gm/providers/openai_compat_provider.gd` | OpenAI 兼容 chat completions；`HTTPRequest` 胶水 + 可单测的 `_build_body`/`_build_headers`/`_parse_http` |
+ | `src/gm/providers/mock_provider.gd` | 队列式 fixtures，离线跑全套 |
+ | `src/gm/prompt_builder.gd` | 系统提示（身份/正典/规则/schema/内容索引）+ 状态摘要 + 定界后的玩家输入 |
+ | `src/gm/gm_response_parser.gd` | 解析/校验 LLM 文本；任何异常都返回结构化错误，不崩 |
+ | `src/gm/op_guard.gd` | ops 净化/钳制（§8） |
+ | `src/gm/llm_game_master.gd` | `LlmGameMaster extends GameMaster`：build → provider → parse → guard → `GmResult`；重试 + 降级 |
+ | `src/gm/llm_settings.gd` | 读写 `user://llm_settings.json`；env `HALI_LLM_API_KEY` 覆盖；不入库 |
+ | 修改 `src/gm/game_master.gd` | `act` 文档改为「可协程」；`GmResult` 不变 |
+-| 修改 `src/core/turn_engine.gd` | 抽 `_pre_submit`/`_post_submit`；新增 `submit_async()`；`submit()` 保留；修 §8#33 |
++| 修改 `src/core/turn_engine.gd` | 抽 `_pre_submit`/`_resolve`；新增 `submit_async()`；`submit()` 保留；修 §8#33 |
+ | 修改 `src/rules/state_ops.gd` | 新增 `train_skill` op（`Progression.gain` 记账 + 加技能，反刷收进 StateOps）；`world_gm_rng` 按调用序号加盐（§8#33） |
+ | 修改 `src/ui/main.gd` | `await engine.submit_async`；等待期禁用输入 + 提示；无配置则用 Scripted |
+ | 新增 `tests/prompt_test.gd`、`tests/llm_test.gd` | 见 §12 |
+ | 修改 `tests/run_tests.gd` | 支持 async 套件（`await suite.run()`），保持「任何情况都 `quit()`」 |
+ 
+ ## 6. 接口契约
+ 
+ ### 6.1 GameMaster（异步兼容）
+ 
+ ```gdscript
+@@ -85,20 +85,21 @@ class_name GameMaster
+ extends RefCounted
+ 
+ class GmResult:
+ 	var narration: String = ""
+ 	var deltas: Array = []
+ 	var tags: PackedStringArray = PackedStringArray()
+ 	var warnings: PackedStringArray = PackedStringArray()   # 计划 02 新增：OpGuard 的钳制/拒绝警告
+ 	var audit_required: bool = false
+ 
+ # 实现可以是同步函数，也可以是含 await 的协程；调用方统一写 `await gm.act(...)`。
++# 协程实现必须覆写 is_async() 返回 true（TurnEngine.submit() 用鸭子类型判定能否走同步路径）。
+ func act(_world: WorldState, _action_text: String) -> GmResult:
+ 	var r := GmResult.new()
+ 	r.narration = "（尚未接入叙事引擎）"
+ 	return r
+ ```
+ 
+ - `ScriptedGameMaster.act` 保持同步（不含 `await`）。对非协程返回值使用 `await` 在 Godot 4 中直接拿到值，故调用方统一 `await` 即可。
+ - `LlmGameMaster.act` 含 `await`，是协程。
+ 
+ ### 6.2 LlmProvider
+@@ -149,21 +150,21 @@ var requests: Array = []            # 记录收到的 LlmRequest（断言用）
+ ### 6.3 TurnEngine
+ 
+ ```gdscript
+ # 同步：仅供 ScriptedGameMaster / 既有测试；若 gm 是 LlmGameMaster 会 push_error 并返回 blocked。
+ func submit(action_text: String) -> Dictionary
+ 
+ # 异步：正式路径，UI 使用。
+ func submit_async(action_text: String) -> Dictionary
+ ```
+ 
+-两者共用：`_pre_submit()`（死亡/自检挂起守卫，返回是否放行）与 `_post_submit(gm_result)`（`StateOps.apply` → `world.tick()` → `world.rng_state = rng.state_dict()` → 第 15 回合自检 → 组装返回字典）。返回字典键与计划 01 一致：`narration/deltas_applied/op_errors/events/audit/blocked`。
++两者共用：`_pre_submit()`（死亡/自检挂起守卫，返回是否放行）与 `_resolve(out, gm_result)`（命名以 `src/core/turn_engine.gd` 实现为准——本 spec 原写 `_post_submit`，读 spec 会找不到符号，见 `HANDOFF §8#65②`）（`StateOps.apply` → `world.tick()` → `world.rng_state = rng.state_dict()` → 第 15 回合自检 → 组装返回字典）。返回字典键与计划 01 一致：`narration/deltas_applied/op_errors/events/audit/blocked`。
+ 
+ ### 6.4 LLM 响应 JSON schema
+ 
+ ```json
+ {
+   "narration": "中文叙事（必填、非空、≤ 4000 字符）",
+   "ops": [ {"op": "gain_skill", "skill_id": "potions", "amount": 2} ],
+   "tags": ["train"]
+ }
+ ```
+diff --git a/src/core/turn_engine.gd b/src/core/turn_engine.gd
+index ba4d6ae..0c93a12 100644
+--- a/src/core/turn_engine.gd
++++ b/src/core/turn_engine.gd
+@@ -51,23 +51,26 @@ func _resolve(out: Dictionary, result: GameMaster.GmResult) -> Dictionary:
+ 		out["audit"] = SelfCheck.report(world)
+ 		world.flags["awaiting_audit_ack"] = true
+ 
+ 	return out
+ 
+ # 同步：仅供 ScriptedGameMaster / 既有测试。
+ func submit(action_text: String) -> Dictionary:
+ 	var out := _blank_result()
+ 	if not _pre_submit(out):
+ 		return out
+-	if gm is LlmGameMaster:
+-		push_error("submit() 不能驱动 LlmGameMaster；请用 submit_async()")
++	# §8#65③：用鸭子类型判定（is_async()）而不是 `gm is LlmGameMaster`——后者只认一个具体类，
++	# 换任何「协程 act」的实现都会把协程对象送进 _resolve 而崩；且拒绝时原来 narration 为空，UI 白屏。
++	if gm.is_async():
++		push_error("submit() 不能驱动协程 GM；请用 submit_async()")
+ 		out["blocked"] = true
++		out["narration"] = "本模块需要异步回合（请走 submit_async 路径）；本回合未结算。"
+ 		return out
+ 	return _resolve(out, gm.act(world, action_text))
+ 
+ # 异步：正式路径。
+ func submit_async(action_text: String) -> Dictionary:
+ 	var out := _blank_result()
+ 	if not _pre_submit(out):
+ 		return out
+ 	var result = await gm.act(world, action_text)
+ 	return _resolve(out, result)
+diff --git a/src/gm/game_master.gd b/src/gm/game_master.gd
+index 13ee788..65a4fe8 100644
+--- a/src/gm/game_master.gd
++++ b/src/gm/game_master.gd
+@@ -3,14 +3,24 @@ extends RefCounted
+ 
+ class GmResult:
+ 	var narration: String = ""
+ 	var deltas: Array = []
+ 	var tags: PackedStringArray = PackedStringArray()
+ 	var warnings: PackedStringArray = PackedStringArray()
+ 	var audit_required: bool = false
+ 
+ # 接口：计划 01 用 ScriptedGameMaster，计划 02 用 LlmGameMaster 替换。
+ # 实现者只描述发生了什么（叙事 + 状态增量），不直接改世界。
++#
++# §8#65①（计划 03a Task 11）：`act` **可以是同步函数，也可以是含 await 的协程**；
++# 调用方统一写 `await gm.act(...)`（同步实现的 await 会立即拿到返回值）。
++# 协程实现**必须**覆写 `is_async()` 返回 true，否则同步入口 `TurnEngine.submit()` 会把
++# 协程对象当成 GmResult 送进结算（旧实现用 `gm is LlmGameMaster` 具体类型判断，换任何
++# 其它协程 GM 就会崩）。
+ func act(_world: WorldState, _action_text: String) -> GmResult:
+ 	var r := GmResult.new()
+ 	r.narration = "（尚未接入叙事引擎）"
+ 	return r
++
++# 默认同步。协程实现（如 LlmGameMaster）覆写为 true。
++func is_async() -> bool:
++	return false
+diff --git a/src/gm/llm_game_master.gd b/src/gm/llm_game_master.gd
+index 76c287b..22f4fb2 100644
+--- a/src/gm/llm_game_master.gd
++++ b/src/gm/llm_game_master.gd
+@@ -50,19 +50,29 @@ func act(world: WorldState, action_text: String) -> GmResult:
+ 	if response == null or not response.ok or parsed == null or not parsed.ok:
+ 		return _fallback(world, action_text, reason)
+ 	var guard := OpGuard.sanitize_detailed(world, parsed.ops)
+ 	var r := GmResult.new()
+ 	r.narration = parsed.narration
+ 	r.deltas = guard.ops
+ 	r.tags = parsed.tags
+ 	r.warnings = guard.warnings
+ 	return r
+ 
++# §8#65③：声明自己是协程实现，供 TurnEngine 做鸭子类型判定（不再依赖具体类型）。
++func is_async() -> bool:
++	return true
++
++# §8#61：降级时**必须**把原因透出给调用方。原实现只把它写进 `last_error`（全仓只有声明与赋值、
++# 没有读取者），玩家与调用方只能看到一句笼统的「暂不可用」，无法区分「网络抖动」与「模型不吐 JSON」。
++# 现在两条分支都往 `warnings` 追加一条——`TurnEngine` 会把 warnings 并进 `op_errors`，UI 会打印。
++# 有 fallback 时原因**不进叙事**（叙事仍由本地替身产出 + 一句降级说明），只走 warnings。
+ func _fallback(world: WorldState, action_text: String, reason: String) -> GmResult:
+ 	last_error = reason
+ 	if fallback == null:
+ 		var r := GmResult.new()
+ 		r.narration = "%s（原因：%s）" % [FALLBACK_NOTE, reason]
++		r.warnings.append("LLM 降级：%s" % reason)
+ 		return r
+ 	var r2 := fallback.act(world, action_text)
+ 	r2.narration = "%s %s" % [r2.narration, FALLBACK_NOTE]
++	r2.warnings.append("LLM 降级：%s" % reason)
+ 	return r2
+diff --git a/src/gm/prompt_builder.gd b/src/gm/prompt_builder.gd
+index e0e6dad..ed86a6a 100644
+--- a/src/gm/prompt_builder.gd
++++ b/src/gm/prompt_builder.gd
+@@ -63,23 +63,21 @@ static func state_digest(world: WorldState) -> Dictionary:
+ 		max_log = 0
+ 	if world.log.size() > 800:
+ 		max_history = 2
+ 	if world.log.size() > 1600:
+ 		max_history = 0
+ 	var log_tail: Array = world.log.slice(maxi(0, world.log.size() - max_log))
+ 	var history_tail: Array = world.history.slice(maxi(0, world.history.size() - max_history))
+ 	var location := world.current_location()
+ 	# 计划 03a Task 8：政治格局两行。**只给已揭示（revealed）的派系**——未揭示的绝不进提示词（第四十三/五十七章）。
+ 	# 注：`state_digest()` 返回 Dictionary（计划 02 spec §6.5 的键集合契约），故两行以两个字符串键承载。
+-	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
+-	if gov_id.is_empty():
+-		gov_id = WorldFactions.government_type(world)
++	var gov_id := WorldFactions.government_id(world)
+ 	var faction_parts: Array[String] = []
+ 	for fid in WorldFactions.visible_faction_ids(world):
+ 		var id := str(fid)
+ 		faction_parts.append("%s(%.2f,立场%+d%s)" % [
+ 			str(world.registry.entry("factions", id).get("label", id)),
+ 			WorldFactions.power_of(world, id),
+ 			world.player.standing_of(id),
+ 			",所属" if world.player.faction_id == id else ""])
+ 	var known_line := "已知势力：无" if faction_parts.is_empty() else "已知势力：%s" % " ".join(faction_parts)
+ 	return JsonUtil.normalize({
+diff --git a/src/rules/factions.gd b/src/rules/factions.gd
+index 62f7a6e..3b1858b 100644
+--- a/src/rules/factions.gd
++++ b/src/rules/factions.gd
+@@ -444,20 +444,28 @@ static func apply_rumor_reveals(world: WorldState, events: Array) -> void:
+ 		if rumor_id.is_empty():
+ 			continue
+ 		var entry := world.registry.entry("rumors", rumor_id)
+ 		var target := str(entry.get("reveals_faction", ""))
+ 		if target.is_empty():
+ 			continue
+ 		reveal(world, target, "传闻：%s" % str((ev as Dictionary).get("category", "街谈巷议")))
+ 
+ # ---------- 政体推导（第十一章 + 第十二章） ----------
+ 
++# 计划 03a Task 11（Task 8 审查 M5）：政体 id 的**唯一取法**——缓存优先、无缓存（空串）现算。
++# 面板与提示词原本各抄一份这 3 行（DRY 破损，改一处容易漏另一处）。
++static func government_id(world: WorldState) -> String:
++	var cached := str(world.flags.get(GOVERNMENT_FLAG, ""))
++	if not cached.is_empty():
++		return cached
++	return government_type(world)
++
+ static func government_type(world: WorldState) -> String:
+ 	# 1) 凤凰社抵抗：战争压力高 + 抵抗组织强于魔法部（第十一章第 4 条）
+ 	if float(world.world_vars.get("war_pressure", 0.0)) >= 0.6 \
+ 			and power_of(world, RESISTANCE_ID) > power_of(world, MINISTRY_ID):
+ 		return "order_resistance"
+ 	# 2) 食死徒独裁：黑暗势力掌握执法与司法（第十一章第 3 条）
+ 	# 缺失键按 0 计（Task 2 审查 Minor 1）：旧实现回退到「全局归并持有值」，会把「非黑暗派系控制执法司」
+ 	# 算成黑暗势力的控制权，与 institution_control() 的「未声明=不参与」语义矛盾。
+ 	var dark_sum := 0.0
+ 	var dark_count := 0
+diff --git a/src/rules/state_ops.gd b/src/rules/state_ops.gd
+index d05fa10..a5b156b 100644
+--- a/src/rules/state_ops.gd
++++ b/src/rules/state_ops.gd
+@@ -91,20 +91,25 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
+ 				# Task 9 审查 M3 的第二道门（LLM 路径也走这里）：携带 faction_id 时只在真的是成员时才清空。
+ 				var leave_id := str(raw.get("faction_id", ""))
+ 				if not leave_id.is_empty() and leave_id != world.player.faction_id:
+ 					errors.append("你不是该派系成员: %s" % leave_id)
+ 				else:
+ 					world.player.faction_id = ""
+ 			"faction_standing_delta":
+ 				var standing_id := str(raw.get("faction_id", ""))
+ 				if not world.registry.has("factions", standing_id):
+ 					errors.append("未知派系: %s" % standing_id)
++				# Task 9 审查 M8：与 join_faction 同门——未揭示的派系玩家根本不知道其存在，
++				# 不该被"支持/反对"（第四十三/五十七章）。normal 路径的识别层已限定 visible，
++				# 但 LLM/OpGuard 路径只有提示词层保护，故在这里补第二道门。
++				elif not WorldFactions.visible_faction_ids(world).has(standing_id):
++					errors.append("该派系尚未揭示，无法表态: %s" % standing_id)
+ 				else:
+ 					var raw_delta = raw.get("delta", 0)
+ 					var delta := int(raw_delta) if (typeof(raw_delta) == TYPE_INT or typeof(raw_delta) == TYPE_FLOAT) else 0
+ 					world.player.add_standing(standing_id, delta)
+ 					var fstate := WorldFactions.ensure_state(world, standing_id)
+ 					if not fstate.is_empty():
+ 						fstate["stance_to_player"] = clampi(int(fstate.get("stance_to_player", 0)) + delta / 2, -100, 100)
+ 			"set_magic_tier":
+ 				world.player.magic_tier = clampi(int(raw.get("tier", world.player.magic_tier)), 0, MagicLevel.LABELS.size() - 1)
+ 			"cast_spell":
+diff --git a/src/ui/main.gd b/src/ui/main.gd
+index 48b3711..c3d5977 100644
+--- a/src/ui/main.gd
++++ b/src/ui/main.gd
+@@ -21,21 +21,20 @@ var age_spin: SpinBox = null
+ var personality_edit: LineEdit = null
+ var creation_error: Label = null
+ var button_row: HBoxContainer = null
+ 
+ # B1 人工验收用：HALI_DEBUG_LOG=1 时把界面文本镜像到 stdout（默认关闭，行为完全不变）。
+ var _debug_mirror: bool = false
+ 
+ # §8#58/#62：等待期的上限（秒）。不设 HALI_TURN_TIMEOUT_SEC 时行为与改造前一致，
+ # 只是多了一层「有上限的等待」——超时后一定恢复输入与按钮。
+ var turn_timeout_sec: float = 180.0
+-var _turn_state: Dictionary = {}
+ var _llm_provider: OpenAiCompatProvider = null
+ 
+ func _ready() -> void:
+ 	registry = Registry.load_default()
+ 	var errors := registry.validate()
+ 	errors.append_array(WorldFactions.validate_content(registry))
+ 	for e in errors:
+ 		push_warning("内容表问题：%s" % e)
+ 	print("main scene ready, godot=", Engine.get_version_info().string)
+ 	_debug_mirror = DebugMirror.from_env()
+@@ -288,23 +287,22 @@ func _on_command_submitted(text: String) -> void:
+ 		return
+ 	_set_input_enabled(false)
+ 	_set_buttons_enabled(false)
+ 	_append(">>> %s" % text)
+ 	_append("（世界正在回应…）")
+ 	# §8#58/#62：把等待变成「有上限的等待」。GDScript 的 await 链一旦在内部抛错，调用方永远不会
+ 	# 被唤醒（无 try/catch），旧实现会把输入框与整排按钮永久留在禁用态。看门狗保证恢复出口一定会走到。
+ 	# ⚠️ 用**本轮私有的**字典（不是共享成员）：超时后旧协程可能迟到恢复，若共用成员字典，
+ 	# 它会把 done=true 写到**新一轮**的字典上 → 要么渲染上一回合的叙事（错位），要么渲染空字典
+ 	# 触发 result["narration"] 运行期错误 → 恢复两行被跳过 → **输入永久禁用（§8#62 回归）**。
+-	# Task 10 审查 Important 1（plan-mandated）的收口。
++	# Task 10 审查 Important 1（plan-mandated）的收口；Task 10 复审 P2-2：不再保留只写的成员镜像。
+ 	var round_state := {"done": false, "result": {}}
+-	_turn_state = round_state          # 仅作调试镜像，判定一律用 round_state
+ 	_run_turn(text, round_state)
+ 	var deadline := Time.get_ticks_msec() + int(maxf(turn_timeout_sec, 0.1) * 1000.0)
+ 	while not bool(round_state.get("done", false)) and Time.get_ticks_msec() < deadline:
+ 		await get_tree().process_frame
+ 	# 恢复出口**先于**渲染与状态行：GDScript 无 try/catch，渲染层任何运行期错误都会吞掉后面的语句（§8#62）
+ 	_set_buttons_enabled(true)
+ 	_set_input_enabled(true)
+ 	command_edit.text = ""
+ 	if not bool(round_state.get("done", false)):
+ 		_append("（本回合超过 %.0f 秒仍未返回，已恢复输入。请求可能仍在后台；若反复发生，请检查 LLM 配置或改用本地替身。）" % turn_timeout_sec)
+diff --git a/src/ui/panel_formatter.gd b/src/ui/panel_formatter.gd
+index dd77f11..968bbeb 100644
+--- a/src/ui/panel_formatter.gd
++++ b/src/ui/panel_formatter.gd
+@@ -97,23 +97,21 @@ static func relation_panel(world: WorldState) -> String:
+ 			str(rel.get("relation", UNKNOWN)), int(rel.get("trust", 0)), int(rel.get("interest", 0)), int(rel.get("hostility", 0))])
+ 		lines.append("最近动态：%s" % str(rel.get("recent", "无")))
+ 	return "\n".join(lines)
+ 
+ # 第六十五章（计划 03a 重写）：机构级指标（法律执行/傲罗/威森加摩/国际/校方）来自**派系的机构控制权**，
+ # 标量级指标（财政/稳定度/腐败度/纯血影响/麻瓜关系）来自 `world_vars`。
+ # 这修掉 HANDOFF §8#7：「7 个标签被硬映射到 4 个 world_vars」（机构本来就该是实体属性，第十二章权力四角 + 第二十六章魔法部体系）。
+ static func power_panel(world: WorldState) -> String:
+ 	var vars := world.world_vars
+ 	var ic := WorldFactions.institution_control(world)
+-	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
+-	if gov_id.is_empty():
+-		gov_id = WorldFactions.government_type(world)
++	var gov_id := WorldFactions.government_id(world)
+ 	var lines: Array[String] = []
+ 	lines.append("《哈利·波特·魔法纪元·势力面板》")
+ 	lines.append("【魔法部状态】政体：%s 部长：%s 法律执行：%.2f（%s） 傲罗：%.2f（%s） 威森加摩：%.2f（%s） 财政：%.2f 国际：%.2f（%s） 稳定度：%.2f 腐败度：%.2f 纯血影响：%.2f 麻瓜关系：%.2f" % [
+ 		_label(world, "governments", gov_id),
+ 		_institution_holder_label(world, ic, "law_enforcement"),
+ 		_institution_value(ic, "law_enforcement"), _institution_holder_label(world, ic, "law_enforcement"),
+ 		_institution_value(ic, "auror_office"), _institution_holder_label(world, ic, "auror_office"),
+ 		_institution_value(ic, "wizengamot"), _institution_holder_label(world, ic, "wizengamot"),
+ 		float(vars.get("economy_index", 0.0)),
+ 		_institution_value(ic, "international"), _institution_holder_label(world, ic, "international"),
+diff --git a/tests/factions_test.gd b/tests/factions_test.gd
+index 210efc1..af79e9a 100644
+--- a/tests/factions_test.gd
++++ b/tests/factions_test.gd
+@@ -765,11 +765,37 @@ func run() -> int:
+ 	# 本条断言的是**状态**：无守卫时 ensure_state 会先建好条目、reveal 再置 revealed=true，
+ 	# 直到 add_fact 读 clock.turn 才中止 → 部分写入留在 world.factions 里 ⇒ 本条必红。
+ 	var half_world := make_world("modern")
+ 	half_world.clock = null
+ 	half_world.factions.clear()
+ 	a.is_false(WorldFactions.reveal(half_world, "death_eaters", "破釜酒吧传闻"),
+ 		"畸形世界（clock=null）不得返回 true")
+ 	a.is_true(WorldFactions.state_of(half_world, "death_eaters").is_empty(),
+ 		"畸形世界不得留下部分写入（删掉 reveal 的早退 → 该断言必红）")
+ 
++	# ---- 计划 03a Task 11 · Task 8 审查 M5：government_id 统一取法（缓存优先、空缓存现算）----
++	var gid_w := make_world("modern")
++	WorldFactions.initialize(gid_w)
++	gid_w.flags.erase(WorldFactions.GOVERNMENT_FLAG)
++	var computed := WorldFactions.government_type(gid_w)
++	a.eq(WorldFactions.government_id(gid_w), computed, "无缓存时现算（等于 government_type）")
++	gid_w.flags[WorldFactions.GOVERNMENT_FLAG] = "pureblood_oligarchy"
++	a.eq(WorldFactions.government_id(gid_w), "pureblood_oligarchy", "有缓存时优先用缓存")
++	a.is_true(gid_w.registry.has("governments", WorldFactions.government_id(gid_w)), "缓存值来自内容表")
++	gid_w.flags[WorldFactions.GOVERNMENT_FLAG] = ""
++	a.eq(WorldFactions.government_id(gid_w), computed, "空字符串缓存视为无缓存")
++
++	# ---- 计划 03a Task 11 · Task 9 审查 M8：未揭示派系不得被支持/反对（join 已有这道门）----
++	var sv_w := make_world("modern")
++	WorldFactions.initialize(sv_w)
++	a.is_false(WorldFactions.visible_faction_ids(sv_w).has("death_eaters"), "夹具前置：食死徒未揭示")
++	var sv_errs := StateOps.apply(sv_w, [{"op": "faction_standing_delta", "faction_id": "death_eaters", "delta": 5}])
++	a.is_true(" | ".join(sv_errs).contains("未揭示"), "未揭示派系的立场调整被拒")
++	a.eq(sv_w.player.standing_of("death_eaters"), 0, "被拒的调整不写玩家立场")
++	a.eq(int(WorldFactions.state_of(sv_w, "death_eaters").get("stance_to_player", 0)), 0, "被拒的调整不改派系对玩家的态度")
++	WorldFactions.ensure_state(sv_w, "death_eaters")["revealed"] = true
++	var sv_errs2 := StateOps.apply(sv_w, [{"op": "faction_standing_delta", "faction_id": "death_eaters", "delta": 5}])
++	a.eq(sv_errs2.size(), 0, "已揭示派系可正常支持/反对")
++	a.eq(sv_w.player.standing_of("death_eaters"), 5, "已揭示时立场真的写入")
++	a.eq(int(WorldFactions.state_of(sv_w, "death_eaters").get("stance_to_player", 0)), 2, "已揭示时派系态度反向变化")
++
+ 	return a.report("factions")
+diff --git a/tests/gm_test.gd b/tests/gm_test.gd
+index 00f21ca..b3a9dd5 100644
+--- a/tests/gm_test.gd
++++ b/tests/gm_test.gd
+@@ -351,11 +351,55 @@ func run() -> int:
+ 	a.eq(lw.player.faction_id, "", "退出后无所属")
+ 	# StateOps 侧的第二道门（LLM 路径也一并堵住）
+ 	lw.player.faction_id = "ministry"
+ 	var lerrs := StateOps.apply(lw, [{"op": "leave_faction", "faction_id": "gringotts"}])
+ 	a.is_true(" | ".join(lerrs).contains("不是该派系"), "指定别的派系退出被拒并给出警告")
+ 	a.eq(lw.player.faction_id, "ministry", "被拒的退出不改变归属")
+ 	var lerrs2 := StateOps.apply(lw, [{"op": "leave_faction"}])
+ 	a.eq(lerrs2.size(), 0, "不带 faction_id 的退出仍兼容（清空）")
+ 	a.eq(lw.player.faction_id, "", "兼容路径真的清空")
+ 
++	# ---- 计划 03a Task 11 · §8#65③：鸭子类型判定 + blocked 非空文案 ----
++	a.is_false(ScriptedGameMaster.new(RngService.new(1)).is_async(), "离线替身声明为同步")
++	a.is_true(LlmGameMaster.new(null, null, null).is_async(), "LLM 主模块声明为协程")
++	var sync_world := make_world()
++	WorldFactions.initialize(sync_world)
++	var async_engine := TurnEngine.new(sync_world, LlmGameMaster.new(null, null, null), RngService.new(1))
++	var blocked_out: Dictionary = async_engine.submit("我要去上课")
++	a.is_true(bool(blocked_out["blocked"]), "同步 submit 拒绝协程 GM")
++	a.is_true(not str(blocked_out["narration"]).is_empty(), "拒绝时给出非空提示（UI 不会白屏）")
++	a.is_true(str(blocked_out["narration"]).contains("异步"), "提示说明要走异步路径")
++	a.eq(sync_world.clock.turn, 0, "被拒的提交不推进回合")
++
++	# ---- 计划 03a Task 11 · Task 9 审查 M4：命中派系名但四关键词都不中 → 不得抢走普通分支 ----
++	var fallback_w := make_world()
++	WorldFactions.initialize(fallback_w)
++	var plain := ScriptedGameMaster.new(RngService.new(7)).act(fallback_w, "我去魔法部打听消息")
++	a.is_true(plain.tags.has("social"), "「去魔法部打听消息」仍走 social 分支（派系名不抢分支）")
++	var faction_ops := 0
++	for d in plain.deltas:
++		var op_name := str(d.get("op", ""))
++		if op_name == "join_faction" or op_name == "leave_faction" or op_name == "faction_standing_delta":
++			faction_ops += 1
++	a.eq(faction_ops, 0, "回退路径不产出任何派系 op")
++
++	# ---- 计划 03a Task 11 · Task 9 审查 M5：旁白 label 来自 registry（不是硬编码）----
++	var base_reg := Registry.load_default()
++	var tables := {}
++	for table_name in Registry.TABLE_FILES.keys():
++		var rows: Array = []
++		for row_id in base_reg.ids(table_name):
++			rows.append((base_reg.entry(table_name, str(row_id)) as Dictionary).duplicate(true))
++		tables[table_name] = rows
++	for row in (tables["factions"] as Array):
++		if str((row as Dictionary).get("id", "")) == "ministry":
++			(row as Dictionary)["label"] = "奥术部"
++	var renamed_reg := Registry.from_tables(tables)
++	a.eq(str(renamed_reg.entry("factions", "ministry").get("label", "")), "奥术部", "临时 registry 改名生效（夹具自检）")
++	var renamed_w := WorldState.create("modern", PlayerState.new_default(), 7, renamed_reg)
++	WorldFactions.initialize(renamed_w)
++	a.eq(WorldFactions.government_id(renamed_w), WorldFactions.government_type(renamed_w), "改名 registry 下 government_id 可用（前置）")
++	var renamed_res := ScriptedGameMaster.new(RngService.new(9)).act(renamed_w, "我要加入奥术部")
++	a.is_true(renamed_res.narration.contains("奥术部"), "旁白使用 registry 的 label（说明不是硬编码）")
++	a.is_false(renamed_res.narration.contains("魔法部"), "旁白不得出现旧 label")
++
+ 	return a.report("gm")
+diff --git a/tests/llm_test.gd b/tests/llm_test.gd
+index c0a0889..a499c00 100644
+--- a/tests/llm_test.gd
++++ b/tests/llm_test.gd
+@@ -141,21 +141,28 @@ func run() -> int:
+ 	# 全部失败 → 降级 Scripted
+ 	var bad := MockLlmProvider.new()
+ 	bad.queue = ["x", "y"]
+ 	bad.errors = ["net", "net"]
+ 	var gm2 := LlmGameMaster.new(bad, ScriptedGameMaster.new(RngService.new(3)))
+ 	var res2: GameMaster.GmResult = await gm2.act(lw, "我要去对角巷打工赚钱")
+ 	a.is_true(res2.narration.contains("本地规则结算"), "降级提示出现")
+ 	# 无 provider → 降级
+ 	var gm3 := LlmGameMaster.new(null, ScriptedGameMaster.new(RngService.new(3)))
+ 	var res3: GameMaster.GmResult = await gm3.act(lw, "我要去上课")
+-	a.is_true(res3.narration.length() > 0, "无 provider 也有叙事")
++	# §8#64②：原断言 `narration.length() > 0` 在 fallback != null 时准恒真（无法判别降级文案是否还在）
++	a.is_true(res3.narration.contains("本地规则结算"), "无 provider 时明确告知用本地规则结算")
++	# 注意：有 fallback 时原因**不进叙事**（叙事由本地替身产出 + 一句降级说明），而是走 warnings → UI 的 op_errors
++	# （§8#61 的既定修法；只有 fallback == null 的分支才把原因拼进叙事）。
++	var res3_warned := ""
++	for w in res3.warnings:
++		res3_warned += str(w) + " | "
++	a.is_true(res3_warned.contains("provider 未配置"), "有 fallback 时降级原因走 warnings 透出")
+ 
+ 	# ---- §8#66：settings 的 temperature/max_tokens/timeout 必须真的进入请求 ----
+ 	var cfg := LlmSettings.new()
+ 	cfg.temperature = 0.42
+ 	cfg.max_tokens = 4321
+ 	cfg.timeout_ms = 55555
+ 	var sp := MockLlmProvider.new()
+ 	sp.queue = [
+ 		"不是 JSON",
+ 		'{"narration":"修复轮之后再试一次。","ops":[],"tags":[]}',
+@@ -265,11 +272,46 @@ func run() -> int:
+ 	var masked := OpenAiCompatProvider.mask("HTTP 401（boom sk-secret end）", "sk-secret")
+ 	a.is_false(masked.contains("sk-secret"), "脱敏后不含 api_key")
+ 	a.is_true(masked.contains("***"), "脱敏后出现掩码")
+ 	a.eq(OpenAiCompatProvider.mask("nothing", ""), "nothing", "空 key 不替换")
+ 
+ 	# ---- 计划 03a（Task 9 审查 M2）：faction 必须在两条 GM 路径的标签白名单里 ----
+ 	var faction_tag := GmResponseParser.parse('{"narration":"你在部里走动","ops":[],"tags":["faction"]}')
+ 	a.is_true(faction_tag.ok, "含 faction tag 的响应可解析")
+ 	a.eq(faction_tag.tags, PackedStringArray(["faction"]), "faction tag 不再被白名单过滤")
+ 
++	# ---- 计划 03a Task 11 · §8#61：降级原因必须透出给调用方（原本只有 last_error 这个 write-only 字段）----
++	# 夹具注意：`LlmGameMaster` 最多尝试 2 次（MAX_ATTEMPTS），而 MockLlmProvider 在 errors 用尽后会
++	# 回落到「mock 队列为空」——只给 1 条错误，最终透出的原因就是后者而不是我们想验的病因。故给 2 条。
++	var fmock := MockLlmProvider.new()
++	fmock.errors = ["网络抖动", "网络抖动"]
++	var fgm := LlmGameMaster.new(fmock, ScriptedGameMaster.new(RngService.new(3)), null)
++	var fres: GameMaster.GmResult = await fgm.act(lw, "我要去上课")
++	var warned := ""
++	for w in fres.warnings:
++		warned += str(w) + " | "
++	a.is_true(warned.contains("降级"), "降级事件写进 warnings")
++	a.is_true(warned.contains("网络抖动"), "降级原因（原始错误串）进 warnings")
++	a.is_true(fgm.last_error == "网络抖动", "last_error 仍保留原始原因")
++	# 无 fallback 分支同样要透出（否则玩家只能看到一句笼统的「暂不可用」）
++	var null_mock := MockLlmProvider.new()
++	null_mock.errors = ["网络抖动", "网络抖动"]
++	var null_fb := LlmGameMaster.new(null_mock, null, null)
++	var null_res: GameMaster.GmResult = await null_fb.act(lw, "我要去上课")
++	var null_warned := ""
++	for w in null_res.warnings:
++		null_warned += str(w) + " | "
++	a.is_true(null_warned.contains("网络抖动"), "无 fallback 时降级原因也进 warnings")
++
++	# ---- 计划 03a Task 11 · §8#64①：重试请求必须带修复提示（否则把 build_repair 换成 build 也能绿）----
++	var rrepair := MockLlmProvider.new()
++	rrepair.queue = ["不是 JSON", '{"narration":"修好了","ops":[],"tags":[]}']
++	var rgm := LlmGameMaster.new(rrepair, null, null)
++	var rres: GameMaster.GmResult = await rgm.act(lw, "我要去上课")
++	a.eq(rres.narration, "修好了", "二次尝试成功")
++	a.eq(rrepair.requests.size(), 2, "确实重试了一次")
++	a.is_true(str(rrepair.requests[1].system_prompt).contains("上一次输出无法解析"),
++		"第二次请求带修复提示（build_repair 而非 build）")
++	a.is_false(str(rrepair.requests[0].system_prompt).contains("上一次输出无法解析"),
++		"第一次请求不得提前带修复提示")
++
+ 	return a.report("llm")
+diff --git a/tests/prompt_test.gd b/tests/prompt_test.gd
+index 0baa089..4bee461 100644
+--- a/tests/prompt_test.gd
++++ b/tests/prompt_test.gd
+@@ -80,11 +80,22 @@ func run() -> int:
+ 	# 玩家所属标记与立场随派系一起给出（供 LLM 叙事时保持一致）
+ 	fw.player.faction_id = "ministry"
+ 	fw.player.add_standing("ministry", 30)
+ 	var fdigest3 := PromptBuilder.state_digest(fw)
+ 	a.is_true(str(fdigest3.get("known_factions", "")).contains("魔法部(0.75,立场+30,所属)"),
+ 		"所属与立场随派系一起标注（格局未演化时 power = base_power）")
+ 
+ 	# ---- 计划 03a（Task 9 审查 M2）：提示词的 tags 白名单必须含 faction（与解析器白名单一致） ----
+ 	a.is_true(PromptBuilder.system_prompt(fw).contains("faction"), "提示词 tags 白名单含 faction")
+ 
++	# ---- 计划 03a Task 11 · Task 8 审查 M1：空可见集分支（make_world() 有 11 个 public 派系，原本永不执行）----
++	var empty_w := make_world()
++	WorldFactions.initialize(empty_w)
++	for fid in empty_w.registry.ids("factions"):
++		WorldFactions.ensure_state(empty_w, str(fid))["revealed"] = false
++	a.eq(WorldFactions.visible_faction_ids(empty_w).size(), 0, "夹具前置：可见集确实为空")
++	a.eq(str(PromptBuilder.state_digest(empty_w).get("known_factions", "")), "已知势力：无",
++		"空可见集 → 摘要恰好是「已知势力：无」")
++	a.is_true(str(PromptBuilder.state_digest(empty_w).get("government", "")).begins_with("政体："),
++		"空可见集不影响政体键的形态")
++
+ 	return a.report("prompt")
+diff --git a/tools/b1_acceptance.gd b/tools/b1_acceptance.gd
+index eddec3a..bc9ee96 100644
+--- a/tools/b1_acceptance.gd
++++ b/tools/b1_acceptance.gd
+@@ -123,23 +123,24 @@ func _log_len(node: Node) -> int:
+ 	return _log_of(node).length()
+ 
+ # 走真实提交路径，返回本次追加到日志的文本（含叙事、事件、提示）。
+ func _submit(node: Node, text: String) -> String:
+ 	var before := _log_len(node)
+ 	await node.call("_on_command_submitted", text)
+ 	return _log_of(node).substr(before)
+ 
+ # 有上限的提交：不 await 协程本身（若被测代码没有看门狗，await 会永久挂住、破坏实验就无法产出“红”）。
+ # 改为观测可观测信号：提交开始 → 输入框置灰；恢复 → 输入框可编辑。
+-# `hold_ref=true` 时会**故意持有**协程引用（`_held`）：Godot 会对无人引用的挂起协程链做丢弃，
+-# 持有引用才能让“迟到的旧协程”真的恢复——这是对修复（本轮私有 state）的**防御性**验证，
+-# 不代表生产路径的生命周期语义（生产里没人 await，引用更弱）。
++# `hold_ref=true` 时会**故意持有外层**协程引用（`_held`）：用来验证「即便持有外层句柄，
++# 迟到写也不会发生」——Godot 对外层协程返回后**内层挂起链**失去唯一引用即丢弃，持有**外层**
++# 句柄救不回内层链（见 `_part11b` 末尾 note 与实测 `hold_ref=true` 仍全绿）。
++# 生产路径无人 await，生命周期语义更弱，因此这只用于钉住可观测契约，不代表能复现 I1。
+ func _submit_bounded(node: Node, text: String, timeout_sec: float, hold_ref: bool = false) -> Dictionary:
+ 	var before := _log_len(node)
+ 	var co = node.call("_on_command_submitted", text)
+ 	if hold_ref:
+ 		_held_co.append(co)
+ 	var greyed := not (node.get("command_edit") as LineEdit).editable
+ 	var started := Time.get_ticks_msec()
+ 	var deadline := started + int(timeout_sec * 1000.0)
+ 	while Time.get_ticks_msec() < deadline and not (node.get("command_edit") as LineEdit).editable:
+ 		await process_frame
+@@ -451,21 +452,21 @@ func _part11_watchdog(node: Node) -> void:
+ 	await process_frame
+ 	check(host.get_child_count() <= before_nodes, "切换 provider 不净增 HTTPRequest（dispose 生效）")
+ 	new_prov.dispose()
+ 
+ # 修复轮 1（Task 10 审查 Important 1）：看门狗超时后，**旧协程迟到恢复**不得污染新一轮。
+ # 构造：第一轮用 1.5s 延迟的 provider + 0.4s 看门狗（超时恢复，但协程仍在挂起）；
+ # 紧接着起第二轮（3s 延迟，看门狗 5s）——旧协程会在第二轮进行中就恢复。
+ # 若两轮共用同一本 state 字典：旧协程会把 done=true + **上一回合的叙事**写到第二轮 →
+ # 第二轮被提前判定完成、渲染错位叙事、本轮结果被丢。
+ func _part11b_reentrancy(node: Node) -> void:
+-	part("修复轮 1 · 迟到协程不得污染新一轮（I1：本轮私有 round_state）")
++	part("修复轮 1 · 迟到协程不得污染新一轮（可观测契约，非 I1 护栏）")
+ 	node.set("turn_timeout_sec", 0.4)
+ 	var late_mock := MockLlmProvider.new()
+ 	late_mock.queue = ['{"narration":"【第一轮·迟到】这段叙事绝不能在第二轮出现。","ops":[],"tags":["train"]}']
+ 	var late := SlowProvider.new()
+ 	late.inner = late_mock
+ 	late.delay_ms = 1500
+ 	node.set("engine", TurnEngine.new(_world(node),
+ 		LlmGameMaster.new(late, ScriptedGameMaster.new(RngService.new(21)), null), node.get("rng")))
+ 	var turn_before := _turn(node)
+ 	var first := await _submit_bounded(node, "我要练习魔药学", 5.0, true)

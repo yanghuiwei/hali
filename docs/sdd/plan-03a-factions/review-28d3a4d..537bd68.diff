@@ -1,0 +1,203 @@
+# Review package: 28d3a4d..537bd68
+
+## Commits
+537bd68 fix(factions): Task 6 修复轮 1 —— 错字、reveal 语义单一化、断言判别力、空守卫、传闻时代
+
+## Files changed
+ data/rumors.json       |  4 ++--
+ src/rules/factions.gd  | 10 ++++++++--
+ tests/factions_test.gd | 27 +++++++++++++++++++++++++--
+ 3 files changed, 35 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/data/rumors.json b/data/rumors.json
+index e9673bc..0c4b2c8 100644
+--- a/data/rumors.json
++++ b/data/rumors.json
+@@ -9,14 +9,14 @@
+ 	{"id": "economy_wand", "label": "魔杖木材短缺", "category": "经济", "text": "魔杖木材运输受阻，奥利凡德店里的交货期又长了半个月。", "weight": 8, "major": false, "min_year": 990, "zones": ["diagon_alley"], "requires_flags": []},
+ 	{"id": "international", "label": "国际巫师联合会会议", "category": "国际", "text": "国际巫师联合会就某国的保密法执行问题又开了一次没有结论的会。", "weight": 6, "major": false, "min_year": 1692, "zones": ["ministry_of_magic", "diagon_alley"], "requires_flags": []},
+ 	{"id": "quidditch", "label": "魁地奇转会", "category": "巫师", "text": "魁地奇联赛换季，几家俱乐部的转会消息占据了报纸的半个版面。", "weight": 12, "major": false, "min_year": 990, "zones": ["diagon_alley", "hogsmeade", "hogwarts", "the_burrow"], "requires_flags": []},
+ 	{"id": "school_term", "label": "霍格沃茨开学", "category": "巫师", "text": "霍格沃茨开学了，对角巷挤满了买书和买坩埚的学生。", "weight": 14, "major": false, "min_year": 990, "zones": ["hogwarts", "diagon_alley", "hogsmeade"], "requires_flags": []},
+ 	{"id": "daily_life", "label": "平静日常", "category": "巫师", "text": "没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。", "weight": 20, "major": false, "min_year": 990, "zones": ["london_muggle", "spinners_end", "the_burrow", "godrics_hollow", "grimmauld_place", "st_mungos", "gringotts", "room_of_requirement", "beauxbatons", "durmstrang", "ilvermorny", "malfoy_manor"], "requires_flags": []},
+ 	{"id": "major_azkaban_break", "label": "阿兹卡班越狱", "category": "战争", "text": "阿兹卡班发生了大规模越狱，魔法部承认这是一次严重的失败。", "weight": 1, "major": true, "min_year": 1692, "zones": ["diagon_alley", "ministry_of_magic", "knockturn_alley", "azkaban"], "requires_flags": []},
+ 	{"id": "major_ministry_coup", "label": "魔法部政变传闻", "category": "战争", "text": "有消息说魔法部内部正在发生政变，几个司的入口被封锁了。", "weight": 1, "major": true, "min_year": 1692, "zones": ["ministry_of_magic", "diagon_alley"], "requires_flags": []},
+ 	{"id": "major_gringotts_crisis", "label": "古灵阁停摆", "category": "经济", "text": "古灵阁宣布暂停部分金库业务，恐慌在纯血家族之间蔓延。", "weight": 1, "major": true, "min_year": 990, "zones": ["gringotts", "diagon_alley", "knockturn_alley"], "requires_flags": []},
+ 	{"id": "major_hogwarts_occupied", "label": "霍格沃茨异变", "category": "战争", "text": "霍格沃茨上空笼罩着不寻常的沉默，猫头鹰邮件停了两天。", "weight": 1, "major": true, "min_year": 1970, "zones": ["hogwarts", "hogsmeade"], "requires_flags": []},
+ 	{"id": "rumor_malfoy_block", "label": "古老姓氏抱团", "category": "政治", "text": "听说几个古老姓氏在威森加摩里抱团，把持着席位不肯松手。", "weight": 8, "major": false, "min_year": 0, "zones": ["diagon_alley", "london_muggle"], "requires_flags": [], "reveals_faction": "sacred_twenty_eight"},
+-	{"id": "rumor_marked_ones", "label": "袖口下的记号", "category": "政治", "text": "有人在翻倒巷低声说，那些人又聚起来了，袖口下面有记号。", "weight": 8, "major": false, "min_year": 0, "zones": ["knockturn_alley", "diagon_alley"], "requires_flags": [], "reveals_faction": "death_eaters"},
+-	{"id": "rumor_phoenix_network", "label": "不挂名的联络网", "category": "政治", "text": "有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。", "weight": 8, "major": false, "min_year": 0, "zones": ["hogsmeade", "london_muggle"], "requires_flags": [], "reveals_faction": "order_of_phoenix"},
++	{"id": "rumor_marked_ones", "label": "袖口下的记号", "category": "政治", "text": "有人在翻倒巷低声说，那些人又聚起来了，袖口下面有记号。", "weight": 8, "major": false, "min_year": 1970, "zones": ["knockturn_alley", "diagon_alley"], "requires_flags": [], "reveals_faction": "death_eaters"},
++	{"id": "rumor_phoenix_network", "label": "不挂名的联络网", "category": "政治", "text": "有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。", "weight": 8, "major": false, "min_year": 1970, "zones": ["hogsmeade", "london_muggle"], "requires_flags": [], "reveals_faction": "order_of_phoenix"},
+ 	{"id": "rumor_continental_pureblood", "label": "欧陆联姻", "category": "政治", "text": "《预言家日报》角落里提到欧陆几家的联姻，说那才是真正的权力网络。", "weight": 6, "major": false, "min_year": 0, "zones": ["diagon_alley", "london_muggle"], "requires_flags": [], "reveals_faction": "continental_pureblood"}
+ ]
+diff --git a/src/rules/factions.gd b/src/rules/factions.gd
+index 3295ab6..62f7a6e 100644
+--- a/src/rules/factions.gd
++++ b/src/rules/factions.gd
+@@ -373,21 +373,21 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
+ 		"lawlessness":
+ 			return float(v.get("corruption", 0.3)) >= 0.65 \
+ 				or government_type(world) == "death_eater_dictatorship"
+ 		"war_exhaustion":
+ 			return float(v.get("war_pressure", 0.2)) >= 0.65
+ 		"secrecy_crisis":
+ 			return float(v.get("secrecy_integrity", 0.8)) <= 0.30
+ 		_:
+ 			return false
+ 
+-# 选举本月政治事件：必须同时满足「tension 过隘」「条件成立」「重大事件配额可用」（第六十八章）。
++# 选举本月政治事件：必须同时满足「tension 过阈」「条件成立」「重大事件配额可用」（第六十八章）。
+ # 注意：本函数有副作用（命中时写 history 并占用 last_major_turn 配额），不是纯查询；请勿用于预览/面板。
+ static func pick_political_event(world: WorldState) -> Dictionary:
+ 	if tension_of(world) < TENSION_THRESHOLD:
+ 		return {}
+ 	var last_major := int(world.flags.get("last_major_turn", -WorldState.MAJOR_EVENT_GAP))
+ 	if world.clock.turn - last_major < WorldState.MAJOR_EVENT_GAP:
+ 		return {}
+ 	var candidates: Array = []
+ 	for eid in world.registry.ids("political_events"):
+ 		var entry := world.registry.entry("political_events", str(eid))
+@@ -407,30 +407,36 @@ static func pick_political_event(world: WorldState) -> Dictionary:
+ 		"major": bool(picked.get("major", true)),
+ 		"turn": world.clock.turn,
+ 		"event_id": str(picked.get("id", "")),
+ 	}
+ 	world.add_fact("major", str(picked.get("text", "")))
+ 	return ev
+ 
+ # 揭示一个派系。约束：来源必须非空且不是 system（与 StateOps.know_fact 同源，第四十三/五十七章）。
+ # 已揭示时返回 false（幂等），调用方可据此跳过重复叙事。
+ static func reveal(world: WorldState, faction_id: String, source: String) -> bool:
++	# 对外 API（Task 7/8 的面板与提示词也会调）：畸形存档（null registry/clock）不得崩，与 initialize/evolve 同口径早退。
++	if world == null or world.registry == null or world.clock == null:
++		return false
+ 	var src := source.strip_edges()
+ 	if src.is_empty() or src == "system":
+ 		return false
+ 	if not world.registry.has("factions", faction_id):
+ 		return false
+ 	var st := ensure_state(world, faction_id)
+ 	if st.is_empty() or bool(st.get("revealed", false)):
+ 		return false
+ 	st["revealed"] = true
+-	st["last_change_turn"] = world.clock.turn
++	# ⚠️ **不写** `last_change_turn`：该字段的语义严格定义为「**power 变更回合**」（Task 4/5 的统一判定所写）。
++	# 揭示是另一种变化，由 `revealed` 布尔本身表达；若这里也写该字段，Task 5 的不变量
++	# 「`last_change_turn == clock.turn` ⟺ 量化持久值本回合变化」会在「被揭示但当月 power 恰好没变」时变红
++	# （Task 6 审查 Minor 1，2026-09-20 控制器裁定：字段语义单一化，不给揭示再记一个回合）。
+ 	world.add_fact("faction_revealed", "你得知了「%s」的存在（来源：%s）。" % [
+ 		str(entry_of(world, faction_id).get("label", faction_id)), src])
+ 	return true
+ 
+ # 传闻揭示（第四十三/五十七章）：内容表里带 reveals_faction 的传闻被玩家听到时，该派系转为已知。
+ # 事件由 WorldState.tick() 的传闻阶段产出，字典里带 "rumor_id"；无效/无指向的事件直接跳过。
+ static func apply_rumor_reveals(world: WorldState, events: Array) -> void:
+ 	for ev in events:
+ 		if typeof(ev) != TYPE_DICTIONARY:
+ 			continue
+diff --git a/tests/factions_test.gd b/tests/factions_test.gd
+index b3b1145..95ee9e5 100644
+--- a/tests/factions_test.gd
++++ b/tests/factions_test.gd
+@@ -487,21 +487,21 @@ func run() -> int:
+ 		"腐败/纯血/战争高、经济差 → tension 更高")
+ 	a.is_true(WorldFactions.compute_tension(angry) >= WorldFactions.TENSION_THRESHOLD,
+ 		"极端格局的 tension 达到事件阈值（否则后续断言可能空转）")
+ 
+ 	WorldFactions.initialize(angry)
+ 	a.is_true(WorldFactions.event_condition_met(angry, "economic_slump"), "经济萧条条件成立")
+ 	a.is_false(WorldFactions.event_condition_met(calm, "economic_slump"), "经济好时不成立")
+ 	a.is_true(WorldFactions.event_condition_met(angry, "oligarchy_pressure"), "寡头压力条件成立（pureblood_influence 分支）")
+ 	a.is_false(WorldFactions.event_condition_met(calm, "oligarchy_pressure"), "无寡头压力时不成立")
+ 	# 单独钉住 power_share 那条分支：必须把 pureblood_influence 压在 0.65 以下，否则 OR 的另一条会救场、
+-	# 该分支即使被写成死阀值（如计划原稿的 0.40）也测不出来（破坏实验 E2 实证）。
++	# 该分支即使被写成死阈值（如计划原稿的 0.40）也测不出来（破坏实验 E2 实证）。
+ 	var olig := make_world("modern")
+ 	WorldFactions.initialize(olig)
+ 	olig.world_vars["pureblood_influence"] = 0.30
+ 	WorldFactions.ensure_state(olig, "sacred_twenty_eight")["power"] = 0.9
+ 	WorldFactions.ensure_state(olig, "reformist_pureblood")["power"] = 0.9
+ 	a.is_true(float(WorldFactions.power_share(olig).get("pureblood", 0.0)) >= 0.26,
+ 		"前置：纯血四角占比确实 ≥ 0.26（否则断言空转）")
+ 	a.is_false(float(olig.world_vars.get("pureblood_influence", 0.0)) >= 0.65,
+ 		"前置：pureblood_influence 低于 0.65（确保不是 OR 的另一条救场）")
+ 	a.is_true(WorldFactions.event_condition_met(olig, "oligarchy_pressure"),
+@@ -653,32 +653,52 @@ func run() -> int:
+ 	# ---- 信息保护与揭示（Task 6） ----
+ 	var rw := make_world("modern")
+ 	WorldFactions.initialize(rw)
+ 	a.is_false(WorldFactions.reveal(rw, "death_eaters", ""), "空来源不能揭示")
+ 	a.is_false(WorldFactions.reveal(rw, "death_eaters", "system"), "system 来源不能揭示（第四十三/五十七章）")
+ 	a.is_false(bool(WorldFactions.state_of(rw, "death_eaters")["revealed"]), "被拒的揭示不写状态")
+ 	a.is_false(WorldFactions.reveal(rw, "不存在的派系", "破釜酒吧传闻"), "未知派系不能揭示")
+ 	a.is_true(WorldFactions.reveal(rw, "death_eaters", "破釜酒吧传闻"), "合法来源可以揭示")
+ 	a.is_true(bool(WorldFactions.state_of(rw, "death_eaters")["revealed"]), "揭示后 revealed=true")
+ 	a.is_true(WorldFactions.visible_faction_ids(rw).has("death_eaters"), "揭示后进入可见列表")
+-	a.is_true(rw.history.size() >= 1, "揭示写入 history（可追溯）")
++	var reveal_records := 0
++	var reveal_record_text := ""
++	for fact in rw.history:
++		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
++			reveal_records += 1
++			reveal_record_text = str((fact as Dictionary).get("text", ""))
++	a.eq(reveal_records, 1, "揭示写入恰好一条 kind=faction_revealed 的 history（不是「有任意 history」）")
++	a.is_true(not reveal_record_text.is_empty(), "揭示记录 text 非空")
+ 	a.is_false(WorldFactions.reveal(rw, "death_eaters", "破釜酒吧传闻"), "重复揭示返回 false（幂等）")
+ 	a.is_false(WorldFactions.visible_faction_ids(rw).has("order_of_phoenix"), "未揭示派系不在可见列表")
+ 
+ 	# 来源必须原样记录在 fact 文案里（可追溯性）
+ 	var reveal_fact_text := ""
+ 	for fact in rw.history:
+ 		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":
+ 			reveal_fact_text = str((fact as Dictionary).get("text", ""))
+ 	a.is_true(reveal_fact_text.contains("破釜酒吧传闻"), "揭示记录里带来源")
+ 	a.is_true(reveal_fact_text.contains("食死徒"), "揭示记录里带派系 label")
+ 
++	# M1（字段语义单一化，2026-09-20 控制器裁定）：揭示**不**改 last_change_turn（它的语义是「power 变更回合」）
++	# 用一个可辨识哨兵值钉住：若 reveal() 又把 clock.turn 写进去，0 vs 4242 必红。
++	WorldFactions.ensure_state(rw, "mysteries")["last_change_turn"] = 4242
++	a.is_true(WorldFactions.reveal(rw, "mysteries", "破釜酒吧传闻"), "M1 前置：揭示成功（mysteries 初始未揭示）")
++	a.eq(int(WorldFactions.state_of(rw, "mysteries")["last_change_turn"]), 4242,
++		"揭示不改变 last_change_turn（该字段只表达 power 变更回合）")
++
++	# M3（对外 API 的空守卫）：畸形世界（null registry/clock）调 reveal() 不得崩，返回 false
++	var reveal_naked := WorldState.new()
++	a.is_false(WorldFactions.reveal(reveal_naked, "death_eaters", "破釜酒吧传闻"), "裸世界（null registry/clock）reveal 返回 false，不崩")
++	a.is_false(WorldFactions.reveal(reveal_naked, "death_eaters", ""), "裸世界 + 空来源仍返回 false")
++	a.is_false(WorldFactions.reveal(null, "death_eaters", "破釜酒吧传闻"), "world=null 也返回 false")
++
+ 	# 传闻揭示：只有带 reveals_faction 的传闻才揭示
+ 	var secret_before := WorldFactions.visible_faction_ids(rw).size()
+ 	WorldFactions.apply_rumor_reveals(rw, [{"rumor_id": "不存在的传闻", "category": "政治", "text": "x"}])
+ 	WorldFactions.apply_rumor_reveals(rw, ["不是字典"])
+ 	WorldFactions.apply_rumor_reveals(rw, [{"category": "政治", "text": "没有 rumor_id"}])
+ 	a.eq(WorldFactions.visible_faction_ids(rw).size(), secret_before, "无效事件不揭示任何派系")
+ 	a.is_false(WorldFactions.visible_faction_ids(rw).has("order_of_phoenix"), "无 reveals_faction 的传闻不揭示")
+ 
+ 	var rumor_with_reveal := ""
+ 	for rid in rw.registry.ids("rumors"):
+@@ -710,20 +730,23 @@ func run() -> int:
+ 			only_rumor = e
+ 	a.is_true(not only_rumor.is_empty(), "内容表里存在 rumor_marked_ones（E2E 前置）")
+ 	a.eq(str(only_rumor.get("reveals_faction", "")), "death_eaters", "rumor_marked_ones 揭示食死徒")
+ 	tables["rumors"] = [only_rumor]
+ 	var e2e_reg := Registry.from_tables(tables)
+ 	var e2e_p := PlayerState.new_default()
+ 	e2e_p.name_text = "测试者"
+ 	e2e_p.location_id = "knockturn_alley"
+ 	var e2e := WorldState.create("modern", e2e_p, 777, e2e_reg)
+ 	a.is_false(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E 前置：食死徒初始不可见")
++	# M5 前置：世界年份必须 ≥ 传闻的 min_year，否则候选集为空、夹具会静默空转（不报错地测不到东西）
++	a.is_true(e2e.clock.year >= int(only_rumor.get("min_year", 0)),
++		"E2E 前置：世界年份 %d ≥ 传闻 min_year %d" % [e2e.clock.year, int(only_rumor.get("min_year", 0))])
+ 	var e2e_events := e2e.tick()
+ 	var saw_rumor := false
+ 	for ev in e2e_events:
+ 		if str(ev.get("rumor_id", "")) == "rumor_marked_ones":
+ 			saw_rumor = true
+ 	a.is_true(saw_rumor, "tick 处理了带 reveals_faction 的传闻（最小 rumors 表 ⇒ 确定）")
+ 	a.is_true(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E：tick 后该派系进入可见列表")
+ 	var reveal_facts := 0
+ 	for fact in e2e.history:
+ 		if str((fact as Dictionary).get("kind", "")) == "faction_revealed":

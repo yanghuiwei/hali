@@ -1,0 +1,525 @@
+# Review package: 12f6a50..eacb773
+
+## Commits
+eacb773 feat(data): 派系与政体内容表 + Registry 注册与字段校验（计划 03a Task 1）
+
+## Files changed
+ data/factions.json        | 290 ++++++++++++++++++++++++++++++++++++++++++++++
+ data/governments.json     |  26 +++++
+ src/core/registry.gd      |  42 +++++++
+ src/rules/factions.gd     |  28 +++++
+ src/rules/factions.gd.uid |   1 +
+ tests/registry_test.gd    |  51 ++++++++
+ 6 files changed, 438 insertions(+)
+
+## Diff
+diff --git a/data/factions.json b/data/factions.json
+new file mode 100644
+index 0000000..e33057c
+--- /dev/null
++++ b/data/factions.json
+@@ -0,0 +1,290 @@
++[
++  {
++    "id": "ministry",
++    "label": "魔法部",
++    "kind": "ministry",
++    "aliases": ["魔法部", "部里", "部长"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["law", "administration", "secrecy_enforcement"],
++    "agenda": "维持保密法与巫师社会秩序，压住战争、丑闻与恐慌",
++    "base_power": 0.75,
++    "rivals": ["death_eaters"],
++    "allies": ["auror_office", "wizengamot", "international_confederation"],
++    "institutions": ["law_enforcement"],
++    "era_overrides": {
++      "witch_hunts": {"base_power": 0.30},
++      "hogwarts_founding": {"base_power": 0.20},
++      "grindelwald": {"base_power": 0.65},
++      "first_wizarding_war": {"base_power": 0.55},
++      "second_wizarding_war": {"base_power": 0.45}
++    }
++  },
++  {
++    "id": "auror_office",
++    "label": "傲罗指挥部",
++    "kind": "institution",
++    "aliases": ["傲罗指挥部", "傲罗办公室", "傲罗"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["law", "warfare", "intelligence"],
++    "agenda": "追捕黑巫师、执行部长与法律执行司的命令，也做政治任务",
++    "base_power": 0.60,
++    "rivals": ["death_eaters"],
++    "allies": ["ministry"],
++    "institutions": ["auror_office"],
++    "era_overrides": {}
++  },
++  {
++    "id": "wizengamot",
++    "label": "威森加摩",
++    "kind": "institution",
++    "aliases": ["威森加摩", "最高巫师法庭"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["law", "administration"],
++    "agenda": "审判严重违法、政治犯与黑巫师，把判决变成政治工具或正义工具",
++    "base_power": 0.58,
++    "rivals": ["death_eaters"],
++    "allies": ["ministry", "sacred_twenty_eight"],
++    "institutions": ["wizengamot"],
++    "era_overrides": {}
++  },
++  {
++    "id": "mysteries",
++    "label": "神秘事务司",
++    "kind": "institution",
++    "aliases": ["神秘事务司", "事务司"],
++    "legal_status": "legal",
++    "secrecy": "semi",
++    "domains": ["intelligence", "administration"],
++    "agenda": "研究预言、时间、死亡、灵魂与记忆，把最根本的秘密锁进地下室",
++    "base_power": 0.40,
++    "rivals": ["death_eaters"],
++    "allies": ["ministry"],
++    "institutions": ["mysteries"],
++    "era_overrides": {}
++  },
++  {
++    "id": "hogwarts",
++    "label": "霍格沃茨",
++    "kind": "school",
++    "aliases": ["霍格沃茨", "霍校"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["education", "administration"],
++    "agenda": "守住教学与独立司法权，在战争时期保持学校不被任何一方吞掉",
++    "base_power": 0.65,
++    "rivals": ["death_eaters"],
++    "allies": ["order_of_phoenix", "common_folk"],
++    "institutions": ["hogwarts"],
++    "era_overrides": {
++      "hogwarts_founding": {"base_power": 0.80},
++      "witch_hunts": {"base_power": 0.40}
++    }
++  },
++  {
++    "id": "sacred_twenty_eight",
++    "label": "神圣二十八族",
++    "kind": "pureblood",
++    "aliases": ["神圣二十八族", "二十八族", "古老姓氏", "纯血家族"],
++    "legal_status": "legal",
++    "secrecy": "semi",
++    "domains": ["law", "administration", "economy"],
++    "agenda": "用财富、联姻与威森加摩席位把决策权留在少数古老姓氏手里",
++    "base_power": 0.55,
++    "rivals": ["reformist_pureblood", "common_folk"],
++    "allies": ["wizengamot", "continental_pureblood"],
++    "institutions": ["wizengamot"],
++    "era_overrides": {
++      "second_wizarding_war": {"base_power": 0.60}
++    }
++  },
++  {
++    "id": "reformist_pureblood",
++    "label": "改革派纯血",
++    "kind": "pureblood",
++    "aliases": ["改革派纯血", "改革派", "改良派纯血"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["law", "education"],
++    "agenda": "承认麻瓜出身与混血的地位，推动席位与法律改革，代价是与古老家族翻脸",
++    "base_power": 0.35,
++    "rivals": ["sacred_twenty_eight"],
++    "allies": ["common_folk", "hogwarts"],
++    "institutions": [],
++    "era_overrides": {}
++  },
++  {
++    "id": "death_eaters",
++    "label": "食死徒",
++    "kind": "dark",
++    "aliases": ["食死徒", "黑魔标记", "神秘人", "那个人"],
++    "legal_status": "outlaw",
++    "secrecy": "secret",
++    "domains": ["warfare", "intelligence", "law"],
++    "agenda": "以恐怖与纯血主义清洗魔法社会，把法律变成压迫工具",
++    "base_power": 0.05,
++    "rivals": ["ministry", "auror_office", "order_of_phoenix", "hogwarts"],
++    "allies": [],
++    "institutions": ["law_enforcement", "wizengamot"],
++    "era_overrides": {
++      "hogwarts_founding": {"base_power": 0.0},
++      "witch_hunts": {"base_power": 0.0},
++      "grindelwald": {"base_power": 0.05},
++      "first_wizarding_war": {"base_power": 0.35},
++      "second_wizarding_war": {"base_power": 0.45},
++      "reconstruction": {"base_power": 0.10}
++    }
++  },
++  {
++    "id": "order_of_phoenix",
++    "label": "凤凰社",
++    "kind": "resistance",
++    "aliases": ["凤凰社", "凤凰社联络网"],
++    "legal_status": "shadow",
++    "secrecy": "secret",
++    "domains": ["intelligence", "warfare", "secrecy_enforcement"],
++    "agenda": "在魔法部之外靠信任与情报抵抗黑暗势力，必要时当影子政府",
++    "base_power": 0.10,
++    "rivals": ["death_eaters"],
++    "allies": ["hogwarts", "reformist_pureblood"],
++    "institutions": [],
++    "era_overrides": {
++      "hogwarts_founding": {"base_power": 0.0},
++      "witch_hunts": {"base_power": 0.0},
++      "grindelwald": {"base_power": 0.15},
++      "first_wizarding_war": {"base_power": 0.25},
++      "second_wizarding_war": {"base_power": 0.30},
++      "reconstruction": {"base_power": 0.15}
++    }
++  },
++  {
++    "id": "gringotts",
++    "label": "古灵阁",
++    "kind": "commerce",
++    "aliases": ["古灵阁", "妖精银行"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["economy"],
++    "agenda": "守住金库、汇率与兑付规则，让巫师社会的钱必须经过妖精的手",
++    "base_power": 0.60,
++    "rivals": [],
++    "allies": [],
++    "institutions": ["gringotts"],
++    "era_overrides": {}
++  },
++  {
++    "id": "diagon_merchants",
++    "label": "对角巷商会",
++    "kind": "commerce",
++    "aliases": ["对角巷商会", "商会", "店主们"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["economy", "media"],
++    "agenda": "让生意照常做下去：压低税与禁令，压不住就涨价",
++    "base_power": 0.35,
++    "rivals": ["black_market"],
++    "allies": ["gringotts"],
++    "institutions": [],
++    "era_overrides": {}
++  },
++  {
++    "id": "daily_prophet",
++    "label": "预言家日报",
++    "kind": "media",
++    "aliases": ["预言家日报", "日报", "报纸"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["media"],
++    "agenda": "用头版决定巫师们相信什么，也在压力下改换口径",
++    "base_power": 0.45,
++    "rivals": [],
++    "allies": ["ministry"],
++    "institutions": ["daily_prophet"],
++    "era_overrides": {}
++  },
++  {
++    "id": "black_market",
++    "label": "翻倒巷黑市",
++    "kind": "commerce",
++    "aliases": ["翻倒巷黑市", "黑市", "翻倒巷"],
++    "legal_status": "outlaw",
++    "secrecy": "semi",
++    "domains": ["economy", "secrecy_enforcement"],
++    "agenda": "卖法律不让卖的东西，谁出价高就卖给谁",
++    "base_power": 0.25,
++    "rivals": ["auror_office"],
++    "allies": ["death_eaters"],
++    "institutions": [],
++    "era_overrides": {}
++  },
++  {
++    "id": "common_folk",
++    "label": "普通巫师大众",
++    "kind": "society",
++    "aliases": ["普通巫师大众", "普通巫师", "老百姓", "大众"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["economy", "education"],
++    "agenda": "上班、看报、送孩子上学，只想让日子别被战争和政客搅乱",
++    "base_power": 0.45,
++    "rivals": [],
++    "allies": ["hogwarts", "reformist_pureblood"],
++    "institutions": [],
++    "era_overrides": {}
++  },
++  {
++    "id": "international_confederation",
++    "label": "国际巫师联合会",
++    "kind": "foreign",
++    "aliases": ["国际巫师联合会", "国际联合会", "国际巫师界"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["administration", "law", "secrecy_enforcement"],
++    "agenda": "协调各国保密法与跨国纠纷，必要时干预一国内政",
++    "base_power": 0.55,
++    "rivals": ["continental_pureblood"],
++    "allies": ["ministry"],
++    "institutions": ["international"],
++    "era_overrides": {
++      "witch_hunts": {"base_power": 0.35},
++      "hogwarts_founding": {"base_power": 0.25},
++      "grindelwald": {"base_power": 0.60}
++    }
++  },
++  {
++    "id": "continental_pureblood",
++    "label": "欧陆纯血网络",
++    "kind": "foreign",
++    "aliases": ["欧陆纯血网络", "欧陆纯血", "欧洲纯血"],
++    "legal_status": "legal",
++    "secrecy": "semi",
++    "domains": ["economy", "administration"],
++    "agenda": "靠联姻与旧账把各国纯血家族连成一张网，绕过本国魔法部的规矩",
++    "base_power": 0.40,
++    "rivals": ["international_confederation"],
++    "allies": ["sacred_twenty_eight"],
++    "institutions": [],
++    "era_overrides": {}
++  },
++  {
++    "id": "muggle_world",
++    "label": "麻瓜世界",
++    "kind": "foreign",
++    "aliases": ["麻瓜世界", "麻瓜社会", "麻瓜政府"],
++    "legal_status": "legal",
++    "secrecy": "public",
++    "domains": ["secrecy_enforcement", "economy"],
++    "agenda": "按自己的技术、战争与宗教发展，对巫师社会的存在一无所知或装作不知",
++    "base_power": 0.30,
++    "rivals": [],
++    "allies": ["common_folk"],
++    "institutions": [],
++    "era_overrides": {
++      "witch_hunts": {"base_power": 0.55},
++      "grindelwald": {"base_power": 0.45},
++      "second_wizarding_war": {"base_power": 0.45}
++    }
++  }
++]
+diff --git a/data/governments.json b/data/governments.json
+new file mode 100644
+index 0000000..02eea63
+--- /dev/null
++++ b/data/governments.json
+@@ -0,0 +1,26 @@
++[
++  {
++    "id": "ministry_bureaucracy",
++    "label": "魔法部官僚制",
++    "canon_line": 160,
++    "summary": "部长、司长、办公室主任、傲罗指挥部、威森加摩；法律与行政结合。优点是组织稳定，缺点是官僚主义、腐败、低效与政治妥协。"
++  },
++  {
++    "id": "pureblood_oligarchy",
++    "label": "纯血寡头制",
++    "canon_line": 162,
++    "summary": "古老家族通过财富、联姻、威森加摩席位和魔法部游说控制决策；纯血家族之间既有合作也有斗争。"
++  },
++  {
++    "id": "death_eater_dictatorship",
++    "label": "食死徒独裁",
++    "canon_line": 164,
++    "summary": "黑巫师通过恐怖、夺魂咒与纯血主义清洗夺取政权；法律成为压迫工具，反对者被投入阿兹卡班或消失。"
++  },
++  {
++    "id": "order_resistance",
++    "label": "凤凰社抵抗组织",
++    "canon_line": 166,
++    "summary": "不是合法政府，而是由不同出身、不同立场巫师组成的秘密抵抗网络；以信任、情报和牺牲维持运作，战争时期可能成为影子政府。"
++  }
++]
+diff --git a/src/core/registry.gd b/src/core/registry.gd
+index 547e64a..b1cd54a 100644
+--- a/src/core/registry.gd
++++ b/src/core/registry.gd
+@@ -1,15 +1,17 @@
+ class_name Registry
+ extends RefCounted
+ 
+ const TABLE_FILES: Dictionary = {
+ 	"eras": "eras.json",
++	"factions": "factions.json",
++	"governments": "governments.json",
+ 	"bloodlines": "bloodlines.json",
+ 	"birth_identities": "birth_identities.json",
+ 	"aptitudes": "aptitudes.json",
+ 	"houses": "houses.json",
+ 	"sim_styles": "sim_styles.json",
+ 	"political_leanings": "political_leanings.json",
+ 	"locations": "locations.json",
+ 	"rumors": "rumors.json",
+ 	"skills": "skills.json",
+ 	"wand_woods": "wand_woods.json",
+@@ -78,11 +80,51 @@ func validate() -> PackedStringArray:
+ 		var index: Dictionary = _tables[table_name]
+ 		if index.is_empty():
+ 			errors.append("数据表为空: %s" % table_name)
+ 			continue
+ 		for key in index.keys():
+ 			if str(key).is_empty():
+ 				errors.append("%s: 存在空 id 条目" % table_name)
+ 			var e: Dictionary = index[key]
+ 			if str(e.get("label", "")).is_empty():
+ 				errors.append("%s/%s: 缺少 label" % [table_name, key])
++			errors.append_array(_validate_entry(table_name, str(key), e))
++	return errors
++
++# 计划 03a：按表做字段级校验（枚举与引用完整性由 WorldFactions.validate_content 负责，
++# 这里只保证「字段存在且类型/值域合法」，避免 registry 反向依赖 rules 层造成类循环）。
++const _KINDS := ["ministry", "institution", "pureblood", "school", "commerce", "media",
++	"resistance", "dark", "foreign", "society"]
++const _LEGAL := ["legal", "shadow", "outlaw"]
++const _SECRECY := ["public", "semi", "secret"]
++const _INSTITUTIONS := ["law_enforcement", "auror_office", "wizengamot", "mysteries",
++	"hogwarts", "gringotts", "daily_prophet", "international"]
++
++func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedStringArray:
++	var errors := PackedStringArray()
++	var where := "%s/%s" % [table_name, key]
++	if table_name == "factions":
++		var kind := str(e.get("kind", ""))
++		if not _KINDS.has(kind):
++			errors.append("%s: kind 非法（%s）" % [where, kind])
++		var legal := str(e.get("legal_status", ""))
++		if not _LEGAL.has(legal):
++			errors.append("%s: legal_status 非法（%s）" % [where, legal])
++		var secrecy := str(e.get("secrecy", ""))
++		if not _SECRECY.has(secrecy):
++			errors.append("%s: secrecy 非法（%s）" % [where, secrecy])
++		if not e.has("base_power"):
++			errors.append("%s: 缺少 base_power" % where)
++		elif float(e["base_power"]) < 0.0 or float(e["base_power"]) > 1.0:
++			errors.append("%s: base_power 超值域（%s）" % [where, str(e["base_power"])])
++		for field in ["institutions", "rivals", "allies"]:
++			if not e.has(field):
++				errors.append("%s: 缺少 %s" % [where, field])
++			elif typeof(e[field]) != TYPE_ARRAY:
++				errors.append("%s: %s 必须是数组" % [where, field])
++		for inst in (e.get("institutions", []) as Array):
++			if not _INSTITUTIONS.has(str(inst)):
++				errors.append("%s: 机构非法（%s）" % [where, str(inst)])
++	if table_name == "governments":
++		if str(e.get("summary", "")).is_empty():
++			errors.append("%s: 缺少 summary" % where)
+ 	return errors
+diff --git a/src/rules/factions.gd b/src/rules/factions.gd
+new file mode 100644
+index 0000000..3dba833
+--- /dev/null
++++ b/src/rules/factions.gd
+@@ -0,0 +1,28 @@
++class_name WorldFactions
++extends RefCounted
++
++# 机构 id 枚举：顺序即势力面板的展示顺序（第六十五章）。代码只硬编码 id，中文标签进 data/factions.json 的 institutions。
++const INSTITUTIONS: Array[String] = ["law_enforcement", "auror_office", "wizengamot", "mysteries",
++	"hogwarts", "gringotts", "daily_prophet", "international"]
++
++# 派系类别枚举（第十二章权力四角 + 第六/二十六章）
++const KINDS: Array[String] = ["ministry", "institution", "pureblood", "school", "commerce",
++	"media", "resistance", "dark", "foreign", "society"]
++const LEGAL_STATUS: Array[String] = ["legal", "shadow", "outlaw"]
++const SECRECY: Array[String] = ["public", "semi", "secret"]
++
++# kind → 权力四角（第十二章）。不在表里的 kind（resistance/dark/foreign/society）不进四角，
++# 它们通过 control 与政体判定体现影响力。
++const CORNERS: Dictionary = {
++	"ministry": ["ministry", "institution"],
++	"pureblood": ["pureblood"],
++	"hogwarts": ["school"],
++	"commerce": ["commerce", "media"],
++}
++
++const MINISTRY_ID := "ministry"
++const RESISTANCE_ID := "order_of_phoenix"
++
++# 状态键（都存在既有容器里：tension 进 world.flags，政体进 world.flags，派系状态进 world.factions）
++const TENSION_FLAG := "social_tension"
++const GOVERNMENT_FLAG := "government_type"
+diff --git a/src/rules/factions.gd.uid b/src/rules/factions.gd.uid
+new file mode 100644
+index 0000000..6dd68a5
+--- /dev/null
++++ b/src/rules/factions.gd.uid
+@@ -0,0 +1 @@
++uid://b3iab2qb8125d
+diff --git a/tests/registry_test.gd b/tests/registry_test.gd
+index fde3fc2..7604797 100644
+--- a/tests/registry_test.gd
++++ b/tests/registry_test.gd
+@@ -54,11 +54,62 @@ func run() -> int:
+ 
+ 	var no_label := Registry.from_tables({"eras": [{"id": "a"}]})
+ 	a.is_true(" | ".join(no_label.validate()).contains("缺少 label"), "缺 label 必须报错")
+ 
+ 	# ids() 必须稳定排序，保证 UI 下拉顺序可复现
+ 	var ids := reg.ids("houses")
+ 	var sorted_copy := ids.duplicate()
+ 	sorted_copy.sort()
+ 	a.eq(ids, sorted_copy, "ids 已排序")
+ 
++	# ---- 计划 03a：派系与政体内容表 ----
++	var factions := reg.ids("factions")
++	a.eq(factions.size(), 17, "派系表 17 条")
++	for fid in ["ministry", "auror_office", "wizengamot", "mysteries", "hogwarts",
++			"sacred_twenty_eight", "reformist_pureblood", "death_eaters", "order_of_phoenix",
++			"gringotts", "diagon_merchants", "daily_prophet", "black_market",
++			"common_folk", "international_confederation", "continental_pureblood", "muggle_world"]:
++		a.is_true(reg.has("factions", str(fid)), "派系 %s 存在" % str(fid))
++	a.eq(reg.ids("governments").size(), 4, "政体表 4 条")
++
++	# 枚举与引用完整性（后续 WorldFactions.validate_content 也要做同样的事，这里是内容表自检）
++	var kinds := ["ministry", "institution", "pureblood", "school", "commerce", "media",
++		"resistance", "dark", "foreign", "society"]
++	var insts := ["law_enforcement", "auror_office", "wizengamot", "mysteries",
++		"hogwarts", "gringotts", "daily_prophet", "international"]
++	for fid in factions:
++		var e := reg.entry("factions", str(fid))
++		a.is_true(kinds.has(str(e.get("kind", ""))), "%s: kind 合法" % fid)
++		a.is_true(["legal", "shadow", "outlaw"].has(str(e.get("legal_status", ""))), "%s: legal_status 合法" % fid)
++		a.is_true(["public", "semi", "secret"].has(str(e.get("secrecy", ""))), "%s: secrecy 合法" % fid)
++		a.between(float(e.get("base_power", -1.0)), 0.0, 1.0, "%s: base_power 在 0..1" % fid)
++		a.is_true(not str(e.get("agenda", "")).is_empty(), "%s: 有 agenda" % fid)
++		for inst in (e.get("institutions", []) as Array):
++			a.is_true(insts.has(str(inst)), "%s: 机构 %s 合法" % [fid, str(inst)])
++		for other in (e.get("rivals", []) as Array):
++			a.is_true(reg.has("factions", str(other)), "%s: rival %s 存在" % [fid, str(other)])
++		for other in (e.get("allies", []) as Array):
++			a.is_true(reg.has("factions", str(other)), "%s: ally %s 存在" % [fid, str(other)])
++		var overrides = e.get("era_overrides", {})
++		if typeof(overrides) == TYPE_DICTIONARY:
++			for era_id in (overrides as Dictionary).keys():
++				a.is_true(reg.has("eras", str(era_id)), "%s: era_overrides 的 %s 是真时代" % [fid, str(era_id)])
++
++	# 校验器必须抓到坏派系内容
++	var bad := Registry.from_tables({
++		"eras": [{"id": "a", "label": "甲"}],
++		"factions": [{"id": "x", "label": "坏派系", "kind": "bogus", "legal_status": "legal",
++			"secrecy": "public", "base_power": 0.5}],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	var bad_joined := " | ".join(bad.validate())
++	a.is_true(bad_joined.contains("kind 非法"), "坏 kind 必须报错")
++	a.is_true(bad_joined.contains("缺少数据表"), "缺失数据表仍需报错")
++	var bad_power := Registry.from_tables({
++		"eras": [{"id": "a", "label": "甲"}],
++		"factions": [{"id": "x", "label": "坏派系", "kind": "dark", "legal_status": "legal",
++			"secrecy": "public", "base_power": 1.5}],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	a.is_true(" | ".join(bad_power.validate()).contains("base_power 超值域"), "base_power 越界必须报错")
++
+ 	return a.report("registry")

@@ -1,0 +1,612 @@
+# Review package: a1fa03d..ab9ceb8
+
+## Commits
+ab9ceb8 feat(factions): 社会矛盾与政治事件 + tick 演化接线（计划 03a Task 5）
+
+## Files changed
+ data/political_events.json |  12 ++++
+ src/core/registry.gd       |   8 +++
+ src/model/world_state.gd   |  15 ++++-
+ src/rules/factions.gd      | 111 ++++++++++++++++++++++++++++++++-
+ tests/factions_test.gd     | 149 ++++++++++++++++++++++++++++++++++++++++++++-
+ tests/registry_test.gd     |  29 +++++++++
+ tests/world_tick_test.gd   |  52 ++++++++++++++++
+ 7 files changed, 369 insertions(+), 7 deletions(-)
+
+## Diff
+diff --git a/data/political_events.json b/data/political_events.json
+new file mode 100644
+index 0000000..8469369
+--- /dev/null
++++ b/data/political_events.json
+@@ -0,0 +1,12 @@
++[
++  {"id": "reform_movement", "label": "改革运动", "category": "politics", "condition": "oligarchy_pressure", "major": true,
++   "text": "《预言家日报》称，一批麻瓜出身巫师与改革派纯血联名要求威森加摩改革席位分配；纯血家族则指责有人「借改革之名夺权」。"},
++  {"id": "coup_attempt", "label": "政变", "category": "politics", "condition": "lawlessness", "major": true,
++   "text": "魔法部内部传出消息：有人试图用夺魂咒控制关键部门的司长。政变没有成功，但没人说得清到底是谁在动手。"},
++  {"id": "prison_break", "label": "阿兹卡班越狱", "category": "law", "condition": "war_exhaustion", "major": true,
++   "text": "阿兹卡班发生越狱。摄魂怪失职的说法在巫师之间流传，魔法部只承认「正在统计失踪人数」。"},
++  {"id": "financial_crisis", "label": "古灵阁金融危机", "category": "economy", "condition": "economic_slump", "major": true,
++   "text": "古灵阁收紧兑付，几家老店开始只收加隆不收西可。《预言家日报》称之为「技术性调整」，对角巷的店主们管它叫挤兑。"},
++  {"id": "crackdown", "label": "魔法部镇压", "category": "law", "condition": "lawlessness", "major": true,
++   "text": "魔法部宣布一批「保密法违规」的紧急逮捕令。被抓的人里有走私犯，也有只是说了几句难听话的普通巫师。"}
++]
+diff --git a/src/core/registry.gd b/src/core/registry.gd
+index b1cd54a..57e6cbe 100644
+--- a/src/core/registry.gd
++++ b/src/core/registry.gd
+@@ -6,20 +6,21 @@ const TABLE_FILES: Dictionary = {
+ 	"factions": "factions.json",
+ 	"governments": "governments.json",
+ 	"bloodlines": "bloodlines.json",
+ 	"birth_identities": "birth_identities.json",
+ 	"aptitudes": "aptitudes.json",
+ 	"houses": "houses.json",
+ 	"sim_styles": "sim_styles.json",
+ 	"political_leanings": "political_leanings.json",
+ 	"locations": "locations.json",
+ 	"rumors": "rumors.json",
++	"political_events": "political_events.json",
+ 	"skills": "skills.json",
+ 	"wand_woods": "wand_woods.json",
+ 	"wand_cores": "wand_cores.json",
+ 	"wand_flexibilities": "wand_flexibilities.json",
+ 	"wand_lengths": "wand_lengths.json",
+ 	"spells": "spells.json",
+ }
+ 
+ var duplicate_ids: PackedStringArray = PackedStringArray()
+ var _tables: Dictionary = {}
+@@ -120,11 +121,18 @@ func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedSt
+ 			if not e.has(field):
+ 				errors.append("%s: 缺少 %s" % [where, field])
+ 			elif typeof(e[field]) != TYPE_ARRAY:
+ 				errors.append("%s: %s 必须是数组" % [where, field])
+ 		for inst in (e.get("institutions", []) as Array):
+ 			if not _INSTITUTIONS.has(str(inst)):
+ 				errors.append("%s: 机构非法（%s）" % [where, str(inst)])
+ 	if table_name == "governments":
+ 		if str(e.get("summary", "")).is_empty():
+ 			errors.append("%s: 缺少 summary" % where)
++	if table_name == "political_events":
++		if not ["politics", "economy", "law"].has(str(e.get("category", ""))):
++			errors.append("%s: category 非法" % where)
++		if str(e.get("text", "")).is_empty():
++			errors.append("%s: 缺少 text" % where)
++		if str(e.get("condition", "")).is_empty():
++			errors.append("%s: 缺少 condition" % where)
+ 	return errors
+diff --git a/src/model/world_state.gd b/src/model/world_state.gd
+index 39c8b42..050cbc5 100644
+--- a/src/model/world_state.gd
++++ b/src/model/world_state.gd
+@@ -124,38 +124,47 @@ func tick() -> Array:
+ 				var prob := 0.15 * intensity * (1.0 - mundane * 0.5)
+ 				if not month_rng.chance("major_gate", prob):
+ 					continue
+ 				flags["last_major_turn"] = clock.turn
+ 			var ev := {
+ 				"kind": "rumor",
+ 				"category": str(picked.get("category", "")),
+ 				"text": str(picked.get("text", "")),
+ 				"major": is_major,
+ 				"turn": clock.turn,
++				"rumor_id": str(picked.get("id", "")),
+ 			}
+ 			events.append(ev)
+ 			log.append(ev)
+ 			if is_major:
+ 				add_fact("major", str(picked.get("text", "")))
+ 				break   # 同月最多一起重大事件，保证 MAJOR_EVENT_GAP 成立
+ 
+-	# 3) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
++	# 3) 计划 03a：传闻揭示（第四十三/五十七章）——玩家通过传闻获知秘密派系
++	WorldFactions.apply_rumor_reveals(self, events)
++
++	# 4) 计划 03a：派系与政治演化（第十二/四十六/四十七/四十九章）
++	for political_event in WorldFactions.evolve(self):
++		events.append(political_event)
++		log.append(political_event)
++
++	# 5) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
+ 	var style_now := sim_style()
+ 	var mundane_ratio := clampf(float(style_now.get("mundane_ratio", 0.7)), 0.0, 1.0)
+ 	if month_rng.chance("mundane_day", 0.5 + mundane_ratio * 0.4):
+ 		log.append({"turn": clock.turn, "kind": "mundane",
+ 			"text": "%s，日子照常过。" % clock.formatted()})
+ 
+-	# 4) 年龄推进（玩家与世界同时变老）
++	# 6) 年龄推进（玩家与世界同时变老）
+ 	player.age_months += 1
+ 
+-	# 5) 日志裁剪，避免存档无限膨胀
++	# 7) 日志裁剪，避免存档无限膨胀
+ 	while log.size() > RECENT_LOG_LIMIT:
+ 		log.pop_front()
+ 
+ 	return events
+ 
+ func to_dict() -> Dictionary:
+ 	return JsonUtil.normalize({
+ 		"save_version": save_version,
+ 		"game_seed": game_seed,
+ 		"era_id": era_id,
+diff --git a/src/rules/factions.gd b/src/rules/factions.gd
+index cf8265c..0538fb5 100644
+--- a/src/rules/factions.gd
++++ b/src/rules/factions.gd
+@@ -197,20 +197,41 @@ static func institution_control(world: WorldState) -> Dictionary:
+ 				out[str(inst)] = {"value": value, "holder": id}
+ 	return out
+ 
+ # ---------- 月度演化（第十二/四十六/四十七/四十九章） ----------
+ 
+ const EVOLVE_REGRESSION := 0.04   # 每月向「目标实力」回归的比例
+ const EVOLVE_NOISE := 0.02        # ±0.02 扰动（单侧幅值）
+ const SUPPRESS_RATE := 0.03       # 敌对压制：每月按实力差比例削弱败者
+ const SUPPRESS_FLOOR := 0.05      # 弱者实力的绝对下限（不会被压到 0）
+ 
++# 计划 01 Task 10 的设计不变量是「存档往返逐字一致」。但 Godot 的 JSON 对 17 位有效数字的 double
++# **不保证逐位往返**（实测：内存 0.21739610501640022 → 存盘文本逐字正确 → 解析回 0.21739610501640025），
++# 而回归+噪声产生的连续浮点恰好都是这种「长尾」值——会让 save_test 的整字典相等断言变红（§8#50 的新触发面）。
++# 量化到 4 位小数后，文本短、往返稳定，且 4 位小数远超玩法精度需求（面板只显示 2 位）。
++const QUANTIZE_DECIMALS := 4
++
++static func quantize(value: float) -> float:
++	var factor := pow(10.0, float(QUANTIZE_DECIMALS))
++	return round(value * factor) / factor
++
++# 把演化产生的一切对外持久化数值定量化（幂等）：power / control / tension。
++static func quantize_state(world: WorldState) -> void:
++	for fid in world.registry.ids("factions"):
++		var st := state_of(world, str(fid))
++		if st.is_empty():
++			continue
++		st["power"] = clampf(quantize(float(st.get("power", 0.0))), 0.0, 1.0)
++		var control: Dictionary = st.get("control", {})
++		for inst in control.keys():
++			control[inst] = clampf(quantize(float(control[inst])), 0.0, 1.0)
++
+ # 结构性拉力：世界变量如何推动某类派系（正典第十二/十七/四十九章的定性关系）
+ static func structure_pull(world: WorldState, faction_id: String) -> float:
+ 	var kind := str(entry_of(world, faction_id).get("kind", ""))
+ 	var v := world.world_vars
+ 	match kind:
+ 		"ministry":
+ 			return float(v.get("ministry_stability", 0.5)) * 0.10 - float(v.get("corruption", 0.3)) * 0.20
+ 		"institution":
+ 			return float(v.get("ministry_stability", 0.5)) * 0.05
+ 		"pureblood":
+@@ -255,21 +276,21 @@ static func apply_rival_pressure(world: WorldState) -> void:
+ 			var loser := oid if pa > pb else id
+ 			var gap := absf(pa - pb)
+ 			var loser_state := ensure_state(world, loser)
+ 			if not loser_state.is_empty():
+ 				var floor := maxf(SUPPRESS_FLOOR, base_power(world, loser) * 0.25)
+ 				loser_state["power"] = clampf(float(loser_state["power"]) - SUPPRESS_RATE * gap, floor, 1.0)
+ 			var winner_state := ensure_state(world, winner)
+ 			if not winner_state.is_empty():
+ 				winner_state["power"] = clampf(float(winner_state["power"]) + SUPPRESS_RATE * gap * 0.5, 0.0, 1.0)
+ 
+-# 单回合演化：就地更新 world.factions / world.flags，返回事件数组（结构与 tick 的 events 一致；本任务恒空）。
++# 单回合演化：就地更新 world.factions / world.flags，返回事件数组（结构与 tick 的 events 一致）。
+ # 随机数全部走命名流，保证同 seed + 同回合 ⇒ 同结果。
+ static func evolve(world: WorldState) -> Array:
+ 	# M3（Task 4 审查修复轮 1）：与 initialize() 同样早退——否则紧接着的 world.clock.turn 会在
+ 	# 裸世界 / 畸形载荷（registry 或 clock 为 null）上直接崩。
+ 	if world == null or world.registry == null or world.clock == null:
+ 		return []
+ 	initialize(world)
+ 	var rng := RngService.new(world.game_seed + world.clock.turn * 31337)
+ 	for fid in world.registry.ids("factions"):
+ 		var id := str(fid)
+@@ -280,22 +301,108 @@ static func evolve(world: WorldState) -> Array:
+ 		var current := clampf(float(st.get("power", target)), 0.0, 1.0)
+ 		var noise := rng.stream_float("faction_%s" % id) * (EVOLVE_NOISE * 2.0) - EVOLVE_NOISE
+ 		var next := clampf(current + (target - current) * EVOLVE_REGRESSION + noise, 0.0, 1.0)
+ 		if not is_equal_approx(next, current):
+ 			st["last_change_turn"] = world.clock.turn
+ 		st["power"] = next
+ 		var control: Dictionary = st.get("control", {})
+ 		for inst in control.keys():
+ 			control[inst] = clampf(float(control[inst]) + (next - float(control[inst])) * 0.5, 0.0, 1.0)
+ 	apply_rival_pressure(world)
++	quantize_state(world)
+ 	world.flags[GOVERNMENT_FLAG] = government_type(world)
+-	return []
++	world.flags[TENSION_FLAG] = quantize(compute_tension(world))
++	var events: Array = []
++	var picked := pick_political_event(world)
++	if not picked.is_empty():
++		events.append(picked)
++	return events
++
++# ---------- 社会矛盾与政治事件（第四十六/四十九/六十八章） ----------
++
++const TENSION_THRESHOLD := 0.55
++
++# 社会矛盾：腐败、纯血垄断、保密法紧张、战争、经济衰退、四角失衡共同累积（正典第四十九章）
++static func compute_tension(world: WorldState) -> float:
++	var v := world.world_vars
++	var corruption := float(v.get("corruption", 0.3))
++	var pureblood := float(v.get("pureblood_influence", 0.3))
++	var muggle := float(v.get("muggle_relations", 0.5))
++	var war := float(v.get("war_pressure", 0.2))
++	var economy := float(v.get("economy_index", 0.6))
++	var secrecy := float(v.get("secrecy_integrity", 0.8))
++	var raw := corruption * 0.25 + pureblood * 0.20 + (1.0 - muggle) * 0.15 \
++		+ war * 0.20 + (1.0 - economy) * 0.15 + (1.0 - secrecy) * 0.05
++	var share := power_share(world)
++	var top := 0.0
++	for key in share.keys():
++		top = maxf(top, float(share[key]))
++	raw += clampf((top - 0.25) * 0.5, 0.0, 0.25)
++	return clampf(raw, 0.0, 1.0)
++
++static func tension_of(world: WorldState) -> float:
++	if world.flags.has(TENSION_FLAG):
++		return clampf(float(world.flags[TENSION_FLAG]), 0.0, 1.0)
++	return compute_tension(world)
++
++# 事件条件：代码判定，文案在 data/political_events.json（内容进 data）
++static func event_condition_met(world: WorldState, condition: String) -> bool:
++	var v := world.world_vars
++	match condition:
++		"economic_slump":
++			return float(v.get("economy_index", 0.6)) <= 0.35
++		"oligarchy_pressure":
++			return float(power_share(world).get("pureblood", 0.0)) >= 0.26 \
++				or float(v.get("pureblood_influence", 0.3)) >= 0.65
++		"lawlessness":
++			return float(v.get("corruption", 0.3)) >= 0.65 \
++				or government_type(world) == "death_eater_dictatorship"
++		"war_exhaustion":
++			return float(v.get("war_pressure", 0.2)) >= 0.65
++		"secrecy_crisis":
++			return float(v.get("secrecy_integrity", 0.8)) <= 0.30
++		_:
++			return false
++
++# 选举本月政治事件：必须同时满足「tension 过阈」「条件成立」「重大事件配额可用」（第六十八章）
++static func pick_political_event(world: WorldState) -> Dictionary:
++	if tension_of(world) < TENSION_THRESHOLD:
++		return {}
++	var last_major := int(world.flags.get("last_major_turn", -WorldState.MAJOR_EVENT_GAP))
++	if world.clock.turn - last_major < WorldState.MAJOR_EVENT_GAP:
++		return {}
++	var candidates: Array = []
++	for eid in world.registry.ids("political_events"):
++		var entry := world.registry.entry("political_events", str(eid))
++		if event_condition_met(world, str(entry.get("condition", ""))):
++			candidates.append(entry)
++	if candidates.is_empty():
++		return {}
++	var rng := RngService.new(world.game_seed + world.clock.turn * 524287)
++	var picked: Dictionary = rng.stream_pick("political_event", candidates)
++	if picked.is_empty():
++		return {}
++	world.flags["last_major_turn"] = world.clock.turn
++	var ev := {
++		"kind": "faction",
++		"category": str(picked.get("category", "politics")),
++		"text": str(picked.get("text", "")),
++		"major": bool(picked.get("major", true)),
++		"turn": world.clock.turn,
++		"event_id": str(picked.get("id", "")),
++	}
++	world.add_fact("major", str(picked.get("text", "")))
++	return ev
++
++# Task 6 填实：把传闻事件里指向的派系标记为已揭示
++static func apply_rumor_reveals(world: WorldState, _events: Array) -> void:
++	pass
+ 
+ # ---------- 政体推导（第十一章 + 第十二章） ----------
+ 
+ static func government_type(world: WorldState) -> String:
+ 	# 1) 凤凰社抵抗：战争压力高 + 抵抗组织强于魔法部（第十一章第 4 条）
+ 	if float(world.world_vars.get("war_pressure", 0.0)) >= 0.6 \
+ 			and power_of(world, RESISTANCE_ID) > power_of(world, MINISTRY_ID):
+ 		return "order_resistance"
+ 	# 2) 食死徒独裁：黑暗势力掌握执法与司法（第十一章第 3 条）
+ 	# 缺失键按 0 计（Task 2 审查 Minor 1）：旧实现回退到「全局归并持有值」，会把「非黑暗派系控制执法司」
+diff --git a/tests/factions_test.gd b/tests/factions_test.gd
+index 0fa40a3..3d5632e 100644
+--- a/tests/factions_test.gd
++++ b/tests/factions_test.gd
+@@ -318,22 +318,23 @@ func run() -> int:
+ 	WorldFactions.apply_rival_pressure(asym)
+ 	a.is_true(WorldFactions.power_of(asym, "black_market") < asym_before,
+ 		"非对称敌对声明（black_market 单方声明 auror_office）也必须被处理")
+ 	a.is_true(WorldFactions.power_of(asym, "auror_office") > 0.90,
+ 		"非对称敌对的胜者也获得收益")
+ 
+ 	# 可判别压制用例（M5 修复轮 1：删掉与 seed 挂钩的「< 起点」那一条，只留与 seed 无关的下限断言）：
+ 	# war/corruption 拉高黑暗势力目标值（0.45），败者起点 0.06 高于 SUPPRESS_FLOOR。
+ 	# 为何删「< 起点」：纯回归值 = 0.06 + (0.45-0.06)*0.04 + noise = 0.0756 + noise，
+ 	# 要它在「无压制」时仍 ≥ 起点需 noise > -0.0156——只差 0.0043 的余量，换 seed / 改 EVOLVE_NOISE 就会退化成恒真。
+-	# 为何「按到下限」与 seed 无关：death_eaters 在真实内容表里同时是 4 对的败者（ministry/auror_office/
+-	# order_of_phoenix/hogwarts），四对合计压制 ≈ 0.09 ≫ noise 带宽 ±0.02 → 必被压到下限。
++	# 为何「按到下限」与 seed 无关：death_eaters 在真实内容表里同时是 6 对的败者（ministry/auror_office/
++	# wizengamot/mysteries/hogwarts/order_of_phoenix——I1 修复后非对称声明也生效，故是 6 对不是 4 对），
++	# 各对压制被各自的下限（max(0.05, base×0.25)）截断，实际生效的下降量合计 ≈ 0.06 ≫ noise 带宽 ±0.02 → 必被压到下限。
+ 	var press2 := make_world("modern")
+ 	WorldFactions.initialize(press2)
+ 	press2.world_vars["war_pressure"] = 1.0
+ 	press2.world_vars["corruption"] = 1.0
+ 	WorldFactions.ensure_state(press2, "ministry")["power"] = 0.95
+ 	WorldFactions.ensure_state(press2, "death_eaters")["power"] = 0.06
+ 	WorldFactions.evolve(press2)
+ 	a.near(WorldFactions.power_of(press2, "death_eaters"), WorldFactions.SUPPRESS_FLOOR, 0.0001,
+ 		"压制把败者按到下限，不会归零（与 seed 无关）")
+ 
+@@ -456,11 +457,155 @@ func run() -> int:
+ 	# ---- Task 3 审查 Minor 3：delta / 2 向零截断（既定语义，留给后续统一） ----
+ 	var trunc := make_world("modern")
+ 	WorldFactions.initialize(trunc)
+ 	StateOps.apply(trunc, [{"op": "join_faction", "faction_id": "ministry"}])
+ 	var trunc_errs := StateOps.apply(trunc, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": -5}])
+ 	a.eq(trunc_errs.size(), 0, "负向立场调整无错误")
+ 	a.eq(trunc.player.standing_of("ministry"), -5, "玩家立场为 -5（原值）")
+ 	a.eq(int(WorldFactions.state_of(trunc, "ministry").get("stance_to_player", 0)), -2,
+ 		"派系态度为 -2：delta/2 向零截断（既定语义）")
+ 
++	# ---- 社会矛盾与政治事件（Task 5） ----
++	var calm := make_world("modern")
++	calm.world_vars["corruption"] = 0.05
++	calm.world_vars["pureblood_influence"] = 0.05
++	calm.world_vars["muggle_relations"] = 0.9
++	calm.world_vars["war_pressure"] = 0.05
++	calm.world_vars["economy_index"] = 0.9
++	calm.world_vars["secrecy_integrity"] = 0.95
++	var angry := make_world("modern")
++	angry.world_vars["corruption"] = 0.9
++	angry.world_vars["pureblood_influence"] = 0.9
++	angry.world_vars["muggle_relations"] = 0.1
++	angry.world_vars["war_pressure"] = 0.9
++	angry.world_vars["economy_index"] = 0.1
++	angry.world_vars["secrecy_integrity"] = 0.1
++	a.between(WorldFactions.compute_tension(calm), 0.0, 1.0, "tension 值域")
++	a.is_true(WorldFactions.compute_tension(angry) > WorldFactions.compute_tension(calm),
++		"腐败/纯血/战争高、经济差 → tension 更高")
++	a.is_true(WorldFactions.compute_tension(angry) >= WorldFactions.TENSION_THRESHOLD,
++		"极端格局的 tension 达到事件阈值（否则后续断言可能空转）")
++
++	WorldFactions.initialize(angry)
++	a.is_true(WorldFactions.event_condition_met(angry, "economic_slump"), "经济萧条条件成立")
++	a.is_false(WorldFactions.event_condition_met(calm, "economic_slump"), "经济好时不成立")
++	a.is_true(WorldFactions.event_condition_met(angry, "oligarchy_pressure"), "寡头压力条件成立（pureblood_influence 分支）")
++	a.is_false(WorldFactions.event_condition_met(calm, "oligarchy_pressure"), "无寡头压力时不成立")
++	# 单独钉住 power_share 那条分支：必须把 pureblood_influence 压在 0.65 以下，否则 OR 的另一条会救场、
++	# 该分支即使被写成死阀值（如计划原稿的 0.40）也测不出来（破坏实验 E2 实证）。
++	var olig := make_world("modern")
++	WorldFactions.initialize(olig)
++	olig.world_vars["pureblood_influence"] = 0.30
++	WorldFactions.ensure_state(olig, "sacred_twenty_eight")["power"] = 0.9
++	WorldFactions.ensure_state(olig, "reformist_pureblood")["power"] = 0.9
++	a.is_true(float(WorldFactions.power_share(olig).get("pureblood", 0.0)) >= 0.26,
++		"前置：纯血四角占比确实 ≥ 0.26（否则断言空转）")
++	a.is_false(float(olig.world_vars.get("pureblood_influence", 0.0)) >= 0.65,
++		"前置：pureblood_influence 低于 0.65（确保不是 OR 的另一条救场）")
++	a.is_true(WorldFactions.event_condition_met(olig, "oligarchy_pressure"),
++		"纯血占比达标即触发寡头压力（power_share 分支单独可判）")
++	a.is_true(WorldFactions.event_condition_met(angry, "lawlessness"), "无法纪条件成立")
++	a.is_false(WorldFactions.event_condition_met(calm, "lawlessness"), "低腐败时不成立")
++	a.is_true(WorldFactions.event_condition_met(angry, "war_exhaustion"), "战争疲态条件成立")
++	a.is_false(WorldFactions.event_condition_met(calm, "war_exhaustion"), "和平时不成立")
++	a.is_true(WorldFactions.event_condition_met(angry, "secrecy_crisis"), "保密法危机条件成立")
++	a.is_false(WorldFactions.event_condition_met(calm, "secrecy_crisis"), "保密法稳固时不成立")
++	a.is_false(WorldFactions.event_condition_met(angry, "不存在的条件"), "未知条件恒不成立")
++
++	var pev := WorldFactions.pick_political_event(angry)
++	a.is_true(not pev.is_empty(), "紧张局势下能选出政治事件")
++	a.is_true(angry.registry.has("political_events", str(pev.get("event_id", ""))), "事件 id 来自内容表")
++	a.is_true(not str(pev.get("text", "")).is_empty(), "事件有文案")
++	a.eq(str(pev.get("kind", "")), "faction", "事件 kind=faction")
++	a.eq(int(pev.get("turn", -1)), angry.clock.turn, "事件带当前回合")
++	a.eq(int(angry.flags.get("last_major_turn", -1)), angry.clock.turn, "事件占用本月重大事件配额")
++	a.is_true(angry.history.size() >= 1, "事件进 history（add_fact）")
++	a.is_true(WorldFactions.pick_political_event(angry).is_empty(), "同一回合不再重复触发（MAJOR_EVENT_GAP）")
++
++	# 低 tension 时一个都不该选出来
++	WorldFactions.initialize(calm)
++	a.is_true(WorldFactions.pick_political_event(calm).is_empty(), "低 tension 时不触发政治事件")
++
++	# tick 接线：evolve 产出的事件进入本回合 events 与 log
++	var tw := make_world("modern")
++	tw.world_vars["corruption"] = 0.95
++	tw.world_vars["pureblood_influence"] = 0.95
++	tw.world_vars["muggle_relations"] = 0.05
++	tw.world_vars["war_pressure"] = 0.95
++	tw.world_vars["economy_index"] = 0.05
++	tw.world_vars["secrecy_integrity"] = 0.05
++	tw.flags["last_major_turn"] = -99
++	var tick_events := tw.tick()
++	a.is_true(tw.flags.has(WorldFactions.TENSION_FLAG), "tick 后 tension 已写入 flags")
++	a.is_true(tw.flags.has(WorldFactions.GOVERNMENT_FLAG), "tick 后政体缓存已写入 flags")
++	# 容差 2e-4：flags 里存的是量化后的 tension（同上，为存档往返稳定）
++	a.near(WorldFactions.tension_of(tw), WorldFactions.compute_tension(tw), 0.0002,
++		"tension_of 与 compute_tension 一致（tick 写的是同一口径，量化后余差 ≤1e-4）")
++	var politics := 0
++	var in_log := 0
++	for ev in tick_events:
++		if str(ev.get("kind", "")) == "faction":
++			politics += 1
++	for ev in tw.log:
++		if str(ev.get("kind", "")) == "faction":
++			in_log += 1
++	a.is_true(politics >= 1, "tick 返回的 events 里含派系/政治事件")
++	a.eq(in_log, politics, "同一批事件也进了 world.log")
++
++	# ---- Task 5 收口 4a：注释事实订正（I1 修复后 death_eaters 同时是 6 对的败者） ----
++	# 该注释在「可判别压制用例」上方，只改文字不改断言。
++
++	# ---- Task 5 收口 4b-1：structure_pull 各分支方向正确（此前只有 ministry/dark/resistance 有断言） ----
++	var low := make_world("modern")
++	var high := make_world("modern")
++	low.world_vars["ministry_stability"] = 0.1
++	high.world_vars["ministry_stability"] = 0.9
++	a.is_true(WorldFactions.structure_pull(high, "auror_office") > WorldFactions.structure_pull(low, "auror_office"),
++		"institution 分支：部里越稳，机构越强")
++	low.world_vars["pureblood_influence"] = 0.1
++	high.world_vars["pureblood_influence"] = 0.9
++	a.is_true(WorldFactions.structure_pull(high, "sacred_twenty_eight")
++		> WorldFactions.structure_pull(low, "sacred_twenty_eight"), "pureblood 分支：纯血影响力越高越强")
++	low.world_vars["economy_index"] = 0.1
++	high.world_vars["economy_index"] = 0.9
++	a.is_true(WorldFactions.structure_pull(high, "gringotts") > WorldFactions.structure_pull(low, "gringotts"),
++		"commerce 分支：经济越好商业越强")
++	a.is_true(WorldFactions.structure_pull(high, "daily_prophet") > WorldFactions.structure_pull(low, "daily_prophet"),
++		"media 分支：经济越好舆论越强")
++	low.world_vars["muggle_relations"] = 0.1
++	high.world_vars["muggle_relations"] = 0.9
++	a.is_true(WorldFactions.structure_pull(high, "muggle_world") > WorldFactions.structure_pull(low, "muggle_world"),
++		"foreign 分支：麻瓜关系越好，外部势力越强")
++	low.world_vars["secrecy_integrity"] = 0.1
++	high.world_vars["secrecy_integrity"] = 0.9
++	a.is_true(WorldFactions.structure_pull(high, "hogwarts") > WorldFactions.structure_pull(low, "hogwarts"),
++		"school 分支：保密法越稳，学校越强")
++	a.near(WorldFactions.structure_pull(high, "common_folk"), 0.0, 0.0000001,
++		"society（未列入 match 的 kind）拉力恒为 0，不泄漏其他分支")
++
++	# ---- Task 5 收口 4b-2：机构控制权以 0.5 系数向实力靠拢（此前无任何断言） ----
++	# 用「只有一个派系、无 rivals」的最小夹具，排除敌对压制对 power 的二次修改，
++	# 于是 evolve 后的 power 就是控制权滞后所用的 next，可精确核对关系式。
++	var solo_reg := Registry.from_tables({
++		"eras": [{"id": "modern", "label": "现代", "world_vars": {"economy_index": 0.5}}],
++		"factions": [
++			{"id": "solo", "label": "独派", "kind": "commerce", "legal_status": "legal", "secrecy": "public",
++				"base_power": 0.4, "institutions": ["gringotts"], "rivals": [], "allies": [],
++				"domains": ["economy"], "aliases": ["独派"], "era_overrides": {}},
++		],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++		"political_events": [],
++	})
++	var solo := WorldState.create("modern", PlayerState.new_default(), 9, solo_reg)
++	var solo_state := WorldFactions.ensure_state(solo, "solo")
++	solo_state["power"] = 0.9
++	solo_state["control"]["gringotts"] = 0.5
++	WorldFactions.evolve(solo)
++	var solo_power := float(WorldFactions.state_of(solo, "solo")["power"])
++	var solo_control := float((WorldFactions.state_of(solo, "solo")["control"] as Dictionary)["gringotts"])
++	a.is_true(solo_power < 0.9, "前置：实力向目标（0.4）回归而下降（否则滞后断言可能空转）")
++	# 容差 2e-4：evolve 末尾会把 power/control 量化到 1e-4（存档往返不变量，见 WorldFactions.QUANTIZE_DECIMALS），
++	# 因此关系式只在量化精度内成立；若把系数 0.5 改成 0.25，偏差约 0.1 ≫ 2e-4，断言仍会红。
++	a.near(solo_control, 0.5 + (solo_power - 0.5) * 0.5, 0.0002,
++		"机构控制权以 0.5 系数向新实力靠拢：control += (power − control) × 0.5")
++
+ 	return a.report("factions")
+diff --git a/tests/registry_test.gd b/tests/registry_test.gd
+index b68382b..3704dfd 100644
+--- a/tests/registry_test.gd
++++ b/tests/registry_test.gd
+@@ -109,11 +109,40 @@ func run() -> int:
+ 		"factions": [{"id": "x", "label": "坏派系", "kind": "dark", "legal_status": "legal",
+ 			"secrecy": "public", "base_power": 1.5}],
+ 		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+ 	})
+ 	a.is_true(" | ".join(bad_power.validate()).contains("base_power 超值域"), "base_power 越界必须报错")
+ 
+ 	# registry 的表内枚举与 WorldFactions 常量必须一致（防两处定义漂移）
+ 	a.eq(insts, WorldFactions.INSTITUTIONS, "机构枚举两处一致")
+ 	a.eq(kinds, WorldFactions.KINDS, "kind 枚举两处一致")
+ 
++	a.eq(reg.ids("political_events").size(), 5, "政治事件表 5 条")
++	for eid in reg.ids("political_events"):
++		var pe := reg.entry("political_events", str(eid))
++		a.is_true(not str(pe.get("text", "")).is_empty(), "政治事件 %s 有文案" % str(eid))
++		a.is_true(["politics", "economy", "law"].has(str(pe.get("category", ""))), "政治事件 %s category 合法" % str(eid))
++		a.is_true(not str(pe.get("condition", "")).is_empty(), "政治事件 %s 有 condition" % str(eid))
++	# 五个事件必须都指向 event_condition_met() 认识的条件（写错条件名会让事件永远选不出来也永远不报错）
++	var known_conditions := ["economic_slump", "oligarchy_pressure", "lawlessness", "war_exhaustion", "secrecy_crisis"]
++	var conditions := PackedStringArray()
++	for eid in reg.ids("political_events"):
++		var condition := str(reg.entry("political_events", str(eid)).get("condition", ""))
++		a.is_true(known_conditions.has(condition), "政治事件 %s 的 condition 在代码白名单内（%s）" % [str(eid), condition])
++		if not conditions.has(condition):
++			conditions.append(condition)
++	a.is_true(conditions.size() >= 4, "至少覆盖 4 种不同条件（实际 %d 种）" % conditions.size())
++
++	# 校验器必须抓到坏政治事件
++	var bad_event := Registry.from_tables({
++		"eras": [{"id": "a", "label": "甲"}],
++		"factions": [{"id": "x", "label": "派", "kind": "dark", "legal_status": "legal",
++			"secrecy": "public", "base_power": 0.5, "institutions": [], "rivals": [], "allies": []}],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++		"political_events": [{"id": "bad", "label": "坏事件", "category": "bogus", "condition": "", "text": ""}],
++	})
++	var bad_event_errors := " | ".join(bad_event.validate())
++	a.is_true(bad_event_errors.contains("category 非法"), "政治事件坏 category 必须报错")
++	a.is_true(bad_event_errors.contains("缺少 text"), "政治事件缺 text 必须报错")
++	a.is_true(bad_event_errors.contains("缺少 condition"), "政治事件缺 condition 必须报错")
++
+ 	return a.report("registry")
+diff --git a/tests/world_tick_test.gd b/tests/world_tick_test.gd
+index 73abe01..e85caf7 100644
+--- a/tests/world_tick_test.gd
++++ b/tests/world_tick_test.gd
+@@ -77,11 +77,63 @@ func run() -> int:
+ 	var leaked := false
+ 	var events_seen := 0
+ 	for i in 40:
+ 		for e in w3.tick():
+ 			events_seen += 1
+ 			if str(e.get("category", "")) == "魔法部内幕":
+ 				leaked = true
+ 	a.is_true(events_seen > 0, "该配置下确实产生了事件（否则信息保护断言空转）")
+ 	a.is_false(leaked, "未入学麻瓜出身者不应收到“魔法部内幕”级信息")
+ 
++	# ---- 计划 03a：新增演化阶段不得破坏 tick 的既有语义 ----
++	var pre_reg := Registry.load_default()
++	var pre_w := WorldState.create("modern", PlayerState.new_default(), 4242, pre_reg)
++	var age_before := pre_w.player.age_months
++	var turn_before := pre_w.clock.turn
++	pre_w.tick()
++	a.eq(pre_w.player.age_months, age_before + 1, "年龄仍每回合 +1")
++	a.eq(pre_w.clock.turn, turn_before + 1, "回合仍每回合 +1")
++	a.is_true(pre_w.log.size() <= 200, "日志仍被裁剪到 200 条以内")
++	a.is_true(pre_w.flags.has(WorldFactions.GOVERNMENT_FLAG), "政体缓存已写入")
++
++	# ---- 计划 03a：tick 的传闻事件结构不变，只多一个 rumor_id（Task 6 的揭示要用） ----
++	var rumor_w := WorldState.create("modern", PlayerState.new_default(), 99, pre_reg)
++	# 必须给一个真实地点，否则 zones 筛选后候选集为空、传闻事件一次都不会产生（断言会空转）
++	rumor_w.player.location_id = "diagon_alley"
++	var rumor_events: Array = []
++	var guard := 0
++	while rumor_events.is_empty() and guard < 40:
++		guard += 1
++		for e in rumor_w.tick():
++			if str(e.get("kind", "")) == "rumor":
++				rumor_events.append(e)
++	a.is_true(rumor_events.size() >= 1, "该配置下确实产生了传闻事件（否则下面的结构断言空转）")
++	for e in rumor_events:
++		a.has_key(e, "kind", "传闻事件含 kind")
++		a.has_key(e, "category", "传闻事件含 category")
++		a.has_key(e, "text", "传闻事件含 text")
++		a.has_key(e, "major", "传闻事件含 major")
++		a.has_key(e, "turn", "传闻事件含 turn")
++		a.has_key(e, "rumor_id", "传闻事件含 rumor_id（Task 6 揭示用）")
++		# 用 .get() 而非 e["rumor_id"]：缺键时要得到一条干净的断言失败，不能用下标访问把整个套件搞崩（§8#56 同类陷阱）
++		a.is_true(rumor_w.registry.has("rumors", str(e.get("rumor_id", ""))), "rumor_id 是内容表里的真实传闻")
++
++	# ---- 计划 03a：政治事件也必须受到 12 个月重大事件配额约束（与传闻共用 flags["last_major_turn"]） ----
++	var political_gap := 9999
++	var political_last := -1000
++	var political_count := 0
++	for e in rumor_w.log:
++		if str(e.get("kind", "")) == "faction":
++			political_count += 1
++			political_gap = mini(political_gap, int(e["turn"]) - political_last)
++			political_last = int(e["turn"])
++	a.is_true(political_count >= 0, "政治事件计数可读（实际=%d）" % political_count)
++	if political_count >= 2:
++		a.is_true(political_gap >= 12, "相邻政治事件至少相隔 12 个月（实际最小间隔=%d）" % political_gap)
++
++	# ---- 计划 03a：tick 跑完仍不得留下畸形 world_vars / 派系状态 ----
++	for fid in pre_w.registry.ids("factions"):
++		var fstate := WorldFactions.state_of(pre_w, str(fid))
++		a.is_true(not fstate.is_empty(), "tick 后 %s 仍有状态" % str(fid))
++		a.between(float(fstate.get("power", -1.0)), 0.0, 1.0, "%s 实力在界内" % str(fid))
++
+ 	return a.report("world_tick")

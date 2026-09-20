@@ -143,3 +143,46 @@ assets/
 5. **要哪些槽位**：时代背景 / 学院徽记 / 派系徽记 / 地点插图 / 玩家立绘 / NPC 立绘（NPC id 属计划 05）/ UI 皮肤（面板底、按钮、滚动条、光标）/ 标题 Logo？——**列清单给我，我按清单定键名**。
 6. **大文件**：>10MB 的音频/背景是否走 Git LFS（还是直接入库）？public 仓库要不要放素材（授权与体积）？
 7. **授权与署名**：`assets/credits.md` 的必填字段（作者/来源/许可证/是否允许商用）？我会在清单校验里加一条「有素材条目则 credits 必须提到它」。
+
+---
+
+## 8. 素材实测盘点（2026-09-20，人类首次落盘 `asssets/`，30MB）
+
+> 人类已把第一批素材放进仓库工作区（**未跟踪**）：`asssets/`（注意目录名是**三个 s**，与本文约定的 `assets/` 不一致）。
+> 人类自带的 `asssets/README.md` 已列**来源 + 许可**（很完整，可直接升级为 `assets/CREDITS.md`）。
+
+### 8.1 字体：**全部不含中文**（实测，Godot `FontFile.has_char()`）
+
+```
+FONT Cinzel-Variable.ttf   CJK=0/5  LATIN=1
+FONT IMFeENrm28P.ttf       CJK=0/5  LATIN=1   （IM Fell English）
+FONT MedievalSharp.ttf     CJK=0/5  LATIN=1
+FONT HARRYP__.TTF          CJK=0/5  LATIN=1   （Harry P，dafont）
+（另：Godot 内置 `ThemeDB.fallback_font` 对 你/魔/法 亦为 false）
+```
+
+⇒ 这 4 个字体**只能用于拉丁文标题/数字/Logo**（Cinzel / IM Fell English / MedievalSharp 都是 OFL-1.1 可商用 ✓；Harry P 是粉丝字体，`100% Free · 个人免费，商用需授权`，且模仿 HP 官方 Logo 字体，public 仓库有 IP 风险 ⚠️）。
+⇒ **缺一个覆盖中文的正文字体**（这是当前唯一"没它就没法读"的缺口）。候选（OFL/可商用）：Noto Sans SC、Source Han Sans（思源黑体）、LXGW WenKai（霞鹜文楷）、思源宋体。
+
+### 8.2 其余素材清单（已落盘）
+
+| 类别 | 文件 | 体积 | 许可（人类 README） | 可用性判断 |
+| --- | --- | --- | --- | --- |
+| audio | `audio/DarkWinds_0.OGG` | 2.0MB | CC-BY-SA 3.0 | ✅ 可作 BGM；⚠️ **SA 是 copyleft**，改编版必须同样 SA（打包播放通常没问题，但需人类确认接受该条款） |
+| audio | `audio/FantasyWav.wav` | **17.3MB** | CC0 | ✅ 建议**转 OGG**（体积可降一个数量级）再入库 |
+| audio | `audio/Woodland%20Fantasy_0.mp3` | 6.0MB | CC-BY 3.0 | ⚠️ 文件名带 URL 编码空格 → 改 `woodland_fantasy.mp3`；Godot 支持 mp3 但**建议统一 OGG** |
+| icons | `icons/*.svg` ×15 | ~20KB | CC-BY 3.0（game-icons.net） | ✅ Godot 可导入 SVG（ThorVG）→ 作面板/事件图标；**CC-BY 必须署名**（credits） |
+| fonts | `fonts/harry_p.zip` | 15KB | 同 HarryP | 🗑️ 与 `fonts/HarryP/` 重复 → 建议删除 |
+| ui | `interface.psd`（README 已列，**未落盘**） | — | CC0 | ⚠️ **PSD 不能直接被 Godot 用** → 需切成 PNG（九宫格面板底、按钮 normal/hover/pressed、滚动条、进度条） |
+| textures | `runic_codex.png`（README 已列，**未落盘**） | — | CC0 | 待落盘 |
+
+### 8.3 由此产生的待决策（替代 §7，请人类逐条拍）
+
+1. **目录改名**：`asssets/` → **`assets/`**（趁未入库最省事；若坚持三名则我把契约改成 `asssets/`）。
+2. **补 CJK 正文字体**（**必须**）：给一个文件名（建议 `assets/fonts/body_cjk.ttf`），我会在 `presentation.json` 里把它设为 `fonts.body`，并在 `presentation_test` 里断言"未配置 CJK 字体即失败"。
+3. **体积策略**：现状 30MB（含 17MB WAV + 6MB MP3）。建议：① 音频统一转 OGG（约 -20MB）；② 删 `harry_p.zip`；③ 若最终 >50MB 再上 **Git LFS**。是否同意？
+4. **HarryP 字体**：非商用授权 + 粉丝字体 IP 风险 → 是否放进 **public 仓库**？（替代：只本地使用、或换成 OFL 字体做标题）
+5. **CC-BY-SA 音乐**（DarkWinds）：接受 share-alike 条款吗？
+6. **`interface.psd` 切图**：能否提供切片 PNG（或告诉我你希望我按哪些尺寸切）？
+7. **credits 落位**：把你现有 `asssets/README.md` 升级为 `assets/CREDITS.md`，并在清单校验里加一条"`presentation.json` 里出现的每条素材都必须在 CREDITS 里有条目；CC-BY 素材必须含署名行"——同意吗？
+8. **图标语义映射**（我可以直接给草案，你确认即可）：`castle`→霍格沃茨、`cauldron`/`round-potion`→魔药、`bolt-spell-cast`→施法、`lunar-wand`→魔杖、`book-cover`/`scroll-quill`→学业、`crown`→纯血/威森加摩、`dragon-orb`→黑暗势力、`floating-ghost`→幽灵/死亡、`barn-owl`→信件、`rune-stone`→如尼/古物、`tarot-01-the-magician`→预言、`wizard-face`→人物面板、`crystal-earrings`→首饰/财富。

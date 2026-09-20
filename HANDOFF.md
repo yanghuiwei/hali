@@ -7,9 +7,15 @@
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」与计划 02「LLM 叙事引擎」均已完成并合入 `main`；B1 人工 GUI 验收已用自动化通道跑完（78/78 断言通过）。** 计划 02（12 任务）：`LlmProvider`/`MockLlmProvider`/`OpenAiCompatProvider`、`LlmSettings`、`GmResponseParser`、`PromptBuilder`、`OpGuard`、`LlmGameMaster`（重试+降级）、`TurnEngine.submit_async`、UI 异步接线；另有 `StateOps.train_skill` 与 §8#33 RNG 加盐。计划全文：`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`；设计 spec：`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`。下一步：**计划 03（派系与政治经济）**；真机 LLM 联调剩余项（B2）用户已裁定暂不做。
+**计划 01「核心模拟地基」与计划 02「LLM 叙事引擎」已完成并合入 `main`；计划 03a「派系与政治骨架」已完成 Task 1–11（分支 `plan-03-factions`，尚未合入 `main`）。**
 
-**接下来要做什么：见 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（队列 A 已完；队列 B：B1 已完成、B2 暂不做、B3 = 计划 03 启动；含恢复核对命令与协作约定）。
+- 03a 交付：派系内容表（17 派系 / 4 政体 / 5 政治事件）· `WorldFactions` 规则层（初始化 / 机构控制权 / 权力四角 / 政体推导 / 月度演化 / 社会矛盾与政治事件）· 玩家所属与立场（`standing` + 3 op + `OpGuard` + 存档校验）· 信息保护（`reveal()` + 传闻揭示）· **势力面板重写（修掉 `§8#7`）** · 提示词只暴露已揭示派系 · 离线替身派系关键词 · UI 看门狗与 provider 卫生（`§8#58/#62/#63`）· 降级原因与鸭子类型（`§8#61/#64/#65`）
+- 计划全文：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md`（13 任务；**文本被控制器按实跑修正过多次，以文件当前文本为准**）｜设计 spec：`docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md`
+- **耐久台账**：`docs/sdd/plan-03a-factions/progress.md`（每任务提交 / 断言数 / 审查结论 / 挂账 Minor / 暂停点）
+- **暂停点**：人类要改一个小计划 + 正在整理字体/美术/声音素材 ⇒ 剩余 **Task 12 / Task 13** 与新的 **03a-P 表现层计划**（草稿 spec：`docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`）
+- ⚠️ **硬事实**：Godot 内置字体**不含 CJK 字形**（实测 `ThemeDB.fallback_font.has_char('你') == false`）⇒ 中文界面必须自带 CJK 字体资产（03a-P 的前提）
+
+**接下来要做什么：见 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（§0.5 恢复指引 / §B 当前暂停点 / §C 待裁定项）。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -22,15 +28,16 @@
 | 项 | 值 |
 | --- | --- |
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
-| 执行分支 | **`main`**（计划 01 与计划 02 均已合入；**后续计划从 `main` 拉新分支**） |
-| `main` | 已包含**计划 01 全部**（Task 1–11 + 收尾加固，分支顶端 `026efe3`）与**计划 02 全部**（Tasks 1–12，收口 `1f82483`，合入记录 `d885cf9`）。 |
-| 当前 HEAD | `main`（顶端以 `git log --oneline -1` 为准；**不要把 HEAD 钉死在文档里**——已漂移两次，见 §9 自检清单第 1 条） |
+| 执行分支 | **`plan-03-factions`**（计划 03a；从 `main` 拉出，**尚未合入 `main`**——03a 的合入在 Task 13） |
+| `main` | 已包含**计划 01 全部**（Task 1–11 + 收尾加固，分支顶端 `026efe3`）与**计划 02 全部**（Tasks 1–12，收口 `1f82483`，合入记录 `d885cf9`）、以及 B1 观测通道与计划 03a 的 spec/计划文档。**`main` 上还没有 03a 的代码。** |
+| 当前 HEAD | `plan-03-factions`（顶端以 `git log --oneline -1` 为准；**不要把 HEAD 钉死在文档里**——已漂移多次） |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
-git checkout main        # 计划 01 + 计划 02 均已并入 main（接着开发的也从这里拉分支）
-git log --oneline -3     # 顶部应是本次 docs 提交（其历史里含 3240af6 / d885cf9 / 1f82483 / a48f108 / 15c1ff0 / f2b4abf）
+git checkout plan-03-factions   # 计划 03a 的工作分支（已推送；main 上只有到计划 02）
+git log --oneline -3            # 顶部应是本次 docs 提交（其历史里含 03a 的 Task 1–11 与 4 轮修复）
+# 若要接着做 03a 的 Task 12/13：就在这条分支上继续；Task 13 会 merge --no-ff 回 main
 ```
 
 **计划 01 的历史**（仅供追溯，不代表当前 HEAD）：收尾时把 `plan-01-core-foundation` 合回了 `main`。远端 PR #2 实际合并的是 Task 5 的旧 tip `d4186c5`（不含 Task 6–11），因此本地以 `026efe3` 把旧 merge 与完整分支合并修正，`origin/main` 与 `b196d26` 的 tree 完全一致。
@@ -64,55 +71,38 @@ GODOT=godot bash tools/test.sh
 Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 ```
 
-脚本行为（`tools/test.sh`，共 4 步）：`1/4` 先 `--headless --import` 生成 `.godot` 缓存（`class_name` 全局类依赖它，冷机器首次必须做）→ `2/4` 跑单元测试 → `3/4` 主场景冒烟（`src/ui/main.tscn` 已存在，会真正执行 `--headless --quit-after 5`；若缺失会打印"跳过"且不算失败）→ `4/4` 调试镜像冒烟（`HALI_DEBUG_LOG=1` 跑 `tools/ui_debug_probe.gd`，断言界面文本真的镜像到 stdout）。
+脚本行为（`tools/test.sh`，共 4 步）：`1/4` 先 `--headless --import` 生成 `.godot` 缓存（`class_name` 全局类依赖它，冷机器首次必须做）→ `2/4` 跑单元测试 → `3/4` 主场景冒烟（`--headless --quit-after 5`；缺 `main.tscn` 会打印"跳过"且不算失败）→ `4/4` 调试镜像冒烟（`HALI_DEBUG_LOG=1` 跑 `tools/ui_debug_probe.gd`）。
 
-> `3/4` 还**反向**断言：未设 `HALI_DEBUG_LOG` 时输出里不得出现任何 `[HALI]` 行（证明默认行为逐字未变）。`4/4` 是 B1 人工验收观测通道的回归测试。
+> `3/4` 还**反向**断言：未设 `HALI_DEBUG_LOG` 时输出里不得出现任何 `[HALI]` 行（证明默认行为逐字未变）。
 
 **退出码语义**：`0` 全绿｜`1` 有失败（单测 / 冒烟 / 镜像）｜`2` 找不到 Godot 可执行文件。
 
-冷机器上第一次运行的预期输出：
+冷机器上第一次运行的预期输出（**计划 03a 完成后实测**）：
 
 ```
 == 1/4 导入资源（生成 .godot 缓存，class_name 全局类依赖它） ==
 == 2/4 单元测试 ==
-[probe] 故意失败: 期望 <2>，实际 <1>     ← 这是断言库自检探针，故意失败，不算失败
+[probe] 故意失败: 期望 <2>，实际 <1>     ← 断言库自检探针，故意失败，不算失败
 [probe] 断言=1 失败=1                    ← 同上，probe 套件不在 SUITES 里
-[harness] 断言=8 失败=0
-[registry] 断言=26 失败=0
-[money] 断言=18 失败=0
-[magic_level] 断言=48 失败=0
-[model] 断言=49 失败=0
-[clock] 断言=47 失败=0
-[world_tick] 断言=104 失败=0
-[creation] 断言=176 失败=0
-[spell] 断言=229 失败=0
-[gm] 断言=63 失败=0
-[panel] 断言=71 失败=0
-[selfcheck] 断言=32 失败=0
-[save] 断言=97 失败=0
-[async_probe] 断言=2 失败=0
-[llm] 断言=84 失败=0
-[prompt] 断言=13 失败=0
-[debug_mirror] 断言=23 失败=0
+[harness] 断言=8 失败=0        [registry] 断言=244 失败=0
+[money] 断言=18 失败=0         [magic_level] 断言=48 失败=0
+[model] 断言=49 失败=0         [clock] 断言=47 失败=0
+[world_tick] 断言=180 失败=0   [creation] 断言=176 失败=0
+[spell] 断言=229 失败=0        [gm] 断言=128 失败=0
+[panel] 断言=102 失败=0        [selfcheck] 断言=32 失败=0
+[save] 断言=112 失败=0         [async_probe] 断言=2 失败=0
+[llm] 断言=106 失败=0          [prompt] 断言=38 失败=0
+[debug_mirror] 断言=23 失败=0  [factions] 断言=204 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
-== 3/4 主场景冒烟（默认配置：必须与未加调试镜像时逐字一致） ==
-Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
-
-main scene ready, godot=4.7.2-stable (official)
-== 4/4 调试镜像冒烟（HALI_DEBUG_LOG=1，B1 人工验收的观测通道） ==
-[HALI] 调试镜像已启用：界面文本将镜像到 stdout（user://logs/*.log）；内容表问题 0 条
-[HALI] [创建界面] era_id 选项数=8 当前=custom
-…… 7 个下拉各一行 ……
-[HALI] PROBE-APPEND-MARK
-[HALI] [状态行] PROBE-STATUS-MARK
-[HALI] [输入框] editable=false
-[HALI] [按钮] 整排 禁用
+== 3/4 主场景冒烟（默认配置） ==      main scene ready, godot=4.7.2-stable (official)
+== 4/4 调试镜像冒烟（HALI_DEBUG_LOG=1） ==  [HALI] PROBE-APPEND-MARK / [状态行] / [输入框] / [按钮]
 全部通过。
 ```
 
-> 套件 `SUITES` 共 **17** 项（+1 个不计入的 `[probe]` 探针），断言合计 **1090**。若你看到的数字比上表小（如 `money=15`、`magic_level=22`、`panel=65`、`selfcheck=26`）或看不到 `[async_probe]` / `[prompt]` / `[llm]` / `[debug_mirror]`，说明文档过旧，**不是回归**：差额来自加固批次 `e094a52`、计划 02、以及 B1 观测通道。
-> 运行全程会有几条**刻意制造的 stderr 噪音**（`SCRIPT ERROR` / `Parse JSON failed`）——来自 `save` 的坏档负例与解析层负例，其所在套件失败数均为 0，不影响退出码（见 §8#48）。
+> 套件 `SUITES` 共 **18** 项（+1 个不计入的 `[probe]` 探针），断言合计 **1746**。若你看到的数字更小，说明文档/分支过旧（**不是回归**）——计划 03a 期间 `[factions]`/`[world_tick]`/`[prompt]`/`[gm]`/`[llm]`/`[registry]`/`[save]`/`[panel]` 都长过。
+> 运行全程会有几条**刻意制造的 stderr 噪音**（`SCRIPT ERROR` **2 条**：`save` 的坏档负例），与基线逐字同位，不影响退出码（见 §8#48）。**基线噪音条数要一直盯住**：03a 期间它两次被新接线撞出过（17 条 nil-access、17 条 `clock.turn` on Nil），修复后回到 2 条。
+> **`tools/b1_acceptance.sh`**（B1 人工验收的自动通道，**不进 `test.sh`**：它会写 `user://`）→ 期望 `EXIT=0`、**105 断言 / 0 失败**；它自带 `llm_settings.json` / `saves/slot1.json` 的备份与逐字还原。**跑它一定要加外部 `timeout`**（见 §4 第 12 条）。
 
 窗口程序已可用：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。
 
@@ -175,6 +165,11 @@ taskkill //PID <PID> //F
 9. **正典优先**：原著明确设定 ＞ 模拟器推演。每完成一个任务，若发现计划文本与正典冲突（Task 3 就发生过：计划把 510 纳特写成 `[1,0,17]`），**改计划、不要顺着错的计划写实现**，并在报告里写明依据的正典行号。
 10. **`RichTextLabel.text` 不会被 `append_text()` 更新**：实测 `append_text("abc")` 后 `label.text` 仍是 `""`，要读内容必须用 `get_parsed_text()`；headless 下 `get_line_count()` 恒为 0（无布局）。生产代码目前没有读 `log_view.text` 的地方，但写观测/探针工具时会踩（B1 验收探针就踩过一次）。
 11. **`%r` 不是 Godot 的格式占位符**：`"x=%r" % v` 会在运行期报 "String formatting error: unsupported format character"，而运行器**不会**因此变红（见 §8#56）。用 `%s`。
+12. **探针/破坏实验会死锁**（计划 03a Task 10 实跑）：探针里用"永不返回的 provider"验证看门狗时，若某组破坏把**看门狗 deadline 变成永不触发**，协程永不返回 ⇒ 探针永不退出 ⇒ **bash 挂死**（不是"测试红"）。处置：① 破坏实验一律选**不会挂住**的形态（保留 deadline、只删恢复/提示）；② 跑探针一律加**外部** `timeout`（`timeout 300 bash tools/b1_acceptance.sh`）；③ 探针自身的等待要有上限（`_submit_bounded()`：只轮询可观测信号 + 5s 上限，**不 `await` 被测协程**）；④ 卡住后先 `tasklist | grep -i godot` 再 `taskkill //PID <PID> //F`（清孤儿进程）。
+13. **破坏实验的还原不要用 `git checkout -- <file>`**：它回到 **HEAD**，会冲掉你**未提交**的改动（03a Task 11 实现者就冲掉过自己一轮改动，被 md5 校验 `MISMATCH` 抓到）。改用「先 `cp` 到备份目录 → 还原时 `cp` 回来 → `md5sum -c` 校验」。
+14. **派 reviewer 要限制阅读预算**：审查任务也吃上下文——03a Task 10 第一次派出的 reviewer 读了太多文件 + 长独白，输出 29.6k tokens、`windowPeak=64k` 后 **exit 1 失败**。重派时把输入缩小（只含代码提交的审查包）+ 明确限制（**只读 1 次 diff、≤4 次 grep、报告 ≤120 行、不许整文件打印源码**）即通过。
+15. **计划文本会错，且必须改计划**：03a 期间计划被实跑证伪 6 次（阈值 0.45 不可达、`state_digest` 当成文本、`tick()` 片段用了未定义的 `world`、`evolve` 缺早退、`reveal` 写 `last_change_turn` 破坏不变量、`engine==null` 守卫不够）。**做法固定**：先由控制器改**计划/spec 文本**（单独一次 docs 提交、写明依据与实测数据），再让实现者按新文本改代码——「改计划、不要顺着错的计划写实现」。
+
 
 ---
 
@@ -254,6 +249,16 @@ taskkill //PID <PID> //F
 ---
 
 ## 8. 待人类裁定项（计划 01 已完成；以下为后续批次）
+
+> ✅ **计划 03a 期间已闭合**：`§8#7`（`power_panel` 7 标签→4 变量错映射 → Task 7 重写为"机构级指标来自派系机构控制权"）· `§8#58`/`§8#62`（UI 等待期无超时/无失败恢复 → Task 10 看门狗 + 单一恢复出口）· `§8#63`（provider 泄漏 + `timeout` 只生效一次 → Task 10）· `§8#61`（降级原因未透出 → Task 11）· `§8#64`（测试可判别性 3 条 → Task 11）· `§8#65`（契约文档/鸭子类型漂移 → Task 11）。
+> ⏳ **03a 挂账（尚未闭合，完整清单见 `docs/sdd/plan-03a-factions/progress.md` 的 `minor (deferred)` 行）**：
+> - `§8#16`/`§8#21`（`rumors.weight` / `wand_cores.rarity` 声明未生效）→ **Task 12**（未做）
+> - `§8#69`（哑炮却有学院）· `§8#70`（创建界面姓名「无名者」+ 无性别输入）→ **Task 12**（未做）
+> - 内容/玩法参数待实跑观察：政治事件频率按 era 普查（Task 5 M6）· `oligarchy_pressure` 0.26 与政体门限 0.28 两套阈值需复核 · 离线替身同句多派系的 tie-break 按 id 序（确定但粗糙）· 名词性文本（"我最讨厌食死徒"）落 idle
+> - 语义已接受但需记账：`illegal_affiliation` 陈旧化（**03c 必须定清除/归一规则**）· 隐藏派系的控制权**数值**仍显示（只隐藏身份；若把"不得主动剧透"读作涵盖存在性则升级）· `last_change_turn` 语义单一化为"power 变更回合"· 量化（`QUANTIZE_DECIMALS=4`）只是**收窄** `§8#50` 触发面、存档 v2 仍是独立议题
+> - 表现层 UX：`LlmGameMaster` 无 fallback 分支的降级原因**双显**（叙事 + `warnings`）→ 归 **03a-P**
+
+
 
 前 3 条是计划预检遗留，其后是逐任务审查产出。**第 1 条（Task 8 故意留 `SelfCheck` 最小桩）已由 Task 9 用完整实现替换而关闭**；**第 2 条（魔杖价矛盾）已在 Task 4 开工前按正典裁定并落地**。其余项均为计划级/文档级，或要到 Task 10–11 才触发。
 
@@ -375,7 +380,10 @@ taskkill //PID <PID> //F
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(...)` 提交，且其历史里包含 `d885cf9` / `1f82483` / `a48f108` / `15c1ff0` / `fed4767` / `38589b4`（计划 02）与 `026efe3` / `b196d26` / `7d24783` / `e094a52` / `70ad341` / `eccc871`（计划 01）
-  2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
-  3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
-  4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致
+
+1. `git log --oneline -1` 是 `plan-03-factions` 上的最近一次提交（其历史里含 03a 的 Task 1–11 与 4 轮修复；`main` 上只有到计划 02 + 文档）
+2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0（18 套件 / **1746 断言** / 失败 0）
+3. `timeout 300 bash tools/b1_acceptance.sh` → 退出码 0、**105 断言 / 0 失败**（人工验收的自动通道）
+4. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
+5. 读 `docs/sdd/plan-03a-factions/progress.md` 末尾，确认与本文 §0/§8 一致；接手前先读 [`NEXT-STEPS.md`](NEXT-STEPS.md) §0.5
+6. **干完一个任务就 `git push`**（本轮曾攒了 10 个提交才推；新会话请每任务一推）

@@ -1,0 +1,468 @@
+（已备份 llm_settings.json；验收期间临时移走，结束还原）
+（已备份 saves/slot1.json；结束还原）
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+B1 自动验收开始（Godot 4.7.2-stable (official)）
+  [PASS] 前置：离线路径（llm_settings.json 临时移走，HALI_LLM_API_KEY 为空）
+main scene ready, godot=4.7.2-stable (official)
+[HALI] 调试镜像已启用：界面文本将镜像到 stdout（user://logs/*.log）；内容表问题 0 条
+[HALI] [状态行] 《哈利·波特·魔法纪元》魔法世界沙盘·超高自由度人生模拟器
+[HALI] [创建界面] era_id 选项数=8 当前=custom
+[HALI] [创建界面] bloodline_id 选项数=12 当前=custom
+[HALI] [创建界面] birth_identity_id 选项数=11 当前=auror_family
+[HALI] [创建界面] aptitude_id 选项数=6 当前=excellent
+[HALI] [创建界面] house_id 选项数=6 当前=gryffindor
+[HALI] [创建界面] political_leaning_id 选项数=6 当前=blood_equality
+[HALI] [创建界面] sim_style_id 选项数=6 当前=brutal_realism
+
+===== 清单 1 · 窗口标题与创建界面 7 个下拉框 =====
+  [PASS] 窗口标题为「哈利·波特·魔法纪元」
+  [PASS] 主场景指向 src/ui/main.tscn
+  [PASS] 开场显示创建界面
+  [PASS] 开场不显示游戏界面
+  [PASS] 创建界面有 7 个下拉框（实际 7）
+  [PASS] 下拉 era_id 有选项（8 项）
+  [PASS] 下拉 bloodline_id 有选项（12 项）
+  [PASS] 下拉 birth_identity_id 有选项（11 项）
+  [PASS] 下拉 aptitude_id 有选项（6 项）
+  [PASS] 下拉 house_id 有选项（6 项）
+  [PASS] 下拉 political_leaning_id 有选项（6 项）
+  [PASS] 下拉 sim_style_id 有选项（6 项）
+
+===== 清单 2 · 哑炮 + 姓名/年龄/性格/目标 → 开始人生 =====
+  [PASS] 能选中血统「哑炮」
+  [PASS] 能选中资质「哑炮无魔法天赋」
+  [PASS] 三个性格关键词（实际 3：["好奇", "固执", "怕黑"]）
+[HALI] [创建] era_id = custom
+[HALI] [创建] bloodline_id = squib
+[HALI] [创建] birth_identity_id = auror_family
+[HALI] [创建] aptitude_id = squib
+[HALI] [创建] house_id = gryffindor
+[HALI] [创建] political_leaning_id = blood_equality
+[HALI] [创建] sim_style_id = brutal_realism
+[HALI] [创建] 姓名=测试哑炮 性别=未定 年龄=11 目标=我想知道魔法到底能走多远 性格=["好奇", "固执", "怕黑"]
+[HALI] [创建] 成功：测试哑炮（种子 20261242）
+[HALI] [状态行] 《哈利·波特·魔法纪元》魔法世界沙盘·超高自由度人生模拟器（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）
+[HALI] 【原著优先级别已启用】本世界以《哈利·波特》原著七部小说为正典。
+[HALI] 测试哑炮，11岁。你的人生开始了。
+[HALI] 《哈利·波特·魔法纪元·人生状态》
+【姓名】测试哑炮
+【时间】1991年9月 【年龄】11岁 【血统】哑炮
+【身份】格兰芬多 【所在地】伦敦（麻瓜世界） 【职业】无
+【财富】25加隆 0西可 0纳特 【家庭】傲罗家庭
+【社会地位】血统平等 【魔法能力】哑炮 【战斗能力】麻瓜世界见闻
+【魔药/治疗】0 【技能】魔咒学 1、黑魔法防御术 2、麻瓜世界见闻 2
+【声望】0 【重要关系】0人 【所属势力】无
+【当前目标】我想知道魔法到底能走多远
+  [PASS] 点「开始人生」后世界已创建
+  [PASS] 开始人生后创建界面关闭
+  [PASS] 开始人生后游戏界面显示
+  [PASS] 出现人生状态面板
+  [PASS] 面板【血统】显示「哑炮」
+  [PASS] 状态里 bloodline_id=squib
+  [PASS] 创建路径：状态行提示「未配置 LLM」
+  [PASS] 哑炮 no_magic=true
+  [PASS] 哑炮 magic_tier=SQUIB
+  [PASS] 哑炮没有魔杖
+  [PASS] 哑炮没有已掌握魔咒
+  [NOTE] 观察（§8#69）：哑炮的 house_id = gryffindor（正典里哑炮不进霍格沃茨）
+  [NOTE] 观察（§8#70）：姓名来自输入框，性别恒为「未定」（创建界面没有性别输入）
+
+===== 清单 3 · 连续三次「我要练习魔药学」→ 回合 +1，第三次收益下降 =====
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我要练习魔药学
+[HALI] （世界正在回应…）
+[HALI] 你花了整整一个月钻研魔药学，进步明显。
+[HALI] · [政治] 《预言家日报》角落里提到欧陆几家的联姻，说那才是真正的权力网络。
+[HALI] [状态行] 1991年10月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 1
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 第 1 次练药推进一个回合（0 → 1）
+  [PASS] 第 1 次有魔药学叙事
+  [PASS] 第 1 次状态行回合数同步为 1
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我要练习魔药学
+[HALI] （世界正在回应…）
+[HALI] 你继续练魔药学，但收获不如从前（重复练习收益下降）。
+[HALI] · [政治] 有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。
+[HALI] [状态行] 1991年11月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 2
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 第 2 次练药推进一个回合（1 → 2）
+  [PASS] 第 2 次有魔药学叙事
+  [PASS] 第 2 次状态行回合数同步为 2
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我要练习魔药学
+[HALI] （世界正在回应…）
+[HALI] 你继续练魔药学，但收获不如从前（重复练习收益下降）。
+[HALI] · [巫师] 没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。
+· [政治] 听说几个古老姓氏在威森加摩里抱团，把持着席位不肯松手。
+[HALI] [状态行] 1991年12月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 3
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 第 3 次练药推进一个回合（2 → 3）
+  [PASS] 第 3 次有魔药学叙事
+  [PASS] 第 3 次状态行回合数同步为 3
+  [PASS] 第三次旁白体现收益递减（实际：>>> 我要练习魔药学 / （世界正在回应…） / 你继续练魔药学，但收获不如从前（重复练习收益下降）。 / · [巫师] 没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。 / · [政治] 听说几个古老姓氏在威森加摩里抱团，把持着席位不肯松手。）
+  [NOTE] 观察：连续三次练药后 potions = 7
+
+===== 清单 4 · 「我去对角巷打工赚钱」→ 财富增加 =====
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 1西可 14纳特。
+[HALI] · [政治] 《预言家日报》角落里提到欧陆几家的联姻，说那才是真正的权力网络。
+[HALI] [状态行] 1992年1月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 4
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 财富增加（12325 → 12356 纳特）
+  [PASS] 打工叙事出现「赚到」
+
+===== 清单 5 · 「魔法」「关系」「势力」面板可读（哑炮分支） =====
+[HALI] 《哈利·波特·魔法纪元·魔法能力》
+【魔杖】未拥有（无魔法天赋：哑炮仍可看见魔法世界，但无法施展咒语）
+【魔法能力】无魔法天赋 【魔力容量】— 【控制精度】— 【魔法亲和】—
+【主修科目】— 【已掌握魔咒】— 【实验中的魔法】—
+【魔药水平】7 【大脑封闭术】— 【幻影移形】— 【守护神形态】—
+  [PASS] 魔法面板有标题
+  [PASS] 哑炮魔法面板显示【魔杖】未拥有
+  [PASS] 哑炮魔法面板显示无魔法天赋
+[HALI] 《哈利·波特·魔法纪元·社会关系》
+（暂无关键人物。人脉不会自动产生，需要行动与时间。）
+  [PASS] 关系面板有标题
+[HALI] 《哈利·波特·魔法纪元·势力面板》
+【魔法部状态】政体：魔法部官僚制 部长：魔法部 法律执行：0.79（魔法部） 傲罗：0.64（傲罗指挥部） 威森加摩：0.62（威森加摩） 财政：0.58 国际：0.57（国际巫师联合会） 稳定度：0.62 腐败度：0.25 纯血影响：0.32 麻瓜关系：0.48
+【霍格沃茨】学院：格兰芬多 校方控制：0.68（霍格沃茨） 学业：魔药学 学院杯：仅 NPC 系统（计划 05） 魁地奇：仅 NPC 系统（计划 05） 禁林状况：常态 秘密：未调查 师生关系：0人
+【家族】姓氏：无家族（家族制度属计划 03c） 祖宅：无 财富：25加隆 1西可 14纳特 成员：0 婚姻：未婚 盟友：0 敌人：0 声望：0 家族秘密：无 继承人：未定 魔杖传承：无
+【已知势力】魔法部：0.82 立场 +0 霍格沃茨：0.70 立场 +0 傲罗指挥部：0.66 立场 +0 威森加摩：0.64 立场 +0 古灵阁：0.60 立场 +0 国际巫师联合会：0.57 立场 +0 神圣二十八族：0.55 立场 +0 普通巫师大众：0.46 立场 +0 预言家日报：0.44 立场 +0 对角巷商会：0.40 立场 +0 欧陆纯血网络：0.38 立场 +0 改革派纯血：0.32 立场 +0 麻瓜世界：0.29 立场 +0 凤凰社：0.14 立场 +0
+  [PASS] 势力面板有标题
+  [PASS] world_vars 没有机构键（指标不来自标量，§8#7 已修）
+  [PASS] 势力面板傲罗指标 = 派系控制权 0.64
+[HALI] 《哈利·波特·魔法纪元·势力面板》
+【魔法部状态】政体：魔法部官僚制 部长：魔法部 法律执行：0.79（魔法部） 傲罗：0.93（傲罗指挥部） 威森加摩：0.62（威森加摩） 财政：0.58 国际：0.57（国际巫师联合会） 稳定度：0.62 腐败度：0.25 纯血影响：0.32 麻瓜关系：0.48
+【霍格沃茨】学院：格兰芬多 校方控制：0.68（霍格沃茨） 学业：魔药学 学院杯：仅 NPC 系统（计划 05） 魁地奇：仅 NPC 系统（计划 05） 禁林状况：常态 秘密：未调查 师生关系：0人
+【家族】姓氏：无家族（家族制度属计划 03c） 祖宅：无 财富：25加隆 1西可 14纳特 成员：0 婚姻：未婚 盟友：0 敌人：0 声望：0 家族秘密：无 继承人：未定 魔杖传承：无
+【已知势力】魔法部：0.82 立场 +0 霍格沃茨：0.70 立场 +0 傲罗指挥部：0.66 立场 +0 威森加摩：0.64 立场 +0 古灵阁：0.60 立场 +0 国际巫师联合会：0.57 立场 +0 神圣二十八族：0.55 立场 +0 普通巫师大众：0.46 立场 +0 预言家日报：0.44 立场 +0 对角巷商会：0.40 立场 +0 欧陆纯血网络：0.38 立场 +0 改革派纯血：0.32 立场 +0 麻瓜世界：0.29 立场 +0 凤凰社：0.14 立场 +0
+  [PASS] 改控制权后面板随之变化（§8#7 的行为型证据）
+  [PASS] 含【已知势力】行
+  [NOTE] 观察：机构级指标（法律执行/傲罗/威森加摩/国际）取自派系机构控制权 + holder；§8#7 的「7 标签→4 world_vars」错映射已在本计划修好
+[HALI] 《哈利·波特·魔法纪元·人生状态》
+【姓名】测试哑炮
+【时间】1992年1月 【年龄】11岁 【血统】哑炮
+【身份】格兰芬多 【所在地】伦敦（麻瓜世界） 【职业】无
+【财富】25加隆 1西可 14纳特 【家庭】傲罗家庭
+【社会地位】血统平等 【魔法能力】哑炮 【战斗能力】魔药学
+【魔药/治疗】7 【技能】魔咒学 1、黑魔法防御术 2、麻瓜世界见闻 2、魔药学 7
+【声望】0 【重要关系】0人 【所属势力】无
+【当前目标】我想知道魔法到底能走多远
+  [PASS] 状态面板可读
+
+===== 清单 6 · 存档成功；读档后回合数与存档前一致 =====
+[HALI] 存档：成功（user://saves/slot1.json）
+  [PASS] 点「存档」提示成功（存档：成功（user://saves/slot1.json））
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 6纳特。
+[HALI] · [政治] 有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。
+[HALI] [状态行] 1992年2月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 5
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 存档后继续行动推进回合（4 → 5）
+[HALI] [状态行] 1992年1月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 4
+[HALI] [状态行] 1992年1月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 4（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）
+[HALI] 读档成功：user://saves/slot1.json
+[HALI] 《哈利·波特·魔法纪元·人生状态》
+【姓名】测试哑炮
+【时间】1992年1月 【年龄】11岁 【血统】哑炮
+【身份】格兰芬多 【所在地】伦敦（麻瓜世界） 【职业】无
+【财富】25加隆 1西可 14纳特 【家庭】傲罗家庭
+【社会地位】血统平等 【魔法能力】哑炮 【战斗能力】魔药学
+【魔药/治疗】7 【技能】魔咒学 1、黑魔法防御术 2、麻瓜世界见闻 2、魔药学 7
+【声望】0 【重要关系】0人 【所属势力】无
+【当前目标】我想知道魔法到底能走多远
+  [PASS] 点「读档」提示成功
+  [PASS] 读档后回合数回到存档时（4）
+  [PASS] 读档后财富回到存档时（12356 纳特）
+
+===== 清单 7 · 关掉程序重开 → 直接读档（+ 读档路径的未配置提示 F4） =====
+main scene ready, godot=4.7.2-stable (official)
+[HALI] 调试镜像已启用：界面文本将镜像到 stdout（user://logs/*.log）；内容表问题 0 条
+[HALI] [状态行] 《哈利·波特·魔法纪元》魔法世界沙盘·超高自由度人生模拟器
+[HALI] [创建界面] era_id 选项数=8 当前=custom
+[HALI] [创建界面] bloodline_id 选项数=12 当前=custom
+[HALI] [创建界面] birth_identity_id 选项数=11 当前=auror_family
+[HALI] [创建界面] aptitude_id 选项数=6 当前=excellent
+[HALI] [创建界面] house_id 选项数=6 当前=gryffindor
+[HALI] [创建界面] political_leaning_id 选项数=6 当前=blood_equality
+[HALI] [创建界面] sim_style_id 选项数=6 当前=brutal_realism
+  [PASS] 重启后先看到创建界面
+  [PASS] 重启后游戏界面未显示
+[HALI] [状态行] 1992年1月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 4
+[HALI] [状态行] 1992年1月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 4（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）
+[HALI] 读档成功：user://saves/slot1.json
+[HALI] 《哈利·波特·魔法纪元·人生状态》
+【姓名】测试哑炮
+【时间】1992年1月 【年龄】11岁 【血统】哑炮
+【身份】格兰芬多 【所在地】伦敦（麻瓜世界） 【职业】无
+【财富】25加隆 1西可 14纳特 【家庭】傲罗家庭
+【社会地位】血统平等 【魔法能力】哑炮 【战斗能力】魔药学
+【魔药/治疗】7 【技能】魔咒学 1、黑魔法防御术 2、麻瓜世界见闻 2、魔药学 7
+【声望】0 【重要关系】0人 【所属势力】无
+【当前目标】我想知道魔法到底能走多远
+  [PASS] 重启后「读取存档」成功
+  [PASS] 读档后创建界面关闭
+  [PASS] 读档后游戏界面显示
+  [PASS] 读档后自动打印状态面板
+  [PASS] 读档路径：状态行仍显示「未配置 LLM」（F4 已闭合）
+  [PASS] 读档路径：状态行回合数 = 4
+  [NOTE] 观察：读档后回合数 = 4，财富 = 12356 纳特
+
+===== 清单 8 · 第 15 回合出现自检、继续行动被拒、输入「确认自检」后可继续 =====
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 6纳特。
+[HALI] · [政治] 有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。
+[HALI] [状态行] 1992年2月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 5
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 15纳特。
+[HALI] · [巫师] 没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。
+[HALI] [状态行] 1992年3月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 6
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 8纳特。
+[HALI] · [政治] 听说几个古老姓氏在威森加摩里抱团，把持着席位不肯松手。
+[HALI] [状态行] 1992年4月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 7
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 1西可 16纳特。
+[HALI] · [政治] 《预言家日报》角落里提到欧陆几家的联姻，说那才是真正的权力网络。
+[HALI] [状态行] 1992年5月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 8
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 8纳特。
+[HALI] · [政治] 听说几个古老姓氏在威森加摩里抱团，把持着席位不肯松手。
+[HALI] [状态行] 1992年6月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 9
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 7纳特。
+[HALI] · [政治] 有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。
+[HALI] [状态行] 1992年7月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 10
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 12纳特。
+[HALI] · [政治] 《预言家日报》角落里提到欧陆几家的联姻，说那才是真正的权力网络。
+[HALI] [状态行] 1992年8月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 11
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 12纳特。
+[HALI] · [政治] 《预言家日报》角落里提到欧陆几家的联姻，说那才是真正的权力网络。
+· [政治] 有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。
+[HALI] [状态行] 1992年9月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 12
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 8纳特。
+[HALI] · [巫师] 没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。
+[HALI] [状态行] 1992年10月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 13
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 1纳特。
+[HALI] · [政治] 听说几个古老姓氏在威森加摩里抱团，把持着席位不肯松手。
+[HALI] [状态行] 1992年11月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 14
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 12纳特。
+[HALI] · [政治] 有人提到一个不挂在魔法部名下的联络网：不问出身，只问你敢不敢站队。
+[HALI] 【剧情快照】
+当前时间：1992年12月（第 15 回合）
+地点：伦敦（麻瓜世界）（危险度：低危险区）
+玩家状态：测试哑炮，12岁，哑炮，存活，财富 26加隆 0西可 0纳特，魔法等级 哑炮
+关键NPC状态：
+  （尚未建立关键 NPC 关系网络）
+当前进行中事件：
+  （无）
+已发生重大事件：
+  - 1991年：你得知了「欧陆纯血网络」的存在（来源：传闻：政治）。
+  - 1991年：你得知了「凤凰社」的存在（来源：传闻：政治）。
+  - 1991年：你得知了「神圣二十八族」的存在（来源：传闻：政治）。
+世界变量：
+  - corruption：0.32
+  - economy_index：0.51
+  - ministry_stability：0.61
+  - muggle_relations：0.45
+  - pureblood_influence：0.34
+  - secrecy_integrity：0.84
+  - war_pressure：0.17
+【人设OOC自检报告】
+人物行为偏离设定：通过
+魔法规则被破坏：通过
+历史时间线错误：通过
+玩家信息被提前泄露：通过
+[HALI] （自检完毕。等待你的指令——输入“确认自检”继续。）
+[HALI] [状态行] 1992年12月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 15
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 回合数到达 15（实际 15）
+  [PASS] 出现【剧情快照】
+  [PASS] 出现【人设OOC自检报告】
+  [PASS] 提示等待确认自检
+  [PASS] 状态里 awaiting_audit_ack=true
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 上一轮自检尚未确认。请先阅读【剧情快照】与【人设OOC自检报告】，然后确认自检。
+[HALI] [状态行] 1992年12月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 15
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 未确认前继续行动被拒（提示确认自检）
+  [PASS] 被拒的行动没有推进回合（仍 15）
+[HALI] （自检已确认。世界继续向前。）
+  [PASS] 输入「确认自检」被接受
+  [PASS] 确认后 awaiting_audit_ack 清除
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我去对角巷打工赚钱
+[HALI] （世界正在回应…）
+[HALI] 你忙了一个月，赚到 0加隆 2西可 14纳特。
+[HALI] · [政治] 听说几个古老姓氏在威森加摩里抱团，把持着席位不肯松手。
+[HALI] [状态行] 1993年1月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 16
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 确认后可继续行动
+  [PASS] 继续行动推进回合（16）
+
+===== 计划 02 追加 · 等待 LLM 期间置灰、结束后恢复（用 400ms 慢 provider 制造真实等待窗） =====
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我要练习魔药学
+[HALI] （世界正在回应…）
+  [PASS] 等待期输入框置灰
+  [PASS] 等待期整排按钮置灰
+[HALI] （慢速模拟）你在练习魔药学。
+[HALI] · [巫师] 没什么大事。有人在魔法广播里抱怨天气，有人在家给猫头鹰换窝。
+[HALI] [状态行] 1993年2月 ｜ 伦敦（麻瓜世界） ｜ 测试哑炮 ｜ 哑炮 ｜ 回合 17
+[HALI] [按钮] 整排 可用
+[HALI] [输入框] editable=true
+  [PASS] 结束后输入框恢复
+  [PASS] 结束后整排按钮恢复
+  [PASS] 慢 provider 的叙事真的进了日志
+  [NOTE] 观察：本条不覆盖「等待期真的永不恢复」的情形（§8#58/#62）——下一条 Part 11 专门验
+
+===== 计划 03a 顺手项 · 等待期看门狗（§8#58/#62） =====
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我要练习魔药学
+[HALI] （世界正在回应…）
+  [PASS] 永不返回时：等待期已置灰（提交真的开始了）
+  [FAIL] 永不返回时：协程仍能返回（看门狗生效，不会永久禁用）
+  [FAIL] 永不返回时：给出恢复提示
+  [FAIL] 永不返回时：整排按钮恢复
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
+[HALI] >>> 我要练习魔药学
+[HALI] （世界正在回应…）
+SCRIPT ERROR: Cannot call method 'get_parent' on a null value.
+   at: BrokenProvider.complete (res://tools/b1_acceptance.gd:47)
+   GDScript backtrace (most recent call first):
+       [0] complete (res://tools/b1_acceptance.gd:47)
+SCRIPT ERROR: Invalid access to property or key 'ok' on a base object of type 'Nil'.
+   at: LlmGameMaster.act (res://src/gm/llm_game_master.gd:36)
+   GDScript backtrace (most recent call first):
+       [0] act (res://src/gm/llm_game_master.gd:36)
+       [1] complete (res://tools/b1_acceptance.gd:47)
+SCRIPT ERROR: Invalid access to property or key 'deltas' on a base object of type 'Nil'.
+   at: TurnEngine._resolve (res://src/core/turn_engine.gd:38)
+   GDScript backtrace (most recent call first):
+       [0] _resolve (res://src/core/turn_engine.gd:38)
+       [1] submit_async (res://src/core/turn_engine.gd:73)
+       [2] act (res://src/gm/llm_game_master.gd:36)
+       [3] complete (res://tools/b1_acceptance.gd:47)
+SCRIPT ERROR: Invalid access to property or key 'narration' on a base object of type 'Dictionary'.
+   at: _on_command_submitted (res://src/ui/main.gd:274)
+   GDScript backtrace (most recent call first):
+       [0] _on_command_submitted (res://src/ui/main.gd:274)
+       [1] submit_async (res://src/core/turn_engine.gd:73)
+       [2] act (res://src/gm/llm_game_master.gd:36)
+       [3] complete (res://tools/b1_acceptance.gd:47)
+  [PASS] await 链抛错时：等待期已置灰
+  [FAIL] await 链抛错时：提交仍能返回（§8#62 不再需要重启）
+  [FAIL] await 链抛错时：输入框恢复
+  [FAIL] await 链抛错时：整排按钮恢复
+SCRIPT ERROR: Invalid call. Nonexistent function 'ensure_http' in base 'RefCounted (OpenAiCompatProvider)'.
+   at: _part11_watchdog (res://tools/b1_acceptance.gd:435)
+   GDScript backtrace (most recent call first):
+       [0] _part11_watchdog (res://tools/b1_acceptance.gd:435)
+       [1] _submit_bounded (res://tools/b1_acceptance.gd:138)
+
+===== 汇总 =====
+  B1 自动验收：断言 86 条，失败 6 条
+[B1-FAIL] 永不返回时：协程仍能返回（看门狗生效，不会永久禁用）
+[B1-FAIL] 永不返回时：给出恢复提示
+[B1-FAIL] 永不返回时：整排按钮恢复
+[B1-FAIL] await 链抛错时：提交仍能返回（§8#62 不再需要重启）
+[B1-FAIL] await 链抛错时：输入框恢复
+[B1-FAIL] await 链抛错时：整排按钮恢复
+  [观察] 观察（§8#69）：哑炮的 house_id = gryffindor（正典里哑炮不进霍格沃茨）
+  [观察] 观察（§8#70）：姓名来自输入框，性别恒为「未定」（创建界面没有性别输入）
+  [观察] 观察：连续三次练药后 potions = 7
+  [观察] 观察：机构级指标（法律执行/傲罗/威森加摩/国际）取自派系机构控制权 + holder；§8#7 的「7 标签→4 world_vars」错映射已在本计划修好
+  [观察] 观察：读档后回合数 = 4，财富 = 12356 纳特
+  [观察] 观察：本条不覆盖「等待期真的永不恢复」的情形（§8#58/#62）——下一条 Part 11 专门验
+
+===== 收尾 · 用户文件还原 =====
+  [PASS] llm_settings.json 还原（原本存在）
+  [PASS] llm_settings.json 内容逐字一致
+  [PASS] slot1.json 还原（原本存在）
+  [PASS] slot1.json 内容逐字一致
+  B1 自动验收最终：断言 90 条，失败 6 条
+
+B1 自动验收：存在失败项，见上方 [FAIL] / [B1-FAIL]。

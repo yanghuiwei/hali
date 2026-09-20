@@ -1,0 +1,551 @@
+# Review package: dabefab..19654f0
+
+## Commits
+19654f0 feat(factions): WorldFactions 规则层（初始化/控制权/权力四角/政体推导）（计划 03a Task 2）
+
+## Files changed
+ src/model/world_state.gd   |   3 +
+ src/rules/factions.gd      | 181 ++++++++++++++++++++++++++++++++++++++
+ src/ui/main.gd             |   1 +
+ tests/factions_test.gd     | 214 +++++++++++++++++++++++++++++++++++++++++++++
+ tests/factions_test.gd.uid |   1 +
+ tests/registry_test.gd     |   4 +
+ tests/run_tests.gd         |   1 +
+ 7 files changed, 405 insertions(+)
+
+## Diff
+diff --git a/src/model/world_state.gd b/src/model/world_state.gd
+index 7b29b16..39c8b42 100644
+--- a/src/model/world_state.gd
++++ b/src/model/world_state.gd
+@@ -26,20 +26,21 @@ static func create(era_id_: String, player_: PlayerState, seed_: int, registry_:
+ 	w.game_seed = seed_
+ 	w.era_id = era_id_
+ 	w.player = player_
+ 	var era: Dictionary = registry_.entry("eras", era_id_)
+ 	var start_year := int(era.get("start_year", 1991)) if era.get("start_year", null) != null else 1991
+ 	w.era_start_year = start_year
+ 	w.clock = GameClock.from_dict({"year": start_year, "month": 9, "turn": 0})
+ 	# JSON 解析出的整数值 float 必须归一，保证 create 与 from_dict 的内存类型一致（HANDOFF 第 4 节第 1 条）
+ 	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
+ 	w.player.age_months = maxi(w.player.age_months, 0)
++	WorldFactions.initialize(w)
+ 	return w
+ 
+ func era() -> Dictionary:
+ 	return registry.entry("eras", era_id)
+ 
+ func current_location() -> Dictionary:
+ 	return registry.entry("locations", player.location_id)
+ 
+ func add_fact(kind: String, text: String) -> Dictionary:
+ 	var fact := {"kind": kind, "text": text, "turn": clock.turn, "year": clock.year}
+@@ -177,11 +178,13 @@ static func from_dict(d: Dictionary, registry_: Registry) -> WorldState:
+ 	w.player = PlayerState.from_dict(d.get("player", {}))
+ 	w.npcs = JsonUtil.normalize(d.get("npcs", {}))
+ 	w.factions = JsonUtil.normalize(d.get("factions", {}))
+ 	w.locations = JsonUtil.normalize(d.get("locations", {}))
+ 	w.history = JsonUtil.normalize(d.get("history", []))
+ 	w.pending = JsonUtil.normalize(d.get("pending", []))
+ 	w.world_vars = JsonUtil.normalize(d.get("world_vars", {}))
+ 	w.log = JsonUtil.normalize(d.get("log", []))
+ 	w.flags = JsonUtil.normalize(d.get("flags", {}))
+ 	w.rng_state = JsonUtil.normalize(d.get("rng_state", {}))
++	# 老存档（无 factions 或只有部分）在此补齐；幂等，不覆盖已存档的值（设计 §9.3/§9.5）
++	WorldFactions.initialize(w)
+ 	return w
+diff --git a/src/rules/factions.gd b/src/rules/factions.gd
+index 3dba833..a7ce029 100644
+--- a/src/rules/factions.gd
++++ b/src/rules/factions.gd
+@@ -19,10 +19,191 @@ const CORNERS: Dictionary = {
+ 	"hogwarts": ["school"],
+ 	"commerce": ["commerce", "media"],
+ }
+ 
+ const MINISTRY_ID := "ministry"
+ const RESISTANCE_ID := "order_of_phoenix"
+ 
+ # 状态键（都存在既有容器里：tension 进 world.flags，政体进 world.flags，派系状态进 world.factions）
+ const TENSION_FLAG := "social_tension"
+ const GOVERNMENT_FLAG := "government_type"
++
++# domains 白名单（Task 1 审查 Minor 收口：domains 此前零消费零校验，写错没有任何测试会失败）
++const DOMAINS: Array[String] = ["law", "administration", "education", "economy", "media",
++	"secrecy_enforcement", "warfare", "intelligence"]
++
++# ---------- 内容校验（枚举 + 引用完整性 + 字段类型；registry.validate 只管字段与值域，避免反向依赖） ----------
++
++static func validate_content(registry: Registry) -> PackedStringArray:
++	var errors := PackedStringArray()
++	for fid in registry.ids("factions"):
++		var id := str(fid)
++		var e := registry.entry("factions", id)
++		for inst in (e.get("institutions", []) as Array):
++			if not INSTITUTIONS.has(str(inst)):
++				errors.append("factions/%s: 机构非法（%s）" % [id, str(inst)])
++		for field in ["rivals", "allies"]:
++			for other in (e.get(field, []) as Array):
++				if not registry.has("factions", str(other)):
++					errors.append("factions/%s: %s 引用不存在的派系（%s）" % [id, field, str(other)])
++		if not e.has("era_overrides"):
++			errors.append("factions/%s: era_overrides 缺失" % id)
++		elif typeof(e["era_overrides"]) != TYPE_DICTIONARY:
++			errors.append("factions/%s: era_overrides 必须是 Dictionary" % id)
++		else:
++			for era_id in (e["era_overrides"] as Dictionary).keys():
++				if not registry.has("eras", str(era_id)):
++					errors.append("factions/%s: era_overrides 引用不存在的时代（%s）" % [id, str(era_id)])
++		if not e.has("domains"):
++			errors.append("factions/%s: domains 缺失" % id)
++		elif typeof(e["domains"]) != TYPE_ARRAY:
++			errors.append("factions/%s: domains 必须是数组" % id)
++		else:
++			for domain in (e["domains"] as Array):
++				if not DOMAINS.has(str(domain)):
++					errors.append("factions/%s: domain 非法（%s）" % [id, str(domain)])
++		if not e.has("aliases"):
++			errors.append("factions/%s: aliases 缺失" % id)
++		elif typeof(e["aliases"]) != TYPE_ARRAY:
++			errors.append("factions/%s: aliases 必须是数组" % id)
++		elif (e["aliases"] as Array).is_empty():
++			errors.append("factions/%s: aliases 为空" % id)
++		else:
++			for alias in (e["aliases"] as Array):
++				if str(alias).strip_edges().is_empty():
++					errors.append("factions/%s: alias 为空（第 %d 项）" % [id, (e["aliases"] as Array).find(alias)])
++		if not e.has("base_power"):
++			errors.append("factions/%s: base_power 缺失" % id)
++		elif typeof(e["base_power"]) != TYPE_INT and typeof(e["base_power"]) != TYPE_FLOAT:
++			errors.append("factions/%s: base_power 类型非法（%s）" % [id, str(e["base_power"])])
++	return errors
++
++# ---------- 初始化与读取 ----------
++
++# 幂等：只为「还没有状态」的派系建状态；旧存档/已演化的值一律不动。
++# clock 为 null 时直接返回：畸形载荷的负例路径（save_test 的毒对象用例）会让 `GameClock.from_dict` 失败并留下 null clock，
++# 此时不能再去读 `clock.turn`（会往 stderr 喷 17 条 SCRIPT ERROR）。
++static func initialize(world: WorldState) -> void:
++	if world == null or world.registry == null or world.clock == null:
++		return
++	if typeof(world.factions) != TYPE_DICTIONARY:
++		world.factions = {}
++	for fid in world.registry.ids("factions"):
++		ensure_state(world, str(fid))
++
++static func entry_of(world: WorldState, faction_id: String) -> Dictionary:
++	return world.registry.entry("factions", faction_id)
++
++static func base_power(world: WorldState, faction_id: String) -> float:
++	var entry := entry_of(world, faction_id)
++	var p := float(entry.get("base_power", 0.0))
++	var overrides = entry.get("era_overrides", {})
++	if typeof(overrides) == TYPE_DICTIONARY and (overrides as Dictionary).has(world.era_id):
++		var o = (overrides as Dictionary)[world.era_id]
++		if typeof(o) == TYPE_DICTIONARY and (o as Dictionary).has("base_power"):
++			p = float((o as Dictionary)["base_power"])
++	return clampf(p, 0.0, 1.0)
++
++static func ensure_state(world: WorldState, faction_id: String) -> Dictionary:
++	if typeof(world.factions) != TYPE_DICTIONARY:
++		world.factions = {}
++	var existing = world.factions.get(faction_id, null)
++	if typeof(existing) == TYPE_DICTIONARY:
++		return existing
++	var entry := entry_of(world, faction_id)
++	if entry.is_empty():
++		return {}
++	var power := base_power(world, faction_id)
++	var control := {}
++	for inst in (entry.get("institutions", []) as Array):
++		control[str(inst)] = power
++	var st := {
++		"power": power,
++		"control": control,
++		"stance_to_player": 0,
++		"revealed": str(entry.get("secrecy", "public")) == "public",
++		"last_change_turn": world.clock.turn if world.clock != null else 0,
++		"notes": [],
++	}
++	world.factions[faction_id] = st
++	return st
++
++static func state_of(world: WorldState, faction_id: String) -> Dictionary:
++	if typeof(world.factions) != TYPE_DICTIONARY:
++		return {}
++	var st = world.factions.get(faction_id, null)
++	return st if typeof(st) == TYPE_DICTIONARY else {}
++
++static func power_of(world: WorldState, faction_id: String) -> float:
++	return clampf(float(state_of(world, faction_id).get("power", 0.0)), 0.0, 1.0)
++
++# ---------- 权力四角（第十二章） ----------
++
++static func power_share(world: WorldState) -> Dictionary:
++	var totals := {"ministry": 0.0, "pureblood": 0.0, "hogwarts": 0.0, "commerce": 0.0}
++	for fid in world.registry.ids("factions"):
++		var kind := str(entry_of(world, str(fid)).get("kind", ""))
++		for corner in CORNERS.keys():
++			if (CORNERS[corner] as Array).has(kind):
++				totals[corner] = float(totals[corner]) + power_of(world, str(fid))
++	var sum := 0.0
++	for key in totals.keys():
++		sum += float(totals[key])
++	if sum <= 0.0:
++		return {"ministry": 0.25, "pureblood": 0.25, "hogwarts": 0.25, "commerce": 0.25}
++	var out := {}
++	for key in totals.keys():
++		out[key] = float(totals[key]) / sum
++	return out
++
++# ---------- 机构控制权（第二十六章） ----------
++
++static func institution_control(world: WorldState) -> Dictionary:
++	var out := {}
++	for inst in INSTITUTIONS:
++		out[inst] = {"value": 0.0, "holder": ""}
++	for fid in world.registry.ids("factions"):
++		var id := str(fid)
++		var control = state_of(world, id).get("control", {})
++		if typeof(control) != TYPE_DICTIONARY:
++			continue
++		for inst in (control as Dictionary).keys():
++			if not out.has(str(inst)):
++				continue
++			var value := clampf(float((control as Dictionary)[inst]), 0.0, 1.0)
++			var current: Dictionary = out[str(inst)]
++			var better := value > float(current["value"])
++			if is_equal_approx(value, float(current["value"])):
++				better = power_of(world, id) > power_of(world, str(current["holder"]))
++			if better:
++				out[str(inst)] = {"value": value, "holder": id}
++	return out
++
++# ---------- 政体推导（第十一章 + 第十二章） ----------
++
++static func government_type(world: WorldState) -> String:
++	var ic := institution_control(world)
++	var law := float((ic["law_enforcement"] as Dictionary)["value"])
++	var wiz := float((ic["wizengamot"] as Dictionary)["value"])
++	# 1) 凤凰社抵抗：战争压力高 + 抵抗组织强于魔法部（第十一章第 4 条）
++	if float(world.world_vars.get("war_pressure", 0.0)) >= 0.6 \
++			and power_of(world, RESISTANCE_ID) > power_of(world, MINISTRY_ID):
++		return "order_resistance"
++	# 2) 食死徒独裁：黑暗势力掌握执法与司法（第十一章第 3 条）
++	var dark_sum := 0.0
++	var dark_count := 0
++	for fid in world.registry.ids("factions"):
++		var id := str(fid)
++		if str(entry_of(world, id).get("kind", "")) != "dark":
++			continue
++		var control: Dictionary = state_of(world, id).get("control", {})
++		for inst in ["law_enforcement", "wizengamot"]:
++			dark_sum += clampf(float(control.get(inst, law if inst == "law_enforcement" else wiz)), 0.0, 1.0)
++			dark_count += 1
++	if dark_count > 0 and (dark_sum / float(dark_count)) >= 0.6:
++		return "death_eater_dictatorship"
++	# 3) 纯血寡头：纯血权重高 + 魔法部弱（第十一章第 2 条）
++	# 阈值 0.28：四角归一化下单角现实上限约 1/3（构造用例 0.3010、理论上限 0.3017、默认 0.1627）；原稿 0.45 不可达，见 spec §13.2 勘误（人类裁定 A，2026-09-20）。
++	if float(power_share(world).get("pureblood", 0.0)) >= 0.28 and power_of(world, MINISTRY_ID) < 0.5:
++		return "pureblood_oligarchy"
++	# 4) 默认：官僚制（第十一章第 1 条）
++	return "ministry_bureaucracy"
+diff --git a/src/ui/main.gd b/src/ui/main.gd
+index 18b9b0c..8ca4a30 100644
+--- a/src/ui/main.gd
++++ b/src/ui/main.gd
+@@ -21,20 +21,21 @@ var age_spin: SpinBox = null
+ var personality_edit: LineEdit = null
+ var creation_error: Label = null
+ var button_row: HBoxContainer = null
+ 
+ # B1 人工验收用：HALI_DEBUG_LOG=1 时把界面文本镜像到 stdout（默认关闭，行为完全不变）。
+ var _debug_mirror: bool = false
+ 
+ func _ready() -> void:
+ 	registry = Registry.load_default()
+ 	var errors := registry.validate()
++	errors.append_array(WorldFactions.validate_content(registry))
+ 	for e in errors:
+ 		push_warning("内容表问题：%s" % e)
+ 	print("main scene ready, godot=", Engine.get_version_info().string)
+ 	_debug_mirror = DebugMirror.from_env()
+ 	if _debug_mirror:
+ 		print(DebugMirror.format("调试镜像已启用：界面文本将镜像到 stdout（user://logs/*.log）；内容表问题 %d 条" % errors.size()))
+ 	_build_ui()
+ 	_show_creation()
+ 
+ # 镜像通道的**唯一出口**：所有对外可见的界面文本都经这里，方便 B1 从外部观测。
+diff --git a/tests/factions_test.gd b/tests/factions_test.gd
+new file mode 100644
+index 0000000..df42f36
+--- /dev/null
++++ b/tests/factions_test.gd
+@@ -0,0 +1,214 @@
++class_name FactionsTest
++extends RefCounted
++
++func make_world(era_id: String = "modern") -> WorldState:
++	var reg := Registry.load_default()
++	var p := PlayerState.new_default()
++	p.name_text = "测试者"
++	p.bloodline_id = "half_blood"
++	p.birth_identity_id = "ordinary_wizard_family"
++	p.house_id = "gryffindor"
++	p.aptitude_id = "normal"
++	p.location_id = "london_muggle"
++	return WorldState.create(era_id, p, 12345, reg)
++
++func run() -> int:
++	var a := TestAssert.new()
++
++	# ---- 内容校验 ----
++	var reg := Registry.load_default()
++	a.eq(WorldFactions.validate_content(reg).size(), 0, "内容表引用/枚举全部合法")
++
++	var broken := Registry.from_tables({
++		"eras": [{"id": "modern", "label": "现代", "world_vars": {}}],
++		"factions": [
++			{"id": "a", "label": "甲", "kind": "dark", "legal_status": "legal", "secrecy": "public",
++				"base_power": 0.5, "institutions": ["bogus"], "rivals": ["不存在"], "allies": []},
++		],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	var broken_errors := " | ".join(WorldFactions.validate_content(broken))
++	a.is_true(broken_errors.contains("机构非法"), "坏 institutions 被 validate_content 抓到")
++	a.is_true(broken_errors.contains("引用不存在"), "坏 rivals 被 validate_content 抓到")
++
++	# ---- 内容校验：Task 1 审查 Minor 的收口（domains / aliases / base_power 类型 / era_overrides）----
++	var base_entry := {"id": "x", "label": "甲", "kind": "dark", "legal_status": "legal",
++		"secrecy": "public", "base_power": 0.5, "institutions": [], "rivals": [], "allies": [],
++		"domains": ["law"], "aliases": ["甲"], "era_overrides": {}}
++	var bad_domain_entry := base_entry.duplicate(true)
++	bad_domain_entry["domains"] = ["不存在的领域"]
++	var bad_domain := Registry.from_tables({
++		"eras": [{"id": "modern", "label": "现代"}],
++		"factions": [bad_domain_entry],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	a.is_true(" | ".join(WorldFactions.validate_content(bad_domain)).contains("domain 非法"),
++		"坏 domains 被 validate_content 抓到")
++
++	var bad_alias_entry := base_entry.duplicate(true)
++	bad_alias_entry["aliases"] = ["甲", "   "]
++	var bad_alias := Registry.from_tables({
++		"eras": [{"id": "modern", "label": "现代"}],
++		"factions": [bad_alias_entry],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	a.is_true(" | ".join(WorldFactions.validate_content(bad_alias)).contains("alias 为空"),
++		"空白别名被 validate_content 抓到")
++
++	var bad_alias_type := base_entry.duplicate(true)
++	bad_alias_type["aliases"] = []
++	var bad_alias_type_reg := Registry.from_tables({
++		"eras": [{"id": "modern", "label": "现代"}],
++		"factions": [bad_alias_type],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	a.is_true(" | ".join(WorldFactions.validate_content(bad_alias_type_reg)).contains("aliases 为空"),
++		"空 aliases 数组被 validate_content 抓到")
++
++	var bad_power_entry := base_entry.duplicate(true)
++	bad_power_entry["base_power"] = "0.5"
++	var bad_power := Registry.from_tables({
++		"eras": [{"id": "modern", "label": "现代"}],
++		"factions": [bad_power_entry],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	a.is_true(" | ".join(WorldFactions.validate_content(bad_power)).contains("base_power 类型非法"),
++		"字符串型 base_power 被 validate_content 抓到")
++
++	var no_override_entry := base_entry.duplicate(true)
++	no_override_entry.erase("era_overrides")
++	var no_override := Registry.from_tables({
++		"eras": [{"id": "modern", "label": "现代"}],
++		"factions": [no_override_entry],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	a.is_true(" | ".join(WorldFactions.validate_content(no_override)).contains("era_overrides 缺失"),
++		"缺失 era_overrides 被 validate_content 抓到")
++
++	var bad_override_type_entry := base_entry.duplicate(true)
++	bad_override_type_entry["era_overrides"] = ["modern"]
++	var bad_override_type := Registry.from_tables({
++		"eras": [{"id": "modern", "label": "现代"}],
++		"factions": [bad_override_type_entry],
++		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
++	})
++	a.is_true(" | ".join(WorldFactions.validate_content(bad_override_type)).contains("era_overrides 必须是 Dictionary"),
++		"非字典 era_overrides 被 validate_content 抓到")
++
++	# ---- 初始化 ----
++	var w := make_world("modern")
++	WorldFactions.initialize(w)
++	a.eq(w.factions.size(), 17, "初始化后 17 个派系都有状态")
++	var ministry := WorldFactions.state_of(w, "ministry")
++	a.near(float(ministry["power"]), 0.75, 0.0001, "魔法部 power 取 base_power")
++	a.is_true(bool(ministry["revealed"]), "public 派系初始已揭示")
++	a.is_true(not WorldFactions.state_of(w, "death_eaters").is_empty(), "食死徒有状态")
++	a.is_false(bool(WorldFactions.state_of(w, "death_eaters")["revealed"]), "secret 派系初始未揭示")
++	var control: Dictionary = ministry["control"]
++	a.near(float(control.get("law_enforcement", 0.0)), 0.75, 0.0001, "机构控制权初始 = base_power")
++
++	# 幂等：已有状态不被覆盖
++	w.factions["ministry"]["power"] = 0.10
++	WorldFactions.initialize(w)
++	a.near(WorldFactions.power_of(w, "ministry"), 0.10, 0.0001, "initialize 幂等（不覆盖已有值）")
++	w.factions["ministry"]["power"] = 0.75
++
++	# 幂等：只补缺失的条目（部分状态的世界）
++	var partial := make_world("modern")
++	partial.factions.clear()
++	partial.factions["ministry"] = {"power": 0.42, "control": {}, "stance_to_player": 0,
++		"revealed": true, "last_change_turn": 7, "notes": []}
++	WorldFactions.initialize(partial)
++	a.eq(partial.factions.size(), 17, "部分状态的世界补齐到 17 条")
++	a.near(WorldFactions.power_of(partial, "ministry"), 0.42, 0.0001, "已存在的条目不被覆盖（部分状态）")
++
++	# 时代覆盖
++	var old := make_world("second_wizarding_war")
++	WorldFactions.initialize(old)
++	a.near(WorldFactions.base_power(old, "ministry"), 0.45, 0.0001, "二战期魔法部 base_power 被覆盖")
++	a.near(WorldFactions.base_power(old, "death_eaters"), 0.45, 0.0001, "二战期食死徒 base_power 被覆盖")
++
++	# create() / from_dict() 两条路径都自带补齐（设计 §9.5）
++	a.eq(make_world("modern").factions.size(), 17, "create() 路径自动补齐（不需要外部调 initialize）")
++	var encoded := SaveCodec.encode(w)
++	var decoded := SaveCodec.decode(encoded, reg)
++	a.is_true(bool(decoded["ok"]), "往返可解码")
++	var restored: WorldState = decoded["world"]
++	a.eq(restored.factions.size(), 17, "from_dict() 路径自动补齐")
++	a.near(WorldFactions.power_of(restored, "ministry"), 0.75, 0.0001, "读档后派系实力与存档一致")
++
++	# 老存档（完全没有 factions 数据）必须被补齐且不报错
++	var legacy_w := make_world("modern")
++	legacy_w.factions = {}
++	var legacy_text := SaveCodec.encode(legacy_w)
++	var legacy_decoded := SaveCodec.decode(legacy_text, reg)
++	a.is_true(bool(legacy_decoded["ok"]), "factions 为空的老存档仍可解码")
++	a.eq((legacy_decoded["world"] as WorldState).factions.size(), 17, "老存档读档后被补齐到 17 条")
++
++	# ---- 权力四角 ----
++	var share := WorldFactions.power_share(w)
++	var total := 0.0
++	for k in share.keys():
++		total += float(share[k])
++	a.near(total, 1.0, 0.0001, "权力四角归一化到 1")
++	a.eq(share.keys().size(), 4, "权力四角只有 4 键")
++
++	# ---- 机构控制权归并 ----
++	WorldFactions.ensure_state(w, "death_eaters")["control"]["law_enforcement"] = 0.90
++	var ic := WorldFactions.institution_control(w)
++	a.eq(str((ic["law_enforcement"] as Dictionary)["holder"]), "death_eaters", "控制权最高的派系成为 holder")
++	a.near(float((ic["law_enforcement"] as Dictionary)["value"]), 0.90, 0.0001, "holder 的值取最大值")
++	a.eq(str((ic["international"] as Dictionary)["holder"]), "international_confederation", "国际机构 holder")
++	WorldFactions.ensure_state(w, "death_eaters")["control"]["law_enforcement"] = 0.05
++
++	# 平局：取 power 更高者（持平的机构控制权）
++	WorldFactions.ensure_state(w, "wizengamot")["control"]["wizengamot"] = 0.70
++	WorldFactions.ensure_state(w, "sacred_twenty_eight")["control"]["wizengamot"] = 0.70
++	var tie_ic := WorldFactions.institution_control(w)
++	a.eq(str((tie_ic["wizengamot"] as Dictionary)["holder"]), "wizengamot", "控制权持平取 power 更高者")
++	WorldFactions.ensure_state(w, "wizengamot")["control"]["wizengamot"] = 0.58
++	WorldFactions.ensure_state(w, "sacred_twenty_eight")["control"]["wizengamot"] = 0.55
++
++	# 无任何派系声明 control 时：8 个机构键仍全在，value=0.0、holder=""
++	var empty_w := make_world("modern")
++	for fid in empty_w.registry.ids("factions"):
++		empty_w.factions[str(fid)]["control"] = {}
++	var empty_ic := WorldFactions.institution_control(empty_w)
++	a.eq(empty_ic.keys().size(), WorldFactions.INSTITUTIONS.size(), "机构控制权返回全部 8 个机构键")
++	var all_zero := true
++	var all_unheld := true
++	for inst in WorldFactions.INSTITUTIONS:
++		var row: Dictionary = empty_ic[str(inst)]
++		if float(row["value"]) != 0.0:
++			all_zero = false
++		if str(row["holder"]) != "":
++			all_unheld = false
++	a.is_true(all_zero, "无派系声明时 value 全为 0.0")
++	a.is_true(all_unheld, "无派系声明时 holder 全为空串")
++
++	# ---- 政体推导：四种格局各一条构造用例 ----
++	w.world_vars["war_pressure"] = 0.2
++	a.eq(WorldFactions.government_type(w), "ministry_bureaucracy", "默认格局 → 官僚制")
++
++	WorldFactions.ensure_state(w, "sacred_twenty_eight")["power"] = 0.9
++	WorldFactions.ensure_state(w, "reformist_pureblood")["power"] = 0.9
++	WorldFactions.ensure_state(w, "ministry")["power"] = 0.30
++	a.eq(WorldFactions.government_type(w), "pureblood_oligarchy", "纯血权重高 + 魔法部弱 → 寡头制")
++
++	WorldFactions.ensure_state(w, "ministry")["power"] = 0.75
++	WorldFactions.ensure_state(w, "death_eaters")["power"] = 0.8
++	WorldFactions.ensure_state(w, "death_eaters")["control"]["law_enforcement"] = 0.7
++	WorldFactions.ensure_state(w, "death_eaters")["control"]["wizengamot"] = 0.7
++	a.eq(WorldFactions.government_type(w), "death_eater_dictatorship", "黑暗势力掌握司法 → 独裁")
++
++	WorldFactions.ensure_state(w, "death_eaters")["control"]["law_enforcement"] = 0.0
++	WorldFactions.ensure_state(w, "death_eaters")["control"]["wizengamot"] = 0.0
++	WorldFactions.ensure_state(w, "order_of_phoenix")["power"] = 0.95
++	w.world_vars["war_pressure"] = 0.8
++	a.eq(WorldFactions.government_type(w), "order_resistance", "战争压力高 + 抵抗组织最强 → 凤凰社抵抗")
++
++	# 政体 id 必须都能在内容表里查到（面板/Task 7 依赖）
++	for gov_id in ["ministry_bureaucracy", "pureblood_oligarchy", "death_eater_dictatorship", "order_resistance"]:
++		a.is_true(reg.has("governments", gov_id), "政体 id 在内容表里：%s" % gov_id)
++
++	return a.report("factions")
+diff --git a/tests/factions_test.gd.uid b/tests/factions_test.gd.uid
+new file mode 100644
+index 0000000..05f67d0
+--- /dev/null
++++ b/tests/factions_test.gd.uid
+@@ -0,0 +1 @@
++uid://by1vtjogfhjmc
+diff --git a/tests/registry_test.gd b/tests/registry_test.gd
+index 7604797..b68382b 100644
+--- a/tests/registry_test.gd
++++ b/tests/registry_test.gd
+@@ -105,11 +105,15 @@ func run() -> int:
+ 	a.is_true(bad_joined.contains("kind 非法"), "坏 kind 必须报错")
+ 	a.is_true(bad_joined.contains("缺少数据表"), "缺失数据表仍需报错")
+ 	var bad_power := Registry.from_tables({
+ 		"eras": [{"id": "a", "label": "甲"}],
+ 		"factions": [{"id": "x", "label": "坏派系", "kind": "dark", "legal_status": "legal",
+ 			"secrecy": "public", "base_power": 1.5}],
+ 		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+ 	})
+ 	a.is_true(" | ".join(bad_power.validate()).contains("base_power 超值域"), "base_power 越界必须报错")
+ 
++	# registry 的表内枚举与 WorldFactions 常量必须一致（防两处定义漂移）
++	a.eq(insts, WorldFactions.INSTITUTIONS, "机构枚举两处一致")
++	a.eq(kinds, WorldFactions.KINDS, "kind 枚举两处一致")
++
+ 	return a.report("registry")
+diff --git a/tests/run_tests.gd b/tests/run_tests.gd
+index 2fdaf40..797a97d 100644
+--- a/tests/run_tests.gd
++++ b/tests/run_tests.gd
+@@ -14,20 +14,21 @@ const SUITES: Array[String] = [
+ 	"res://tests/creation_test.gd",
+ 	"res://tests/spell_test.gd",
+ 	"res://tests/gm_test.gd",
+ 	"res://tests/panel_test.gd",
+ 	"res://tests/selfcheck_test.gd",
+ 	"res://tests/save_test.gd",
+ 	"res://tests/async_probe_test.gd",
+ 	"res://tests/llm_test.gd",
+ 	"res://tests/prompt_test.gd",
+ 	"res://tests/debug_mirror_test.gd",
++	"res://tests/factions_test.gd",
+ ]
+ 
+ func _initialize() -> void:
+ 	# 看门狗：async 化后，若某个套件的协程永不恢复，_initialize 会永久挂起（await 卡死）。
+ 	# SceneTreeTimer 独立于 await 持续推进，保证任何情况下最终都能 quit()——Task 1 的硬要求。
+ 	create_timer(SUITE_TIMEOUT_SEC).timeout.connect(func() -> void:
+ 		printerr("测试总超时（%.0f 秒），强制退出" % SUITE_TIMEOUT_SEC)
+ 		quit(1))
+ 	var total_failures := 0
+ 	var failed_suites := 0
