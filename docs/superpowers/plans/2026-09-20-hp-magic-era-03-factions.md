@@ -1519,6 +1519,10 @@ static func apply_rumor_reveals(world: WorldState, events: Array) -> void:
 # 揭示一个派系。约束：来源必须非空且不是 system（与 StateOps.know_fact 同源，第四十三/五十七章）。
 # 已揭示时返回 false（幂等），调用方可据此跳过重复叙事。
 static func reveal(world: WorldState, faction_id: String, source: String) -> bool:
+	# 与 initialize()/evolve() 同口径的早退：reveal() 是对外 API（面板/GM op 会调），
+	# 畸形存档可能让 clock 为 null（Task 6 审查 Minor 3 的收口）。
+	if world == null or world.registry == null or world.clock == null:
+		return false
 	var src := source.strip_edges()
 	if src.is_empty() or src == "system":
 		return false
