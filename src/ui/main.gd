@@ -10,8 +10,9 @@ var world: WorldState = null
 var engine: TurnEngine = null
 var rng: RngService = null
 
-# 计划 03a-P P3：表现层清单 → 主题（清单是唯一事实来源，见 spec §2）
+# 计划 03a-P P3/P4：表现层清单 → 主题 + 音频（清单是唯一事实来源，见 spec §2）
 var presentation: Presentation = null
+var audio: AudioDirector = null
 
 var root_box: VBoxContainer = null
 var creation_box: VBoxContainer = null
@@ -53,8 +54,57 @@ func _ready() -> void:
 	# 清单是唯一事实来源，提交二进制主题资源会让「改一行 JSON」变成「还要重新生成 .tres」= 返工。
 	presentation = Presentation.load_default()
 	theme = ThemeBuilder.build(presentation)
+	# P4：音频导演以子节点形式入树（AudioStreamPlayer 需要在场景树上才能播）；缺素材则全程静音。
+	audio = AudioDirector.create(presentation)
+	add_child(audio)
 	_build_ui()
 	_show_creation()
+
+# ---- 计划 03a-P P4：音频触发点 ----
+
+# 所有 cue 的唯一出口：`play_cue` 自己保证「缺素材 = 静音」，这里只负责镜像，
+# 让 B1 能从外部观测到「触发点真的被调到了」（与「真的出声了」分开，见 audio_director.gd 头注）。
+func _cue(id: String) -> void:
+	if audio == null:
+		return
+	var played := audio.play_cue(id)
+	_mirror("[音频] cue=%s 出声=%s" % [id, str(played)])
+
+# BGM：**地点优先、时代兜底**（spec §4）；清单里两个都没配 ⇒ 保持当前 BGM（不切、不停）。
+# `set_bgm` 是幂等的（同一首重复设置不重启），所以每回合调一次是安全的，也是「换地点」的收口。
+func _sync_bgm() -> void:
+	if audio == null or world == null:
+		return
+	var switched := false
+	if not world.player.location_id.is_empty():
+		switched = audio.set_bgm("%s.%s" % [AudioDirector.LOCATION_NS, world.player.location_id])
+	if not switched and not world.era_id.is_empty():
+		switched = audio.set_bgm("%s.%s" % [AudioDirector.ERA_NS, world.era_id])
+	_mirror("[音频] bgm=%s volume_db=%.1f" % [audio.current_bgm_path() if switched else "(未切)",
+		audio.bgm_volume_db()])
+
+# §8#61：`LlmGameMaster` 的两条降级分支都往 `warnings` 追加「LLM 降级：<原因>」，
+# `TurnEngine._resolve` 把 `warnings` 并进 `op_errors`（llm_game_master.gd:73/77 + turn_engine.gd:39）。
+# 这里按**同一个来源**检测 ⇒ **GM 层零改动**（P4 的授权偏离：不在 `_fallback()` 内部接线）。
+# 形态不对（不是数组）⇒ false，不崩。
+const FALLBACK_MARKER := "LLM 降级"
+
+static func is_fallback_result(result: Dictionary) -> bool:
+	var errors: Variant = result.get("op_errors", null)
+	if typeof(errors) != TYPE_ARRAY and typeof(errors) != TYPE_PACKED_STRING_ARRAY:
+		return false
+	for err in errors:
+		if str(err).begins_with(FALLBACK_MARKER):
+			return true
+	return false
+
+# 本回合**新**揭示的派系（用于 `faction_revealed`）。PackedStringArray 只能用 `.has()`（台账实测：`==` 会解析失败）。
+static func newly_revealed(before: PackedStringArray, after: PackedStringArray) -> PackedStringArray:
+	var out := PackedStringArray()
+	for fid in after:
+		if not before.has(str(fid)):
+			out.append(str(fid))
+	return out
 
 # 镜像通道的**唯一出口**：所有对外可见的界面文本都经这里，方便 B1 从外部观测。
 func _mirror(text: String) -> void:
@@ -257,6 +307,7 @@ func _on_start_pressed() -> void:
 	_append("【原著优先级别已启用】本世界以《哈利·波特》原著七部小说为正典。")
 	_append("%s，%d岁。你的人生开始了。" % [world.player.name_text, world.player.age_years()])
 	_append(PanelFormatter.player_panel(world))
+	_sync_bgm()
 	command_edit.grab_focus()
 
 func _personality_words() -> Array:
@@ -309,6 +360,7 @@ func _on_command_submitted(text: String) -> void:
 	if text.strip_edges() == "确认自检":
 		if engine != null:
 			engine.acknowledge_audit()
+		_cue("audit_ack")
 		_append("（自检已确认。世界继续向前。）")
 		command_edit.text = ""
 		return
@@ -323,13 +375,15 @@ func _on_command_submitted(text: String) -> void:
 	_set_buttons_enabled(false)
 	_append(">>> %s" % text)
 	_append("（世界正在回应…）")
+	_cue("turn_submit")
 	# §8#58/#62：把等待变成「有上限的等待」。GDScript 的 await 链一旦在内部抛错，调用方永远不会
 	# 被唤醒（无 try/catch），旧实现会把输入框与整排按钮永久留在禁用态。看门狗保证恢复出口一定会走到。
 	# ⚠️ 用**本轮私有的**字典（不是共享成员）：超时后旧协程可能迟到恢复，若共用成员字典，
 	# 它会把 done=true 写到**新一轮**的字典上 → 要么渲染上一回合的叙事（错位），要么渲染空字典
 	# 触发 result["narration"] 运行期错误 → 恢复两行被跳过 → **输入永久禁用（§8#62 回归）**。
 	# Task 10 审查 Important 1（plan-mandated）的收口；Task 10 复审 P2-2：不再保留只写的成员镜像。
-	var round_state := {"done": false, "result": {}}
+	var round_state := {"done": false, "result": {},
+		"revealed_before": WorldFactions.visible_faction_ids(world)}
 	_run_turn(text, round_state)
 	var deadline := Time.get_ticks_msec() + int(maxf(turn_timeout_sec, 0.1) * 1000.0)
 	while not bool(round_state.get("done", false)) and Time.get_ticks_msec() < deadline:
@@ -342,6 +396,19 @@ func _on_command_submitted(text: String) -> void:
 		_append("（本回合超过 %.0f 秒仍未返回，已恢复输入。请求可能仍在后台；若反复发生，请检查 LLM 配置或改用本地替身。）" % turn_timeout_sec)
 	else:
 		_render_turn_result(round_state.get("result", {}))
+		_cue("turn_done")
+		# 势力揭示（spec §4）：回合前后各取一次可见派系集合做差集。用**本轮私有**字典里的
+		# `revealed_before`，不引入跨回合的共享变量（Task 10 的 I1 教训）。
+		var before_revealed: PackedStringArray = round_state.get("revealed_before", PackedStringArray())
+		var revealed := newly_revealed(before_revealed, WorldFactions.visible_faction_ids(world))
+		if revealed.size() > 0:
+			_cue("faction_revealed")
+			_mirror("[势力揭示] %s" % ",".join(revealed))
+		# 降级（§8#61）：原因已在 warnings → op_errors → 上面已逐条打印，这里只负责发声
+		var turn_result: Dictionary = round_state.get("result", {})
+		if is_fallback_result(turn_result):
+			_cue("llm_fallback")
+		_sync_bgm()
 	_set_status(PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn)
 
 # 单独的协程：它的失败（运行期错误使协程中止）不会阻止 _on_command_submitted 的看门狗循环（§8#62）。
@@ -394,7 +461,10 @@ func _on_save() -> void:
 	if world == null:
 		return
 	var result := SaveStore.save(SAVE_SLOT, world)
-	_append("存档：%s（%s）" % ["成功" if bool(result["ok"]) else "失败", str(result["path"])])
+	var ok := bool(result["ok"])
+	if ok:
+		_cue("save_ok")
+	_append("存档：%s（%s）" % ["成功" if ok else "失败", str(result["path"])])
 
 func _on_load() -> void:
 	var result := SaveStore.load_slot(SAVE_SLOT, registry)
@@ -415,12 +485,15 @@ func _on_load() -> void:
 	if creation_error != null:
 		creation_error.text = ""
 	_append("读档成功：%s" % str(result["path"]))
+	_cue("load_ok")
 	_append(PanelFormatter.player_panel(world))
+	_sync_bgm()
 	command_edit.grab_focus()
 
 func _on_audit() -> void:
 	if world == null:
 		return
+	_cue("audit_start")
 	_append(SelfCheck.report(world))
 	if engine != null:
 		engine.acknowledge_audit()

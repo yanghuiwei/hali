@@ -213,12 +213,61 @@ func _initialize() -> void:
 	await _part11_watchdog(restarted)
 	await _part11b_reentrancy(restarted)
 	await _part11c_null_engine(restarted)
+	await _part12_theme_audio(node, restarted)
 
 	_part10_summary()
 	_restore_user_files()
 	_verify_restored()
 	print("  B1 自动验收最终：断言 %d 条，失败 %d 条" % [_checks, _failures.size()])
 	quit(1 if _failures.size() > 0 else 0)
+
+# 清单 12（计划 03a-P P3/P4）：主题真的挂上去了 + 音频触发点真的接上了
+# 思路：**先用既有流程触发过的 cue 做断言**（那是最强形式的「接线」证据：没人手调过这些 handler），
+# 再补一次「像真点按钮一样」驱动 `_on_audit`（清单 8 走的是「回合内出审计」，从没点过自检按钮）。
+# `node` = 第一实例（跑过创建/行动/存档/读档）；`restarted` = 重开后的实例（跑过第 15 回合自检与「确认自检」）。
+func _part12_theme_audio(node: Node, restarted: Node) -> void:
+	part("清单 12 · 表现层：主题已挂 + 音频触发点接线（计划 03a-P P3/P4）")
+	var theme: Theme = node.get("theme")
+	check(theme != null, "根节点挂了 Theme（ThemeBuilder.build 真的被应用）")
+	if theme != null:
+		check(theme.get_stylebox("normal", "Button") is StyleBoxFlat,
+			"主题里 Button 的 normal 槽位来自 ThemeBuilder（不是 Godot 默认）")
+		check(theme.get_color("font_color", "Label").a == 1.0, "Label 前景色是不透明色（palette 真的读到了）")
+	var audio: AudioDirector = node.get("audio")
+	check(audio != null, "根节点下建了 AudioDirector")
+	if audio == null:
+		return
+	# ① 这四个 cue 全部来自**既有流程真的走到的处理器**（本函数没有自己调过它们）
+	var seen := audio.cue_ids_seen()
+	for id in ["turn_submit", "turn_done", "save_ok", "load_ok"]:
+		check(seen.has(id), "cue「%s」被真实流程触发过（seen=%s）" % [id, str(seen)])
+	# ② audit_ack 在重开后的实例上：清单 8 真的提交了「确认自检」
+	var restarted_audio: AudioDirector = restarted.get("audio")
+	check(restarted_audio != null, "重开后同样建了 AudioDirector")
+	if restarted_audio != null:
+		check(restarted_audio.cue_ids_seen().has("audit_ack"),
+			"cue「audit_ack」由清单 8 的「确认自检」提交触发（seen=%s）" % str(restarted_audio.cue_ids_seen()))
+	# ③ 自检按钮：像真点一样驱动一次（若 `_on_audit` 里没接 cue，这条必红）
+	node.call("_on_audit")
+	check(audio.cue_ids_seen().has("audit_start"), "点「自检」触发 audit_start cue")
+	# ④ BGM 真的切了，而且指向真实可加载、loop=true 的素材（spec §8.4）
+	check(not audio.current_bgm_path().is_empty(), "开局/读档时真的切了 BGM（path=%s）" % audio.current_bgm_path())
+	check(ResourceLoader.exists(audio.current_bgm_path()), "当前 BGM 指向真实存在的素材")
+	var stream := AudioDirector.load_stream(audio.current_bgm_path())
+	check(stream != null and stream.get("loop") == true, "当前 BGM 是 loop=true 的音频流")
+	# ⑤ 未知 key / 未知 cue 同样安全，且不得改变当前 BGM
+	var bgm_before := audio.current_bgm_path()
+	check(not audio.set_bgm("bgm_by_location.__nope__"), "未知 BGM key ⇒ 返回 false")
+	check(audio.current_bgm_path() == bgm_before, "未知 BGM key 不改变当前 BGM（不切、不停）")
+	check(not audio.play_cue("__nope__"), "未知 cue id ⇒ 静音返回 false（不报错）")
+	# ⑥ 「缺素材 = 静音」的真实路径断言：目前没有任何 sfx 素材 ⇒ 8 个 cue 全静音
+	var quiet := 0
+	for id in ["turn_submit", "turn_done", "audit_start", "audit_ack", "save_ok", "load_ok", "faction_revealed", "llm_fallback"]:
+		if not audio.play_cue(id):
+			quiet += 1
+	check(quiet == 8, "8 个 cue 在无 sfx 素材时全部静音返回 false（实际 %d/8）" % quiet)
+	check(audio.cue_ids_seen().size() >= 6, "本次会话共触发过至少 6 个不同 cue（实际 %d）" % audio.cue_ids_seen().size())
+	note("观察（P3/P4）：主题取自 data/presentation.json；BGM=%s；cue 全部接上但无 sfx 素材⇒静音" % audio.current_bgm_path())
 
 # 清单 1：窗口/创建界面
 func _part1_creation_ui(node: Node) -> void:
