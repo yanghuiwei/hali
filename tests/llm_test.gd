@@ -135,6 +135,29 @@ func run() -> int:
 	var res3: GameMaster.GmResult = await gm3.act(lw, "我要去上课")
 	a.is_true(res3.narration.length() > 0, "无 provider 也有叙事")
 
+	# ---- §8#66：settings 的 temperature/max_tokens/timeout 必须真的进入请求 ----
+	var cfg := LlmSettings.new()
+	cfg.temperature = 0.42
+	cfg.max_tokens = 4321
+	cfg.timeout_ms = 55555
+	var sp := MockLlmProvider.new()
+	sp.queue = [
+		"不是 JSON",
+		'{"narration":"修复轮之后再试一次。","ops":[],"tags":[]}',
+	]
+	var sgm := LlmGameMaster.new(sp, ScriptedGameMaster.new(RngService.new(3)), cfg)
+	var sres: GameMaster.GmResult = await sgm.act(lw, "我要练习魔药学")
+	a.eq(sp.requests.size(), 2, "两次尝试都被记录")
+	a.eq(sp.requests[0].temperature, 0.42, "首次请求带上 settings.temperature")
+	a.eq(sp.requests[0].max_tokens, 4321, "首次请求带上 settings.max_tokens")
+	a.eq(sp.requests[0].timeout_ms, 55555, "首次请求带上 settings.timeout_ms")
+	# 解析失败后的重试请求（build_repair 路径）同样必须带上，否则重试仍会撞同一个预算墙
+	a.eq(sp.requests[1].max_tokens, 4321, "重试请求同样带上 settings.max_tokens")
+	a.eq(sp.requests[1].timeout_ms, 55555, "重试请求同样带上 settings.timeout_ms")
+	a.is_true(sres.narration.contains("修复轮"))
+	# 向后兼容：不传 settings 时仍用 `LlmRequest` 类默认值（不得崩）
+	a.eq(provider.requests[0].max_tokens, 1024, "未传 settings 时沿用类默认值")
+
 	# ---- TurnEngine.submit_async 端到端（mock GM，不联网） ----
 	var ereg := Registry.load_default()
 	var ep := PlayerState.new_default()
@@ -191,5 +214,15 @@ func run() -> int:
 	a.is_false(bad_body.ok, "非 JSON 失败")
 	var bad_choice := OpenAiCompatProvider._parse_http(200, '{"choices":[123]}')
 	a.is_false(bad_choice.ok, "choices[0] 非对象失败，不崩")
+	# ---- §8#67：错误串必须能区分病因 ----
+	var timeout_resp := OpenAiCompatProvider._parse_http(0, "")
+	a.is_false(timeout_resp.ok, "状态 0 视为失败")
+	a.is_true(timeout_resp.error.contains("超时"), "状态 0 的错误串指明连接/超时中断（不再是 HTTP 0（））")
+	var truncated := OpenAiCompatProvider._parse_http(200, '{"choices":[{"finish_reason":"length","message":{"content":""}}]}')
+	a.is_false(truncated.ok, "空 content 仍失败")
+	a.is_true(truncated.error.contains("length"), "空 content 的错误串带上 finish_reason=length")
+	a.is_true(truncated.error.contains("max_tokens"), "并提示思考型模型需提高 max_tokens")
+	var empty_other := OpenAiCompatProvider._parse_http(200, '{"choices":[{"finish_reason":"stop","message":{"content":""}}]}')
+	a.is_true(empty_other.error.contains("stop"), "非 length 的 finish_reason 也如实报出")
 
 	return a.report("llm")

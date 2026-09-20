@@ -7,15 +7,28 @@ const FALLBACK_NOTE := "（叙事引擎暂不可用，已用本地规则结算�
 var provider: LlmProvider = null
 var fallback: GameMaster = null
 var last_error: String = ""
+var settings: LlmSettings = null
 
-func _init(provider_: LlmProvider = null, fallback_: GameMaster = null) -> void:
+func _init(provider_: LlmProvider = null, fallback_: GameMaster = null, settings_: LlmSettings = null) -> void:
 	provider = provider_
 	fallback = fallback_
+	settings = settings_
+
+# §8#66：`PromptBuilder` 造出的 request 带的是 `LlmProvider.LlmRequest` 的**类默认值**
+# （0.8 / 1024 / 30000），若不在此处用 settings 覆盖，`user://llm_settings.json` 的
+# `temperature` / `max_tokens` / `timeout_ms` 就永远不会进入真实请求（对思考型模型，
+# `max_tokens=1024` 会把预算全用到思维链上，导致 `content` 恒空、每回合静默降级）。
+func _apply_settings(req: LlmProvider.LlmRequest) -> LlmProvider.LlmRequest:
+	if settings != null:
+		req.temperature = settings.temperature
+		req.max_tokens = settings.max_tokens
+		req.timeout_ms = settings.timeout_ms
+	return req
 
 func act(world: WorldState, action_text: String) -> GmResult:
 	if provider == null:
 		return _fallback(world, action_text, "provider 未配置")
-	var request := PromptBuilder.build(world, action_text)
+	var request := _apply_settings(PromptBuilder.build(world, action_text))
 	var response: LlmProvider.LlmResponse = null
 	var parsed: GmResponseParser.Result = null
 	for attempt in MAX_ATTEMPTS:
@@ -24,7 +37,7 @@ func act(world: WorldState, action_text: String) -> GmResult:
 			parsed = GmResponseParser.parse(response.text)
 			if parsed.ok:
 				break
-			request = PromptBuilder.build_repair(world, action_text, parsed.error)
+			request = _apply_settings(PromptBuilder.build_repair(world, action_text, parsed.error))
 		else:
 			parsed = null
 	var reason := "未知错误"

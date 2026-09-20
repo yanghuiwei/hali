@@ -207,7 +207,7 @@ func _personality_words() -> Array:
 func _build_gm() -> GameMaster:
 	var settings := LlmSettings.load_from()
 	if settings.is_configured():
-		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng))
+		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng), settings)
 	status_label.text += "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
 	return ScriptedGameMaster.new(rng)
 

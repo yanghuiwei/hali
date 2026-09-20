@@ -42,6 +42,9 @@ func _build_body(request: LlmProvider.LlmRequest) -> String:
 static func _parse_http(status: int, body: String) -> LlmProvider.LlmResponse:
 	var r := LlmProvider.LlmResponse.new()
 	r.http_status = status
+	if status == 0:
+		r.error = "请求未到达服务端（HTTP 状态 0：连接失败/超时中断）"
+		return r
 	if status < 200 or status >= 300:
 		r.error = "HTTP %d（%s）" % [status, body.substr(0, 200)]
 		return r
@@ -61,10 +64,15 @@ static func _parse_http(status: int, body: String) -> LlmProvider.LlmResponse:
 	if typeof(message) != TYPE_DICTIONARY:
 		r.error = "响应缺少 message"
 		return r
+	var finish := str((first as Dictionary).get("finish_reason", ""))
 	r.text = str((message as Dictionary).get("content", ""))
 	r.ok = not r.text.is_empty()
 	if not r.ok:
-		r.error = "响应内容为空"
+		# §8#67：区分「模型没吐内容」与「预算被思维链/截断耗尽」——否则两者错误串一样，无法定位
+		r.error = "响应内容为空（finish_reason=%s%s）" % [
+			finish if not finish.is_empty() else "未知",
+			"；思考型模型需提高 max_tokens" if finish == "length" else "",
+		]
 	return r
 
 func complete(request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
