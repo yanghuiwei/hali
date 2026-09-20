@@ -61,4 +61,55 @@ func run() -> int:
 	sorted_copy.sort()
 	a.eq(ids, sorted_copy, "ids 已排序")
 
+	# ---- 计划 03a：派系与政体内容表 ----
+	var factions := reg.ids("factions")
+	a.eq(factions.size(), 17, "派系表 17 条")
+	for fid in ["ministry", "auror_office", "wizengamot", "mysteries", "hogwarts",
+			"sacred_twenty_eight", "reformist_pureblood", "death_eaters", "order_of_phoenix",
+			"gringotts", "diagon_merchants", "daily_prophet", "black_market",
+			"common_folk", "international_confederation", "continental_pureblood", "muggle_world"]:
+		a.is_true(reg.has("factions", str(fid)), "派系 %s 存在" % str(fid))
+	a.eq(reg.ids("governments").size(), 4, "政体表 4 条")
+
+	# 枚举与引用完整性（后续 WorldFactions.validate_content 也要做同样的事，这里是内容表自检）
+	var kinds := ["ministry", "institution", "pureblood", "school", "commerce", "media",
+		"resistance", "dark", "foreign", "society"]
+	var insts := ["law_enforcement", "auror_office", "wizengamot", "mysteries",
+		"hogwarts", "gringotts", "daily_prophet", "international"]
+	for fid in factions:
+		var e := reg.entry("factions", str(fid))
+		a.is_true(kinds.has(str(e.get("kind", ""))), "%s: kind 合法" % fid)
+		a.is_true(["legal", "shadow", "outlaw"].has(str(e.get("legal_status", ""))), "%s: legal_status 合法" % fid)
+		a.is_true(["public", "semi", "secret"].has(str(e.get("secrecy", ""))), "%s: secrecy 合法" % fid)
+		a.between(float(e.get("base_power", -1.0)), 0.0, 1.0, "%s: base_power 在 0..1" % fid)
+		a.is_true(not str(e.get("agenda", "")).is_empty(), "%s: 有 agenda" % fid)
+		for inst in (e.get("institutions", []) as Array):
+			a.is_true(insts.has(str(inst)), "%s: 机构 %s 合法" % [fid, str(inst)])
+		for other in (e.get("rivals", []) as Array):
+			a.is_true(reg.has("factions", str(other)), "%s: rival %s 存在" % [fid, str(other)])
+		for other in (e.get("allies", []) as Array):
+			a.is_true(reg.has("factions", str(other)), "%s: ally %s 存在" % [fid, str(other)])
+		var overrides = e.get("era_overrides", {})
+		if typeof(overrides) == TYPE_DICTIONARY:
+			for era_id in (overrides as Dictionary).keys():
+				a.is_true(reg.has("eras", str(era_id)), "%s: era_overrides 的 %s 是真时代" % [fid, str(era_id)])
+
+	# 校验器必须抓到坏派系内容
+	var bad := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"factions": [{"id": "x", "label": "坏派系", "kind": "bogus", "legal_status": "legal",
+			"secrecy": "public", "base_power": 0.5}],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+	})
+	var bad_joined := " | ".join(bad.validate())
+	a.is_true(bad_joined.contains("kind 非法"), "坏 kind 必须报错")
+	a.is_true(bad_joined.contains("缺少数据表"), "缺失数据表仍需报错")
+	var bad_power := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"factions": [{"id": "x", "label": "坏派系", "kind": "dark", "legal_status": "legal",
+			"secrecy": "public", "base_power": 1.5}],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+	})
+	a.is_true(" | ".join(bad_power.validate()).contains("base_power 超值域"), "base_power 越界必须报错")
+
 	return a.report("registry")
