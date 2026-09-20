@@ -91,8 +91,10 @@ assets/
 >    本清单是**嵌套字典**，塞进去会当场把 `registry.validate()` 弄红、并污染 `registry_test` 的既有断言。
 >    ⇒ 两张清单的加载与校验归**表现层**：`src/ui/presentation.gd`（安全加载/缓存/回退）+ `tests/presentation_test.gd`（形状 + 回退 + 与 CREDITS 对账）。
 >    「内容进 `data/`」这条铁律**不受影响**：清单确实在 `data/` 下，只是它不是「内容表」。
-> 2. 键名与嵌套层次按本节与 §3 的示例**逐字**实现。**顶层键集合冻结为 8 个**：
+> 2. 键名与嵌套层次按本节与 §3 的示例**逐字**实现。**允许出现的顶层键集合冻结为 8 个**：
 >    `fonts` / `ui` / `icons` / `textures` / `emblems` / `backdrops` / `portraits` / `palette`。
+>    ⚠️ 这是「**允许集**」不是「必需集」：**缺哪个键都合法**（= 该槽位回退/不画/静音），
+>    但**不许出现第 9 个键**（`presentation_test` 断言这一点）。清单只登记**实际存在的文件**。
 >    取值的两种形态也冻结：`fonts` / `ui` 的条目是**对象**（`{"path":…, "size":…, "nine_patch":[…]}`），
 >    其余六个是全**扁平字符串**（`"键": "路径"`）。
 >    `audio_cues.json` 顶层冻结为 4 个：`cues` / `bgm_by_era` / `bgm_by_location` / `master_volume`。

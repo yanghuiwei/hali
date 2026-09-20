@@ -439,3 +439,31 @@
 
 **为什么保留 90 秒的 `test.sh`**：理由不是「质量」，是**让红色可归因**。攒到数千行后一次性跑出几十条红，
 无法判断是哪次改动引起（调试考古的成本远高于 90 秒）。这是新模式下**唯一的硬约束**。
+
+## 03a-P P1+P2: 两张清单表 + `Presentation`（安全加载/缓存/回退）+ `presentation_test`
+- dispatch: worker / run `c8acb1f5`（快跑模式：P1–P5 由 5 次派发压成 2 次）
+- 实现完成：`cc9eb15`（7 files, +584，无删除）；`data/presentation.json` · `data/audio_cues.json` ·
+  `src/ui/presentation.gd`(+uid) · `tests/presentation_test.gd`(+uid) · `tests/run_tests.gd`（追加 SUITES）
+- 门禁：`test.sh` **EXIT=0**；**18 套件 1767 → 19 套件 1848** 断言（`[presentation]=81` 失败 0，其余 18 套件一条未动）；
+  `SCRIPT ERROR` 2 = 基线；`^ERROR:` 7 = 基线；工作区干净、无残留进程
+- 三条实测发现（已写进代码注释）：
+  ① `JSON.parse_string` 遇畸形输入会往 stderr 打 `ERROR: Parse JSON failed…` ⇒ 必须用 `JSON.new().parse()`
+  ② `load()` 打「不存在/无导入器」路径会打 `ERROR: Resource file not found…` ⇒ 必须先 `ResourceLoader.exists()`
+     （`ui/interface.psd` 正是「有文件但无导入器」）
+  ③ **`namespace` 是 GDScript 保留字**（第一版当参数名导致整个脚本解析失败）⇒ 改名 `ns`
+- 破坏实验 2 组，**两组都暴露了测试缺口**：
+  - S1（`has()` 恒真）第一版 **0 红** —— 缺失键走的是 `has()` 最后一行 `return false`，被改的两条 `return`
+    （值为**空字符串**/**空对象**）**没有断言覆盖**。补 5 条断言后重做才红 ⇒ 与 Task 12 的 D3a 同源教训
+  - S2（拆 scheme 守卫 + `exists` 前置）**套件 81/0 全绿、抓不到**，但外部 `ERROR:` **7 → 12**
+    ⇒ 「零噪音」在套件内不可判别，**连当时的 `SCRIPT ERROR == 2` 门禁也抓不到**（那些是 `ERROR:` 不是 `SCRIPT ERROR:`）
+- **控制器采纳建议并落地**（`tools/test.sh` 加 stderr 噪音门禁，**是本项目第一道自动化噪音门禁**）：
+  `SCRIPT ERROR == 2` **且** `^ERROR: == 7`，两者不符即 `EXIT=1`；常量可用 `EXPECTED_*` 环境变量覆盖（临时实验用）。
+  负向验证实测：`EXPECTED_PLAIN_ERRORS=6` → `EXIT=1` + 门禁报文；`EXPECTED_SCRIPT_ERRORS=0` → `EXIT=1`；
+  正常跑 `EXIT=0`。⇒ 从此**不再依赖控制器每轮人工核对**噪音条数
+- 控制器决策：CJK 断言保持**条件式硬断言**（字体到场后自动生效）——不阻塞现在实现，且不可能被静默假绿；
+  worker 已如实登记为「偏离 spec §8.3 第 2 行」的授权偏离
+- 内容决策（人类可直接改 `data/audio_cues.json`，**零代码**）：8 个 era + 21 个 location 全覆盖，4 首 BGM 复用；
+  `fonts.title`=Cinzel、`numbers`=IM Fell English；**不写 `fonts.body`**（等 CJK 字体）；**不引用 HarryP**（IP 风险）
+- Task P1+P2: minor (登记)：CREDITS 对账的已知放松点（`icons/*.svg` 是 glob ⇒ 任何新图标都算已登记，已写成显式断言）·
+  `has()` 语义 = 「键存在且值非空」而非「可加载」（已注释）· `bgm` 映射是「全覆盖但复用」的占位策略
+- 状态：**P1+P2 complete**（`cc9eb15`）
