@@ -186,4 +186,14 @@ func run() -> int:
 	a.eq(f_world.flags.get("government_type", ""), "ministry_bureaucracy", "政体缓存往返一致")
 	a.eq(f_world.factions.size(), 17, "factions 往返一致（17 条）")
 
+	# ---- 计划 03a（Task 6 复审收口 Minor）：揭示状态必须随存档往返 ----
+	a.is_true(WorldFactions.reveal(w, "death_eaters", "破釜酒吧传闻"), "揭示一个非公开派系")
+	a.is_true(WorldFactions.visible_faction_ids(w).has("death_eaters"), "揭示后立即可见")
+	var r_back := SaveCodec.decode(SaveCodec.encode(w), reg)
+	a.is_true(bool(r_back["ok"]), "含揭示状态的存档可解码")
+	var r_world: WorldState = r_back["world"]
+	a.is_true(WorldFactions.visible_faction_ids(r_world).has("death_eaters"),
+		"读档后仍可见（revealed 随存档往返）")
+	a.eq(r_world.factions.size(), 17, "读档后派系数仍 17")
+
 	return a.report("save")

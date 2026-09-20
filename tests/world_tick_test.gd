@@ -37,6 +37,16 @@ func run() -> int:
 	a.eq(w.clock.turn > 0, true, "回合推进")
 	a.is_true(w.log.size() > 0, "世界产生日志（第四十三章：传闻与新闻）")
 
+	# ---- 计划 03a（Task 6 复审收口 Minor）：每个传闻事件必须带非空 rumor_id ----
+	# Task 6 的 apply_rumor_reveals() 依赖它把传闻映射到 reveals_faction；先前无任何护栏。
+	var rumor_log_events := 0
+	for e in w.log:
+		if str(e.get("kind", "")) == "rumor":
+			rumor_log_events += 1
+			a.is_true(not str(e.get("rumor_id", "")).is_empty(),
+				"传闻事件带 rumor_id（第 %d 回合）" % int(e.get("turn", 0)))
+	a.is_true(rumor_log_events >= 1, "至少有一条传闻事件可核对 rumor_id（实际 %d）" % rumor_log_events)
+
 	# 世界变量必须始终落在 [0,1]（第四十九章：阶层与权力流动，不能失控）
 	for key in w.world_vars.keys():
 		var v := float(w.world_vars[key])

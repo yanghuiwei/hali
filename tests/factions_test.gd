@@ -760,4 +760,16 @@ func run() -> int:
 	a.eq(reveal_facts_after, 1, "E2E：第二次 tick 走幂等路径，不重复写揭示记录")
 	a.is_true(WorldFactions.visible_faction_ids(e2e).has("death_eaters"), "E2E：已揭示后仍可见")
 
+	# ---- 计划 03a（Task 6 复审收口 Minor）：reveal() 的畸形世界守卫必须「不留部分写入」 ----
+	# 与既有三条 is_false 断言的区别：那三条在删掉守卫后仍会绿（GDScript 中止时返回类型默认值 false），
+	# 本条断言的是**状态**：无守卫时 ensure_state 会先建好条目、reveal 再置 revealed=true，
+	# 直到 add_fact 读 clock.turn 才中止 → 部分写入留在 world.factions 里 ⇒ 本条必红。
+	var half_world := make_world("modern")
+	half_world.clock = null
+	half_world.factions.clear()
+	a.is_false(WorldFactions.reveal(half_world, "death_eaters", "破釜酒吧传闻"),
+		"畸形世界（clock=null）不得返回 true")
+	a.is_true(WorldFactions.state_of(half_world, "death_eaters").is_empty(),
+		"畸形世界不得留下部分写入（删掉 reveal 的早退 → 该断言必红）")
+
 	return a.report("factions")

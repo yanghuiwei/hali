@@ -98,31 +98,78 @@ static func relation_panel(world: WorldState) -> String:
 		lines.append("最近动态：%s" % str(rel.get("recent", "无")))
 	return "\n".join(lines)
 
-# 第六十五章
+# 第六十五章（计划 03a 重写）：机构级指标（法律执行/傲罗/威森加摩/国际/校方）来自**派系的机构控制权**，
+# 标量级指标（财政/稳定度/腐败度/纯血影响/麻瓜关系）来自 `world_vars`。
+# 这修掉 HANDOFF §8#7：「7 个标签被硬映射到 4 个 world_vars」（机构本来就该是实体属性，第十二章权力四角 + 第二十六章魔法部体系）。
 static func power_panel(world: WorldState) -> String:
 	var vars := world.world_vars
+	var ic := WorldFactions.institution_control(world)
+	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
+	if gov_id.is_empty():
+		gov_id = WorldFactions.government_type(world)
 	var lines: Array[String] = []
 	lines.append("《哈利·波特·魔法纪元·势力面板》")
-	lines.append("【魔法部状态】部长：%s 法律执行：%.2f 傲罗：%.2f 威森加摩：%.2f 财政：%.2f 国际：%.2f 稳定度：%.2f 腐败度：%.2f 纯血影响：%.2f 麻瓜关系：%.2f" % [
-		str(vars.get("minister", "待定")),
-		float(vars.get("war_pressure", 0.0)), float(vars.get("ministry_stability", 0.0)),
-		float(vars.get("corruption", 0.0)), float(vars.get("economy_index", 0.0)),
-		float(vars.get("muggle_relations", 0.0)), float(vars.get("ministry_stability", 0.0)),
-		float(vars.get("corruption", 0.0)), float(vars.get("pureblood_influence", 0.0)),
-		float(vars.get("muggle_relations", 0.0))])
-	lines.append("【霍格沃茨】学院：%s 院长：待定 学业：%s 学院杯：待定 魁地奇：待定 禁林状况：%s 秘密：未知 派系：未知 师生关系：%d人" % [
+	lines.append("【魔法部状态】政体：%s 部长：%s 法律执行：%.2f（%s） 傲罗：%.2f（%s） 威森加摩：%.2f（%s） 财政：%.2f 国际：%.2f（%s） 稳定度：%.2f 腐败度：%.2f 纯血影响：%.2f 麻瓜关系：%.2f" % [
+		_label(world, "governments", gov_id),
+		_institution_holder_label(world, ic, "law_enforcement"),
+		_institution_value(ic, "law_enforcement"), _institution_holder_label(world, ic, "law_enforcement"),
+		_institution_value(ic, "auror_office"), _institution_holder_label(world, ic, "auror_office"),
+		_institution_value(ic, "wizengamot"), _institution_holder_label(world, ic, "wizengamot"),
+		float(vars.get("economy_index", 0.0)),
+		_institution_value(ic, "international"), _institution_holder_label(world, ic, "international"),
+		float(vars.get("ministry_stability", 0.0)), float(vars.get("corruption", 0.0)),
+		float(vars.get("pureblood_influence", 0.0)), float(vars.get("muggle_relations", 0.0))])
+	lines.append("【霍格沃茨】学院：%s 校方控制：%.2f（%s） 学业：%s 学院杯：仅 NPC 系统（计划 05） 魁地奇：仅 NPC 系统（计划 05） 禁林状况：%s 秘密：未调查 师生关系：%d人" % [
 		_label(world, "houses", world.player.house_id),
+		_institution_value(ic, "hogwarts"), _institution_holder_label(world, ic, "hogwarts"),
 		_top_skill(world.player, world),
 		str(world.flags.get("forbidden_forest_status", "常态")),
 		world.player.relations.size()])
 	var family: Dictionary = world.player.flags.get("family", {})
-	lines.append("【家族】姓氏：%s 祖宅：%s 财富：%s 成员：%d 婚姻：%s 盟友：%d 敌人：%d 声望：%d 家族秘密：%s 继承人：%s 魔杖传承：%s" % [
-		str(family.get("surname", "无家族")), str(family.get("seat", "无")),
-		world.player.money().formatted(), int(family.get("members", 0)),
-		str(family.get("marriage", "未婚")), int(family.get("allies", 0)), int(family.get("enemies", 0)),
-		world.player.reputation, str(family.get("secret", "未知")),
-		str(family.get("heir", "未定")), str(family.get("wand_legacy", "无"))])
+	if family.is_empty():
+		lines.append("【家族】姓氏：无家族（家族制度属计划 03c） 祖宅：无 财富：%s 成员：0 婚姻：未婚 盟友：0 敌人：0 声望：%d 家族秘密：无 继承人：未定 魔杖传承：无" % [
+			world.player.money().formatted(), world.player.reputation])
+	else:
+		lines.append("【家族】姓氏：%s 祖宅：%s 财富：%s 成员：%d 婚姻：%s 盟友：%d 敌人：%d 声望：%d 家族秘密：%s 继承人：%s 魔杖传承：%s" % [
+			str(family.get("surname", "无家族")), str(family.get("seat", "无")),
+			world.player.money().formatted(), int(family.get("members", 0)),
+			str(family.get("marriage", "未婚")), int(family.get("allies", 0)), int(family.get("enemies", 0)),
+			world.player.reputation, str(family.get("secret", "未知")),
+			str(family.get("heir", "未定")), str(family.get("wand_legacy", "无"))])
+	lines.append(_known_factions_line(world))
 	return "\n".join(lines)
+
+static func _institution_value(ic: Dictionary, institution_id: String) -> float:
+	return float((ic[institution_id] as Dictionary).get("value", 0.0))
+
+# 信息保护（第四十三/五十七章）：控制权值（世界事实）照常显示，
+# 但**未揭示**的 holder 一律显示为「未知势力」——`institution_control()` 不知道揭示状态，
+# 而未公开的派系（如食死徒对执法司/威森加摩、凤凰社）演化后完全可能成为某机构的 holder。
+static func _institution_holder_label(world: WorldState, ic: Dictionary, institution_id: String) -> String:
+	var holder := str((ic[institution_id] as Dictionary).get("holder", ""))
+	if holder.is_empty():
+		return "无人"
+	if not WorldFactions.visible_faction_ids(world).has(holder):
+		return "未知势力"
+	return _label(world, "factions", holder)
+
+# 【已知势力】：只列 revealed 派系，按实力降序；标出玩家所属与立场。
+static func _known_factions_line(world: WorldState) -> String:
+	var visible := WorldFactions.visible_faction_ids(world)
+	if visible.is_empty():
+		return "【已知势力】暂无已知势力（魔法世界对你是沉默的）"
+	var rows: Array = []
+	for fid in visible:
+		var id := str(fid)
+		rows.append({"id": id, "label": _label(world, "factions", id),
+			"power": WorldFactions.power_of(world, id), "standing": world.player.standing_of(id),
+			"member": world.player.faction_id == id})
+	rows.sort_custom(func(x, y): return float(x["power"]) > float(y["power"]))
+	var parts: Array[String] = []
+	for row in rows:
+		parts.append("%s：%.2f 立场 %+d%s" % [str(row["label"]), float(row["power"]),
+			int(row["standing"]), "[所属]" if bool(row["member"]) else ""])
+	return "【已知势力】" + " ".join(parts)
 
 static func status_line(world: WorldState) -> String:
 	return "%s ｜ %s ｜ %s ｜ %s" % [
