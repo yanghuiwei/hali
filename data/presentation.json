@@ -1,5 +1,6 @@
 {
 	"fonts": {
+		"body": {"path": "res://assets/fonts/body_cjk.ttf", "size": 16},
 		"title": {"path": "res://assets/fonts/Cinzel-Variable.ttf", "size": 28}
 	},
 	"icons": {

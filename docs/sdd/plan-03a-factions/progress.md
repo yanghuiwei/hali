@@ -521,3 +521,26 @@
 - P5: 残余/未验证：Logo 48 / 立绘 144 / 徽记 32×32 是**占位尺寸**（素材到场后可能要调，但不影响缺素材时的布局）·
   背景槽与不透明 StyleBox 的层级遮挡未验证（属素材到场后的视觉验收）· `llm_fallback` 真触发属 B2
 - 状态：**P5 complete**（`c79996b`）；**03a-P 的 P1–P5 全部完成**
+
+## 素材线合并 + CJK 字体接线（2026-09-20，控制器直接执行）
+- 素材 agent（另一个会话）交付：分支 `assets-cjk-ui-slices` 提交 **`d18df0f`**，**只动 `assets/`**（控制器校验通过）
+  - `fonts/body_cjk.ttf`（LXGW WenKai v1.522，25,575,676 B，OFL-1.1，附 `OFL-LXGWWenKai.txt`）
+  - `fonts/OFL-Cinzel.txt` / `OFL-IMFellEnglish.txt` / `OFL-MedievalSharp.txt`（**补上了 CREDITS §三 早就声明的 OFL 义务**）
+  - `ui/` **13 张 RGBA 切片**（`panel_bg` 244×366 · 按钮四态 160×44 · `textfield` · `scrollbar_bg/grab` · `frame_horizontal/vertical` · `emblem_ring` · `panel_slot` · `button_close`）
+  - `icons/ICON-MEANINGS.md`：**把 15 个 SVG 用 resvg-js 渲染成联络表后逐格看图**再写描述（不是猜文件名）
+    ⇒ 查出 **2 处文件名与图形不符**：`book-cover` 其实是**摊开的书页**、`floating-ghost` 是**戴尖顶帽的幽灵**；
+    两者的现有映射（学业 / 幽灵）仍成立，故不改键、只留档
+- 控制器处置：
+  ① `git merge --no-ff assets-cjk-ui-slices` 合入 `plan-03-factions`（基于 05abb0d，与主线无文件重叠，无冲突）
+  ② `--import` 生成 14 个新 `.import` 并提交（`assets/` 素材的导入设置载体，不提交则换机器会丢）
+  ③ **关键验收（用 Godot 代替被代理挡住的 fontTools）**：`FontFile.has_char()` 对测试串（含 `龘爨饕餮` 等生僻字）
+     **缺字 = 无 / 判定 = PASS**；对照 Cinzel / IM Fell / MedievalSharp / HarryP **全部 `has_char('你') == false`**
+  ④ `data/presentation.json` **加一行** `fonts.body` → `body_cjk.ttf`（size 16）——
+     `ThemeBuilder` 本来就会消费它（`theme_builder.gd:47-50` 设 `default_font`）⇒ **零代码**，中文即刻可读
+  ⑤ **条件式断言的负向验证**（防它静默空转）：把 `fonts.body` 指向不含中文的 Cinzel ⇒ `test.sh` **EXIT=1**，
+     报文「fonts.body 一旦能加载，就必须含中文字形（否则中文界面是豆腐块）」；`cp` + `md5sum -c` 还原校验 OK
+- 门禁（加字体前后一致）：`test.sh` **EXIT=0** / **21 套件 / 1985 断言** / 失败 0；`SCRIPT ERROR`=2、`ERROR:`=7
+- ⏳ **有意未做（避免「声明了但无效」的死旋钮）**：13 张切片**暂不写进 `presentation.json`** ——
+  它们需要真实布局落点（`panel_bg` 要 `PanelContainer` 包裹、按钮/文本框/滚动条要在 `ThemeBuilder` 里换成 `StyleBoxTexture`）。
+  先写清单行而无人消费 = 又一个 `§8#16/#21` 同类。⇒ 已登记为 **P5b**（`AssetsSlots.stylebox_for` 早已实现且有断言覆盖，
+  届时只需在 `ThemeBuilder` 里按有无清单键切换样式来源 + 加清单行，**不新增布局分支**）
