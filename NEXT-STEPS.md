@@ -1,7 +1,7 @@
 # 下一步待办 · 哈利·波特·魔法纪元
 
 > 用途：换机器/换会话后接手**第一份**要读的执行清单（配合 `HANDOFF.md`）。HANDOFF 讲「现状与铁律」，本文件讲「接下来做什么、按什么顺序、验收标准是什么」。
-> 最后更新：2026-09-20（**计划 03a「派系与政治骨架」Tasks 1–13 与计划 03a-P「表现层与素材接线」P1–P5 均已完成并合入 `main`**；人类裁定启用**快跑模式**（见 §0A）；素材线剩 §B6 两项待交付。）
+> 最后更新：2026-09-20（**计划 03a「派系与政治骨架」Tasks 1–13 与计划 03a-P「表现层与素材接线」P1–P5 均已完成并合入 `main`**；人类裁定启用**快跑模式**（见 §0A）；素材线 B6 已完成（CJK 字体 + OFL 原文 + 13 张切片已入库，中文界面已可读），剩 §B8。）
 > 维护规则：每完成一项就在方框里打勾并补上提交哈希；**换机器前必须回来更新本文件**。
 
 ---
@@ -143,7 +143,7 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
 
 ## B. 队列 B —— 计划 03a / 03a-P（**均已完成**）与下一步
 
-> ⚖️ **状态（2026-09-20）**：计划 03a（Tasks 1–13）与 03a-P（P1–P5）**均已完成并合入 `main`**；素材线剩 **B6** 两项待交付。
+> ⚖️ **状态（2026-09-20）**：计划 03a（Tasks 1–13）与 03a-P（P1–P5）**均已完成并合入 `main`**；素材线 **B6 已完成**（剩 §B8 切片接进主题）。
 > **恢复第一件事**：读 `docs/sdd/plan-03a-factions/progress.md`（耐久台账）+ 本节 + §0A（快跑模式）。
 
 - [x] **B3 计划 03「派系与政治经济」启动** —— 已拆为 03a/03b/03c；**03a 已完成 Tasks 1–13**
@@ -170,13 +170,21 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
   - 插入位置：**Task 12 之后、Task 13 收尾之前**（素材已到，P1–P4 可自由提前；与 Task 12 的文件重叠几乎为零）
     - 唯一的真冲突点：P3/P5 与 **Task 12** 都要改 `src/ui/main.gd` ⇒ 仍按「Task 12 → 03a-P → Task 13」串行，不并发。
   - 一条已挂账的 UX 修复也归这里：`LlmGameMaster` 无 fallback 分支的**降级原因双显**（叙事里 `（原因：X）` + `warnings` 也打印）
-- [ ] **B6 素材合并 + 清单加行**（**当前唯一的阻塞项**）
-  - 等另一条分支 `assets/cjk-and-ui-slices`（独立 worktree `/e/hali-assets`）。**合并前必做两道校验**：
-    ① `git diff --name-only origin/main..origin/assets/cjk-and-ui-slices | grep -v '^assets/'` 必须为空（**只动 `assets/`** 才合并）；
+- [x] ✅ **B6 素材合并 + 清单加行（已完成 2026-09-20）** —— 素材提交 `d18df0f`（分支 `assets-cjk-ui-slices`，独立 worktree `/e/hali-assets`）
+  → 控制器校验**只动 `assets/`** 后合并 `ea50b91` → `--import` 生成 14 个 `.import` 并提交
+  → Godot `FontFile.has_char()` 覆盖自检 **PASS**（含 `龘爨饕餮`）→ `data/presentation.json` 加 `fonts.body` ⇒ **中文界面已可读**
+  ⚠️ 执行者用 PowerShell 弄坏过 worktree 引用（控制器已就地修复），事故与修法见 `docs/sdd/plan-03a-P/assets-agent-repair-prompt.md`
+  下面保留当时的验收标准（已执行，供追溯）：
+  - **当时的两道校验**：素材分支 + 独立 worktree `/e/hali-assets`
+    ① `git diff --name-only origin/main..origin/assets/cjk-ui-slices | grep -v '^assets/'` 必须为空（**只动 `assets/`** 才合并）；
     ② 合完跑 `--import` → `git add` 新生成的 `.import` → `bash tools/test.sh`（**21 套件 / 1985 断言**、噪音计数 2/7）
   - 完整流程与校验命令写在 `docs/sdd/plan-03a-P/assets-agent-repair-prompt.md` 文末（该文件也记录了**执行者用 PowerShell 弄坏 worktree 引用**的事故与修法）
-  - 合并后**控制器要做的两件零代码事**：① 用 Godot `FontFile.has_char()` 做字体覆盖自检（代替被代理挡住的 fontTools）；② 在 `data/presentation.json` 加行（`fonts.body` → `body_cjk.ttf`；切片到场后加 `ui.*`）
-  - 缺口清单与验收标准：`HANDOFF.md` §8#72
+  - 缺口清单与验收标准：`HANDOFF.md` §8#72（✅ 已闭合）
+- [ ] **B8 P5b：把 13 张 UI 切片接进主题**（`assets/ui/` 已有切片，实测尺寸：`panel_bg` 244×366 · 按钮四态 160×44 · `textfield` 134×28 · `scrollbar_bg` 36×134 / `grab` 30×48 · `frame_horizontal` 224×33 / `vertical` 33×141 · `emblem_ring` 80×80 · `panel_slot` 42×42 · `button_close` 60×58 · `button_neutral` 160×44）
+  - **做法（不新增布局分支）**：`ThemeBuilder` 里按「清单有没有 `ui.<键>`」切换样式来源 —— 有则用 `AssetSlots.stylebox_for()` 造 `StyleBoxTexture`，无则沿用现有 `StyleBoxFlat`（`stylebox_for` 早已实现且有断言覆盖）
+  - 需要真实布局落点的（`panel_bg` / `frame_*` / `emblem_ring` / `panel_slot`）**先只给按钮/文本框/滚动条加清单行**，或留到 03b 的界面改版一起做
+  - ⚠️ 纪律：**不要先往 `data/presentation.json` 写没有消费者的行**（那就是「声明了但无效」的死旋钮，`§8#16/#21` 同类）
+  - 验收：`test.sh` 绿 + 噪音计数 2/7；九宫格边距**从清单数据来**（`[上,右,下,左]`），测试用**非对称值**
 - [ ] **B7 计划 03b / 03c**（下一批主线）
   - 边界照 03a spec §14：**03b 经济骨架**（物价/工资/产业、古灵阁存贷与汇率、贸易价差与走私、经济危机连锁、`Money` 债务显示格式 `§8#5`）；
     **03c 社会与法律**（纯血家族完整制度、协会体系、法律与审判、傲龙行动与非法施法后果 `§8#28/#29`，以及 `illegal_affiliation` 的清除/归一规则）
@@ -217,7 +225,7 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
 | ~~§8#69~~ ✅ | ~~哑炮却有学院~~ → **T12**（`house_id="none"`；**读档路径归存档 v2 = 见 `§8#71`**） | ✅ 已闭合（创建路径） |
 | ~~§8#70~~ ✅ | ~~创建界面姓名默认「无名者」+ 无性别输入~~ → **T12** | ✅ 已闭合 |
 | **§8#71** | **新增**：读档路径原样拷贝 `house_id`（不重判）⇒ 旧存档仍可见 `squib`+`gryffindor`；已裁定归**存档 v2** | 存档格式 v2（与 `§8#26` 同批） |
-| **§8#72** | **新增**：素材线三件 —— CJK 正文字体 · OFL 许可证文本（强制义务）· `interface.psd` 切片 | 见 §B6（已在流转中） |
+| ~~**§8#72**~~ | ~~素材线三件~~ | ✅ **已闭合（`ea50b91`）**：字体 + OFL 原文 + 13 张切片已入库，中文界面已可读；剩「切片接进主题」= **§B8** |
 
 ---
 
@@ -245,4 +253,4 @@ timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 **151 断言*
 | 计划 02 计划 / spec / 台账 | `docs/superpowers/plans/2026-09-19-...-02-llm-narrative.md` / `docs/superpowers/specs/2026-09-19-...-02-llm-narrative-design.md` / `docs/sdd/plan-02-llm-narrative/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎） |
 | 正典规格 | `哈利·波特·魔法纪元.md`（仓库根，勿移动改名） |
-| 下一步第一件事 | **§B6**：合并素材分支 `assets/cjk-and-ui-slices`（先校「只动 `assets/`」）→ `--import` 并提交新 `.import` → `test.sh`/`b1` → 在 `data/presentation.json` 加 `fonts.body` / `ui.*` 行（**零代码**）；然后 **§B7**：开新分支做 03b 经济 / 03c 社会与法律 |
+| 下一步第一件事 | **§B8 P5b**：把 13 张 UI 切片接进主题（`ThemeBuilder` 按清单键切换样式来源，**不新增布局分支**）；然后 **§B7**：开新分支做 03b 经济 / 03c 社会与法律 |

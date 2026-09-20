@@ -18,10 +18,12 @@
 - 计划全文：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md`（13 任务；**文本被控制器按实跑修正过多次，以文件当前文本为准**）
   ｜设计 spec：`docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` ｜表现层 spec：`docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`
 - **耐久台账**：`docs/sdd/plan-03a-factions/progress.md`（每任务提交 / 断言数 / 审查结论 / 挂账 Minor / Phase 0 素材落位 / **快跑模式流程变更**）
-- **素材线**：`assets/` 已落位首批素材（目录改名、音频统一 OGG、`assets/CREDITS.md` 台账、4 个 BGM `loop=true`）；
-  ⏳ **仍缺**两件（不阻塞现有功能）：**CJK 正文字体**与 `interface.psd` 切片 → 见 `NEXT-STEPS.md` §B6
-- ⚠️ **硬事实**：Godot 内置字体**不含 CJK 字形**（实测 `ThemeDB.fallback_font.has_char('你') == false`），现有 4 个字体 CJK 覆盖也全为 0
-  ⇒ 在自带 CJK 字体到位前，中文界面**依赖系统字体回退**（平台相关）；`presentation_test` 已备一条「字体到位后必须真含中文字形」的条件断言
+- **素材线**：`assets/` 已落位**两批**素材 —— ① 目录改名 / 音频统一 OGG / `CREDITS.md` 台账 / 4 个 BGM `loop=true`；
+  ② **CJK 正文字体**（LXGW WenKai v1.522 + 4 份 OFL 官方原文）+ **`interface.psd` 切出的 13 张 UI 切片** + 图标语义核定（`assets/icons/ICON-MEANINGS.md`）
+- ✅ **中文界面已可读**：`data/presentation.json` 的 `fonts.body` → `body_cjk.ttf`，`ThemeBuilder:47-50` 消费它设 `default_font`。
+  实测 `FontFile.has_char()` 对含生僻字（`龘爨饕餮`）的测试串**缺字=无 / PASS**；既有 4 个字体对「你」全 `false`。
+  该断言是**条件式**的（字体到场后自动生效），控制器做过负向验证：把它指向不含中文的 Cinzel ⇒ `test.sh` `EXIT=1` 且报文直指「中文界面是豆腐块」。
+- ⏳ **仍缺（不阻塞）**：短音效 SFX / 环境音（缺则静音）· **13 张切片尚未接进主题**（见 `NEXT-STEPS.md` §B8 P5b）
 
 **接下来要做什么：见 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（§0 快跑模式 / §0.5 恢复指引 / §B 下一步 / §C 待裁定项）。
 
@@ -451,13 +453,16 @@ taskkill //PID <PID> //F
 71. **（03a T12 审查 Important，范围外）`§8#69` 的读档路径**：`src/model/player_state.gd` 读档时 `p.house_id = str(d.get("house_id", "none"))` —— **原样拷贝、不重判**。于是修复前生成的旧存档（就是 `§8#69` 的原始证据那个 `squib`+`gryffindor`）读进来仍是 `gryffindor`；只有重新建角才得 `none`。
     裁定（控制器，2026-09-20）：**归「存档格式 v2」批次**（与 `§8#26`「载入不重跑 `validate_choices`」同族）。理由：① `from_dict` 的契约是忠实还原，在里面塞内容级归一化会造出一个**隐藏的读时改写**，且无法区分「修复前的脏数据」与「将来某个合法场景」；② 只归一化 `house_id` 一个字段、而校验照旧不跑，是任意且不自洽的；③ 正确入口是存档 v2 的一次性迁移。依据全文见计划「Task 12 范围声明」。
     **零成本缓解**：旧存档属历史数据，**重建角色即得 `none`**（B1 探针每次新建角色，已按 `none` 断言）。创建路径已堵死（`assign_house` 在生产代码里只有 1 个调用点）。
-72. **（素材线，新）CJK 正文字体 / OFL 许可证文本 / `interface.psd` 切片尚未入库**：
-    - **CJK 正文字体**：Godot 内置字体不含中日韩字形，现有 4 个字体 CJK 覆盖全为 0 ⇒ 中文界面依赖系统字体回退（平台相关）。已下载霞鹜文楷（`LXGWWenKai-Regular.ttf`，25,575,676 B，sha256 `39AD71…`），待交付。
+72. ✅ **已闭合（素材线，2026-09-20；素材提交 `d18df0f`，控制器合并 `ea50b91`）** —— 三件均已入库。**保留原文供追溯**：
+    - **CJK 正文字体**：Godot 内置字体不含中日韩字形。**已入库** `assets/fonts/body_cjk.ttf`（LXGW WenKai v1.522，25,575,676 B，OFL-1.1）并已由 `fonts.body` 接上；控制器用 Godot `FontFile.has_char()` 实测**缺字=无 / PASS**。既有的 4 个字体对「你」全 `false`。
       **不得子集化**（玩家可输入任意汉字），全字集 10–20MB+ 属正常，**不用 Git LFS**；覆盖自检由控制器用 Godot `FontFile.has_char()` 在合并后做（不需要 Python 包）。
-    - **OFL 许可证文本**：`Cinzel-Variable.ttf` / `IMFeENrm28P.ttf`（IM Fell English）/ `MedievalSharp.ttf` 都是 OFL-1.1，**OFL 强制要求再分发时随附许可证原文**，而仓库现在一个都没有（`assets/CREDITS.md` §三 已把它写成义务）。已抓到 3 份官方 OFL 原文，待落盘为 `assets/fonts/OFL-*.txt`。
+    - **OFL 许可证文本**：`Cinzel-Variable.ttf` / `IMFeENrm28P.ttf`（IM Fell English）/ `MedievalSharp.ttf` 都是 OFL-1.1，**OFL 强制要求再分发时随附许可证原文**，而仓库现在一个都没有（`assets/CREDITS.md` §三 已把它写成义务）。已落盘为 `assets/fonts/OFL-Cinzel.txt` / `OFL-IMFellEnglish.txt` / `OFL-MedievalSharp.txt` / `OFL-LXGWWenKai.txt`（官方原文，逐份做了 header/perm/term/disc 完整性校验）。
     - **`interface.psd` 切片**：Godot 无 PSD 导入器（实测 `ResourceLoader.exists()` = false）⇒ 需切成 PNG（`assets/ui/panel_bg.png` / `button_normal|hover|pressed.png` / `scrollbar_bg|grab.png` / `checkbox_on|off.png` / `logo.png`，**文件名即契约**）。
-    - 到场后要做的两件事**都是零代码**：① `--import` 生成 `.import`（必须提交，否则工作区脏）；② 在 `data/presentation.json` 加行（`fonts.body` → `body_cjk.ttf`；`ui.*` → 切片）。
-      另：`AssetSlots.stylebox_for()` 已实现且有断言，切片到位后把 `ui.panel_bg`/`button_*` 套上即可。
+    - ✅ 两件零代码事**已做完**：① `--import` 生成 14 个 `.import` 并提交；② `data/presentation.json` 加了 `fonts.body` → `body_cjk.ttf`（`ThemeBuilder:47-50` 消费它设 `default_font`）⇒ **中文界面已可读**。
+    - ✅ 额外交付：`assets/icons/ICON-MEANINGS.md` —— 15 个 SVG **实际渲染后逐格看图**再写描述（不是猜文件名），
+      查出 **2 处文件名与图形不符**（`book-cover` 实为**摊开的书页**、`floating-ghost` 是**戴尖顶帽的幽灵**）；现有映射仍成立，故不改键、只留档。
+    - ⏳ **仍留一条**：13 张切片**暂未写进清单**（`panel_bg` 需 `PanelContainer` 包裹；按钮/文本框/滚动条要在 `ThemeBuilder` 里换成 `StyleBoxTexture`）。
+      先写清单行而无人消费 = 「声明了但无效」的死旋钮（`§8#16/#21` 同类）⇒ 登记为 **P5b**（`NEXT-STEPS.md` §B8）。
     - 跟踪与流程：`NEXT-STEPS.md` §B6 · 提示词 `docs/sdd/plan-03a-P/assets-handoff-prompt-v2.md` 与 `assets-agent-repair-prompt.md`
 
 > 📝 **修复的复审记录**（`fix/plan-02-llm-settings`，独立只读 reviewer）：`docs/sdd/plan-02-llm-narrative/fix-settings-review.md`（含原文）。结论 **通过 / 0 Critical / 0 Important**；其 3 条 Minor 已分别处置（M-a → 本条 #68 登记；M-b `content:null` 经实证为真缺陷 → 已修 `c9a0c95`；M-c 断言强度 → 已采纳）。
