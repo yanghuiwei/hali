@@ -204,6 +204,27 @@ const EVOLVE_NOISE := 0.02        # ±0.02 扰动（单侧幅值）
 const SUPPRESS_RATE := 0.03       # 敌对压制：每月按实力差比例削弱败者
 const SUPPRESS_FLOOR := 0.05      # 弱者实力的绝对下限（不会被压到 0）
 
+# 计划 01 Task 10 的设计不变量是「存档往返逐字一致」。但 Godot 的 JSON 对 17 位有效数字的 double
+# **不保证逐位往返**（实测：内存 0.21739610501640022 → 存盘文本逐字正确 → 解析回 0.21739610501640025），
+# 而回归+噪声产生的连续浮点恰好都是这种「长尾」值——会让 save_test 的整字典相等断言变红（§8#50 的新触发面）。
+# 量化到 4 位小数后，文本短、往返稳定，且 4 位小数远超玩法精度需求（面板只显示 2 位）。
+const QUANTIZE_DECIMALS := 4
+
+static func quantize(value: float) -> float:
+	var factor := pow(10.0, float(QUANTIZE_DECIMALS))
+	return round(value * factor) / factor
+
+# 把演化产生的一切对外持久化数值定量化（幂等）：power / control / tension。
+static func quantize_state(world: WorldState) -> void:
+	for fid in world.registry.ids("factions"):
+		var st := state_of(world, str(fid))
+		if st.is_empty():
+			continue
+		st["power"] = clampf(quantize(float(st.get("power", 0.0))), 0.0, 1.0)
+		var control: Dictionary = st.get("control", {})
+		for inst in control.keys():
+			control[inst] = clampf(quantize(float(control[inst])), 0.0, 1.0)
+
 # 结构性拉力：世界变量如何推动某类派系（正典第十二/十七/四十九章的定性关系）
 static func structure_pull(world: WorldState, faction_id: String) -> float:
 	var kind := str(entry_of(world, faction_id).get("kind", ""))
@@ -262,7 +283,7 @@ static func apply_rival_pressure(world: WorldState) -> void:
 			if not winner_state.is_empty():
 				winner_state["power"] = clampf(float(winner_state["power"]) + SUPPRESS_RATE * gap * 0.5, 0.0, 1.0)
 
-# 单回合演化：就地更新 world.factions / world.flags，返回事件数组（结构与 tick 的 events 一致；本任务恒空）。
+# 单回合演化：就地更新 world.factions / world.flags，返回事件数组（结构与 tick 的 events 一致）。
 # 随机数全部走命名流，保证同 seed + 同回合 ⇒ 同结果。
 static func evolve(world: WorldState) -> Array:
 	# M3（Task 4 审查修复轮 1）：与 initialize() 同样早退——否则紧接着的 world.clock.turn 会在
@@ -287,8 +308,94 @@ static func evolve(world: WorldState) -> Array:
 		for inst in control.keys():
 			control[inst] = clampf(float(control[inst]) + (next - float(control[inst])) * 0.5, 0.0, 1.0)
 	apply_rival_pressure(world)
+	quantize_state(world)
 	world.flags[GOVERNMENT_FLAG] = government_type(world)
-	return []
+	world.flags[TENSION_FLAG] = quantize(compute_tension(world))
+	var events: Array = []
+	var picked := pick_political_event(world)
+	if not picked.is_empty():
+		events.append(picked)
+	return events
+
+# ---------- 社会矛盾与政治事件（第四十六/四十九/六十八章） ----------
+
+const TENSION_THRESHOLD := 0.55
+
+# 社会矛盾：腐败、纯血垄断、保密法紧张、战争、经济衰退、四角失衡共同累积（正典第四十九章）
+static func compute_tension(world: WorldState) -> float:
+	var v := world.world_vars
+	var corruption := float(v.get("corruption", 0.3))
+	var pureblood := float(v.get("pureblood_influence", 0.3))
+	var muggle := float(v.get("muggle_relations", 0.5))
+	var war := float(v.get("war_pressure", 0.2))
+	var economy := float(v.get("economy_index", 0.6))
+	var secrecy := float(v.get("secrecy_integrity", 0.8))
+	var raw := corruption * 0.25 + pureblood * 0.20 + (1.0 - muggle) * 0.15 \
+		+ war * 0.20 + (1.0 - economy) * 0.15 + (1.0 - secrecy) * 0.05
+	var share := power_share(world)
+	var top := 0.0
+	for key in share.keys():
+		top = maxf(top, float(share[key]))
+	raw += clampf((top - 0.25) * 0.5, 0.0, 0.25)
+	return clampf(raw, 0.0, 1.0)
+
+static func tension_of(world: WorldState) -> float:
+	if world.flags.has(TENSION_FLAG):
+		return clampf(float(world.flags[TENSION_FLAG]), 0.0, 1.0)
+	return compute_tension(world)
+
+# 事件条件：代码判定，文案在 data/political_events.json（内容进 data）
+static func event_condition_met(world: WorldState, condition: String) -> bool:
+	var v := world.world_vars
+	match condition:
+		"economic_slump":
+			return float(v.get("economy_index", 0.6)) <= 0.35
+		"oligarchy_pressure":
+			return float(power_share(world).get("pureblood", 0.0)) >= 0.26 \
+				or float(v.get("pureblood_influence", 0.3)) >= 0.65
+		"lawlessness":
+			return float(v.get("corruption", 0.3)) >= 0.65 \
+				or government_type(world) == "death_eater_dictatorship"
+		"war_exhaustion":
+			return float(v.get("war_pressure", 0.2)) >= 0.65
+		"secrecy_crisis":
+			return float(v.get("secrecy_integrity", 0.8)) <= 0.30
+		_:
+			return false
+
+# 选举本月政治事件：必须同时满足「tension 过阈」「条件成立」「重大事件配额可用」（第六十八章）
+static func pick_political_event(world: WorldState) -> Dictionary:
+	if tension_of(world) < TENSION_THRESHOLD:
+		return {}
+	var last_major := int(world.flags.get("last_major_turn", -WorldState.MAJOR_EVENT_GAP))
+	if world.clock.turn - last_major < WorldState.MAJOR_EVENT_GAP:
+		return {}
+	var candidates: Array = []
+	for eid in world.registry.ids("political_events"):
+		var entry := world.registry.entry("political_events", str(eid))
+		if event_condition_met(world, str(entry.get("condition", ""))):
+			candidates.append(entry)
+	if candidates.is_empty():
+		return {}
+	var rng := RngService.new(world.game_seed + world.clock.turn * 524287)
+	var picked: Dictionary = rng.stream_pick("political_event", candidates)
+	if picked.is_empty():
+		return {}
+	world.flags["last_major_turn"] = world.clock.turn
+	var ev := {
+		"kind": "faction",
+		"category": str(picked.get("category", "politics")),
+		"text": str(picked.get("text", "")),
+		"major": bool(picked.get("major", true)),
+		"turn": world.clock.turn,
+		"event_id": str(picked.get("id", "")),
+	}
+	world.add_fact("major", str(picked.get("text", "")))
+	return ev
+
+# Task 6 填实：把传闻事件里指向的派系标记为已揭示
+static func apply_rumor_reveals(world: WorldState, _events: Array) -> void:
+	pass
 
 # ---------- 政体推导（第十一章 + 第十二章） ----------
 

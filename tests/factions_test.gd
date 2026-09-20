@@ -325,8 +325,9 @@ func run() -> int:
 	# war/corruption 拉高黑暗势力目标值（0.45），败者起点 0.06 高于 SUPPRESS_FLOOR。
 	# 为何删「< 起点」：纯回归值 = 0.06 + (0.45-0.06)*0.04 + noise = 0.0756 + noise，
 	# 要它在「无压制」时仍 ≥ 起点需 noise > -0.0156——只差 0.0043 的余量，换 seed / 改 EVOLVE_NOISE 就会退化成恒真。
-	# 为何「按到下限」与 seed 无关：death_eaters 在真实内容表里同时是 4 对的败者（ministry/auror_office/
-	# order_of_phoenix/hogwarts），四对合计压制 ≈ 0.09 ≫ noise 带宽 ±0.02 → 必被压到下限。
+	# 为何「按到下限」与 seed 无关：death_eaters 在真实内容表里同时是 6 对的败者（ministry/auror_office/
+	# wizengamot/mysteries/hogwarts/order_of_phoenix——I1 修复后非对称声明也生效，故是 6 对不是 4 对），
+	# 各对压制被各自的下限（max(0.05, base×0.25)）截断，实际生效的下降量合计 ≈ 0.06 ≫ noise 带宽 ±0.02 → 必被压到下限。
 	var press2 := make_world("modern")
 	WorldFactions.initialize(press2)
 	press2.world_vars["war_pressure"] = 1.0
@@ -462,5 +463,149 @@ func run() -> int:
 	a.eq(trunc.player.standing_of("ministry"), -5, "玩家立场为 -5（原值）")
 	a.eq(int(WorldFactions.state_of(trunc, "ministry").get("stance_to_player", 0)), -2,
 		"派系态度为 -2：delta/2 向零截断（既定语义）")
+
+	# ---- 社会矛盾与政治事件（Task 5） ----
+	var calm := make_world("modern")
+	calm.world_vars["corruption"] = 0.05
+	calm.world_vars["pureblood_influence"] = 0.05
+	calm.world_vars["muggle_relations"] = 0.9
+	calm.world_vars["war_pressure"] = 0.05
+	calm.world_vars["economy_index"] = 0.9
+	calm.world_vars["secrecy_integrity"] = 0.95
+	var angry := make_world("modern")
+	angry.world_vars["corruption"] = 0.9
+	angry.world_vars["pureblood_influence"] = 0.9
+	angry.world_vars["muggle_relations"] = 0.1
+	angry.world_vars["war_pressure"] = 0.9
+	angry.world_vars["economy_index"] = 0.1
+	angry.world_vars["secrecy_integrity"] = 0.1
+	a.between(WorldFactions.compute_tension(calm), 0.0, 1.0, "tension 值域")
+	a.is_true(WorldFactions.compute_tension(angry) > WorldFactions.compute_tension(calm),
+		"腐败/纯血/战争高、经济差 → tension 更高")
+	a.is_true(WorldFactions.compute_tension(angry) >= WorldFactions.TENSION_THRESHOLD,
+		"极端格局的 tension 达到事件阈值（否则后续断言可能空转）")
+
+	WorldFactions.initialize(angry)
+	a.is_true(WorldFactions.event_condition_met(angry, "economic_slump"), "经济萧条条件成立")
+	a.is_false(WorldFactions.event_condition_met(calm, "economic_slump"), "经济好时不成立")
+	a.is_true(WorldFactions.event_condition_met(angry, "oligarchy_pressure"), "寡头压力条件成立（pureblood_influence 分支）")
+	a.is_false(WorldFactions.event_condition_met(calm, "oligarchy_pressure"), "无寡头压力时不成立")
+	# 单独钉住 power_share 那条分支：必须把 pureblood_influence 压在 0.65 以下，否则 OR 的另一条会救场、
+	# 该分支即使被写成死阀值（如计划原稿的 0.40）也测不出来（破坏实验 E2 实证）。
+	var olig := make_world("modern")
+	WorldFactions.initialize(olig)
+	olig.world_vars["pureblood_influence"] = 0.30
+	WorldFactions.ensure_state(olig, "sacred_twenty_eight")["power"] = 0.9
+	WorldFactions.ensure_state(olig, "reformist_pureblood")["power"] = 0.9
+	a.is_true(float(WorldFactions.power_share(olig).get("pureblood", 0.0)) >= 0.26,
+		"前置：纯血四角占比确实 ≥ 0.26（否则断言空转）")
+	a.is_false(float(olig.world_vars.get("pureblood_influence", 0.0)) >= 0.65,
+		"前置：pureblood_influence 低于 0.65（确保不是 OR 的另一条救场）")
+	a.is_true(WorldFactions.event_condition_met(olig, "oligarchy_pressure"),
+		"纯血占比达标即触发寡头压力（power_share 分支单独可判）")
+	a.is_true(WorldFactions.event_condition_met(angry, "lawlessness"), "无法纪条件成立")
+	a.is_false(WorldFactions.event_condition_met(calm, "lawlessness"), "低腐败时不成立")
+	a.is_true(WorldFactions.event_condition_met(angry, "war_exhaustion"), "战争疲态条件成立")
+	a.is_false(WorldFactions.event_condition_met(calm, "war_exhaustion"), "和平时不成立")
+	a.is_true(WorldFactions.event_condition_met(angry, "secrecy_crisis"), "保密法危机条件成立")
+	a.is_false(WorldFactions.event_condition_met(calm, "secrecy_crisis"), "保密法稳固时不成立")
+	a.is_false(WorldFactions.event_condition_met(angry, "不存在的条件"), "未知条件恒不成立")
+
+	var pev := WorldFactions.pick_political_event(angry)
+	a.is_true(not pev.is_empty(), "紧张局势下能选出政治事件")
+	a.is_true(angry.registry.has("political_events", str(pev.get("event_id", ""))), "事件 id 来自内容表")
+	a.is_true(not str(pev.get("text", "")).is_empty(), "事件有文案")
+	a.eq(str(pev.get("kind", "")), "faction", "事件 kind=faction")
+	a.eq(int(pev.get("turn", -1)), angry.clock.turn, "事件带当前回合")
+	a.eq(int(angry.flags.get("last_major_turn", -1)), angry.clock.turn, "事件占用本月重大事件配额")
+	a.is_true(angry.history.size() >= 1, "事件进 history（add_fact）")
+	a.is_true(WorldFactions.pick_political_event(angry).is_empty(), "同一回合不再重复触发（MAJOR_EVENT_GAP）")
+
+	# 低 tension 时一个都不该选出来
+	WorldFactions.initialize(calm)
+	a.is_true(WorldFactions.pick_political_event(calm).is_empty(), "低 tension 时不触发政治事件")
+
+	# tick 接线：evolve 产出的事件进入本回合 events 与 log
+	var tw := make_world("modern")
+	tw.world_vars["corruption"] = 0.95
+	tw.world_vars["pureblood_influence"] = 0.95
+	tw.world_vars["muggle_relations"] = 0.05
+	tw.world_vars["war_pressure"] = 0.95
+	tw.world_vars["economy_index"] = 0.05
+	tw.world_vars["secrecy_integrity"] = 0.05
+	tw.flags["last_major_turn"] = -99
+	var tick_events := tw.tick()
+	a.is_true(tw.flags.has(WorldFactions.TENSION_FLAG), "tick 后 tension 已写入 flags")
+	a.is_true(tw.flags.has(WorldFactions.GOVERNMENT_FLAG), "tick 后政体缓存已写入 flags")
+	# 容差 2e-4：flags 里存的是量化后的 tension（同上，为存档往返稳定）
+	a.near(WorldFactions.tension_of(tw), WorldFactions.compute_tension(tw), 0.0002,
+		"tension_of 与 compute_tension 一致（tick 写的是同一口径，量化后余差 ≤1e-4）")
+	var politics := 0
+	var in_log := 0
+	for ev in tick_events:
+		if str(ev.get("kind", "")) == "faction":
+			politics += 1
+	for ev in tw.log:
+		if str(ev.get("kind", "")) == "faction":
+			in_log += 1
+	a.is_true(politics >= 1, "tick 返回的 events 里含派系/政治事件")
+	a.eq(in_log, politics, "同一批事件也进了 world.log")
+
+	# ---- Task 5 收口 4a：注释事实订正（I1 修复后 death_eaters 同时是 6 对的败者） ----
+	# 该注释在「可判别压制用例」上方，只改文字不改断言。
+
+	# ---- Task 5 收口 4b-1：structure_pull 各分支方向正确（此前只有 ministry/dark/resistance 有断言） ----
+	var low := make_world("modern")
+	var high := make_world("modern")
+	low.world_vars["ministry_stability"] = 0.1
+	high.world_vars["ministry_stability"] = 0.9
+	a.is_true(WorldFactions.structure_pull(high, "auror_office") > WorldFactions.structure_pull(low, "auror_office"),
+		"institution 分支：部里越稳，机构越强")
+	low.world_vars["pureblood_influence"] = 0.1
+	high.world_vars["pureblood_influence"] = 0.9
+	a.is_true(WorldFactions.structure_pull(high, "sacred_twenty_eight")
+		> WorldFactions.structure_pull(low, "sacred_twenty_eight"), "pureblood 分支：纯血影响力越高越强")
+	low.world_vars["economy_index"] = 0.1
+	high.world_vars["economy_index"] = 0.9
+	a.is_true(WorldFactions.structure_pull(high, "gringotts") > WorldFactions.structure_pull(low, "gringotts"),
+		"commerce 分支：经济越好商业越强")
+	a.is_true(WorldFactions.structure_pull(high, "daily_prophet") > WorldFactions.structure_pull(low, "daily_prophet"),
+		"media 分支：经济越好舆论越强")
+	low.world_vars["muggle_relations"] = 0.1
+	high.world_vars["muggle_relations"] = 0.9
+	a.is_true(WorldFactions.structure_pull(high, "muggle_world") > WorldFactions.structure_pull(low, "muggle_world"),
+		"foreign 分支：麻瓜关系越好，外部势力越强")
+	low.world_vars["secrecy_integrity"] = 0.1
+	high.world_vars["secrecy_integrity"] = 0.9
+	a.is_true(WorldFactions.structure_pull(high, "hogwarts") > WorldFactions.structure_pull(low, "hogwarts"),
+		"school 分支：保密法越稳，学校越强")
+	a.near(WorldFactions.structure_pull(high, "common_folk"), 0.0, 0.0000001,
+		"society（未列入 match 的 kind）拉力恒为 0，不泄漏其他分支")
+
+	# ---- Task 5 收口 4b-2：机构控制权以 0.5 系数向实力靠拢（此前无任何断言） ----
+	# 用「只有一个派系、无 rivals」的最小夹具，排除敌对压制对 power 的二次修改，
+	# 于是 evolve 后的 power 就是控制权滞后所用的 next，可精确核对关系式。
+	var solo_reg := Registry.from_tables({
+		"eras": [{"id": "modern", "label": "现代", "world_vars": {"economy_index": 0.5}}],
+		"factions": [
+			{"id": "solo", "label": "独派", "kind": "commerce", "legal_status": "legal", "secrecy": "public",
+				"base_power": 0.4, "institutions": ["gringotts"], "rivals": [], "allies": [],
+				"domains": ["economy"], "aliases": ["独派"], "era_overrides": {}},
+		],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+		"political_events": [],
+	})
+	var solo := WorldState.create("modern", PlayerState.new_default(), 9, solo_reg)
+	var solo_state := WorldFactions.ensure_state(solo, "solo")
+	solo_state["power"] = 0.9
+	solo_state["control"]["gringotts"] = 0.5
+	WorldFactions.evolve(solo)
+	var solo_power := float(WorldFactions.state_of(solo, "solo")["power"])
+	var solo_control := float((WorldFactions.state_of(solo, "solo")["control"] as Dictionary)["gringotts"])
+	a.is_true(solo_power < 0.9, "前置：实力向目标（0.4）回归而下降（否则滞后断言可能空转）")
+	# 容差 2e-4：evolve 末尾会把 power/control 量化到 1e-4（存档往返不变量，见 WorldFactions.QUANTIZE_DECIMALS），
+	# 因此关系式只在量化精度内成立；若把系数 0.5 改成 0.25，偏差约 0.1 ≫ 2e-4，断言仍会红。
+	a.near(solo_control, 0.5 + (solo_power - 0.5) * 0.5, 0.0002,
+		"机构控制权以 0.5 系数向新实力靠拢：control += (power − control) × 0.5")
 
 	return a.report("factions")

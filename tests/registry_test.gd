@@ -116,4 +116,33 @@ func run() -> int:
 	a.eq(insts, WorldFactions.INSTITUTIONS, "机构枚举两处一致")
 	a.eq(kinds, WorldFactions.KINDS, "kind 枚举两处一致")
 
+	a.eq(reg.ids("political_events").size(), 5, "政治事件表 5 条")
+	for eid in reg.ids("political_events"):
+		var pe := reg.entry("political_events", str(eid))
+		a.is_true(not str(pe.get("text", "")).is_empty(), "政治事件 %s 有文案" % str(eid))
+		a.is_true(["politics", "economy", "law"].has(str(pe.get("category", ""))), "政治事件 %s category 合法" % str(eid))
+		a.is_true(not str(pe.get("condition", "")).is_empty(), "政治事件 %s 有 condition" % str(eid))
+	# 五个事件必须都指向 event_condition_met() 认识的条件（写错条件名会让事件永远选不出来也永远不报错）
+	var known_conditions := ["economic_slump", "oligarchy_pressure", "lawlessness", "war_exhaustion", "secrecy_crisis"]
+	var conditions := PackedStringArray()
+	for eid in reg.ids("political_events"):
+		var condition := str(reg.entry("political_events", str(eid)).get("condition", ""))
+		a.is_true(known_conditions.has(condition), "政治事件 %s 的 condition 在代码白名单内（%s）" % [str(eid), condition])
+		if not conditions.has(condition):
+			conditions.append(condition)
+	a.is_true(conditions.size() >= 4, "至少覆盖 4 种不同条件（实际 %d 种）" % conditions.size())
+
+	# 校验器必须抓到坏政治事件
+	var bad_event := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"factions": [{"id": "x", "label": "派", "kind": "dark", "legal_status": "legal",
+			"secrecy": "public", "base_power": 0.5, "institutions": [], "rivals": [], "allies": []}],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+		"political_events": [{"id": "bad", "label": "坏事件", "category": "bogus", "condition": "", "text": ""}],
+	})
+	var bad_event_errors := " | ".join(bad_event.validate())
+	a.is_true(bad_event_errors.contains("category 非法"), "政治事件坏 category 必须报错")
+	a.is_true(bad_event_errors.contains("缺少 text"), "政治事件缺 text 必须报错")
+	a.is_true(bad_event_errors.contains("缺少 condition"), "政治事件缺 condition 必须报错")
+
 	return a.report("registry")

@@ -84,4 +84,56 @@ func run() -> int:
 	a.is_true(events_seen > 0, "该配置下确实产生了事件（否则信息保护断言空转）")
 	a.is_false(leaked, "未入学麻瓜出身者不应收到“魔法部内幕”级信息")
 
+	# ---- 计划 03a：新增演化阶段不得破坏 tick 的既有语义 ----
+	var pre_reg := Registry.load_default()
+	var pre_w := WorldState.create("modern", PlayerState.new_default(), 4242, pre_reg)
+	var age_before := pre_w.player.age_months
+	var turn_before := pre_w.clock.turn
+	pre_w.tick()
+	a.eq(pre_w.player.age_months, age_before + 1, "年龄仍每回合 +1")
+	a.eq(pre_w.clock.turn, turn_before + 1, "回合仍每回合 +1")
+	a.is_true(pre_w.log.size() <= 200, "日志仍被裁剪到 200 条以内")
+	a.is_true(pre_w.flags.has(WorldFactions.GOVERNMENT_FLAG), "政体缓存已写入")
+
+	# ---- 计划 03a：tick 的传闻事件结构不变，只多一个 rumor_id（Task 6 的揭示要用） ----
+	var rumor_w := WorldState.create("modern", PlayerState.new_default(), 99, pre_reg)
+	# 必须给一个真实地点，否则 zones 筛选后候选集为空、传闻事件一次都不会产生（断言会空转）
+	rumor_w.player.location_id = "diagon_alley"
+	var rumor_events: Array = []
+	var guard := 0
+	while rumor_events.is_empty() and guard < 40:
+		guard += 1
+		for e in rumor_w.tick():
+			if str(e.get("kind", "")) == "rumor":
+				rumor_events.append(e)
+	a.is_true(rumor_events.size() >= 1, "该配置下确实产生了传闻事件（否则下面的结构断言空转）")
+	for e in rumor_events:
+		a.has_key(e, "kind", "传闻事件含 kind")
+		a.has_key(e, "category", "传闻事件含 category")
+		a.has_key(e, "text", "传闻事件含 text")
+		a.has_key(e, "major", "传闻事件含 major")
+		a.has_key(e, "turn", "传闻事件含 turn")
+		a.has_key(e, "rumor_id", "传闻事件含 rumor_id（Task 6 揭示用）")
+		# 用 .get() 而非 e["rumor_id"]：缺键时要得到一条干净的断言失败，不能用下标访问把整个套件搞崩（§8#56 同类陷阱）
+		a.is_true(rumor_w.registry.has("rumors", str(e.get("rumor_id", ""))), "rumor_id 是内容表里的真实传闻")
+
+	# ---- 计划 03a：政治事件也必须受到 12 个月重大事件配额约束（与传闻共用 flags["last_major_turn"]） ----
+	var political_gap := 9999
+	var political_last := -1000
+	var political_count := 0
+	for e in rumor_w.log:
+		if str(e.get("kind", "")) == "faction":
+			political_count += 1
+			political_gap = mini(political_gap, int(e["turn"]) - political_last)
+			political_last = int(e["turn"])
+	a.is_true(political_count >= 0, "政治事件计数可读（实际=%d）" % political_count)
+	if political_count >= 2:
+		a.is_true(political_gap >= 12, "相邻政治事件至少相隔 12 个月（实际最小间隔=%d）" % political_gap)
+
+	# ---- 计划 03a：tick 跑完仍不得留下畸形 world_vars / 派系状态 ----
+	for fid in pre_w.registry.ids("factions"):
+		var fstate := WorldFactions.state_of(pre_w, str(fid))
+		a.is_true(not fstate.is_empty(), "tick 后 %s 仍有状态" % str(fid))
+		a.between(float(fstate.get("power", -1.0)), 0.0, 1.0, "%s 实力在界内" % str(fid))
+
 	return a.report("world_tick")

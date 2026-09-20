@@ -13,6 +13,7 @@ const TABLE_FILES: Dictionary = {
 	"political_leanings": "political_leanings.json",
 	"locations": "locations.json",
 	"rumors": "rumors.json",
+	"political_events": "political_events.json",
 	"skills": "skills.json",
 	"wand_woods": "wand_woods.json",
 	"wand_cores": "wand_cores.json",
@@ -127,4 +128,11 @@ func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedSt
 	if table_name == "governments":
 		if str(e.get("summary", "")).is_empty():
 			errors.append("%s: 缺少 summary" % where)
+	if table_name == "political_events":
+		if not ["politics", "economy", "law"].has(str(e.get("category", ""))):
+			errors.append("%s: category 非法" % where)
+		if str(e.get("text", "")).is_empty():
+			errors.append("%s: 缺少 text" % where)
+		if str(e.get("condition", "")).is_empty():
+			errors.append("%s: 缺少 condition" % where)
 	return errors

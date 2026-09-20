@@ -131,6 +131,7 @@ func tick() -> Array:
 				"text": str(picked.get("text", "")),
 				"major": is_major,
 				"turn": clock.turn,
+				"rumor_id": str(picked.get("id", "")),
 			}
 			events.append(ev)
 			log.append(ev)
@@ -138,17 +139,25 @@ func tick() -> Array:
 				add_fact("major", str(picked.get("text", "")))
 				break   # 同月最多一起重大事件，保证 MAJOR_EVENT_GAP 成立
 
-	# 3) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
+	# 3) 计划 03a：传闻揭示（第四十三/五十七章）——玩家通过传闻获知秘密派系
+	WorldFactions.apply_rumor_reveals(self, events)
+
+	# 4) 计划 03a：派系与政治演化（第十二/四十六/四十七/四十九章）
+	for political_event in WorldFactions.evolve(self):
+		events.append(political_event)
+		log.append(political_event)
+
+	# 5) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
 	var style_now := sim_style()
 	var mundane_ratio := clampf(float(style_now.get("mundane_ratio", 0.7)), 0.0, 1.0)
 	if month_rng.chance("mundane_day", 0.5 + mundane_ratio * 0.4):
 		log.append({"turn": clock.turn, "kind": "mundane",
 			"text": "%s，日子照常过。" % clock.formatted()})
 
-	# 4) 年龄推进（玩家与世界同时变老）
+	# 6) 年龄推进（玩家与世界同时变老）
 	player.age_months += 1
 
-	# 5) 日志裁剪，避免存档无限膨胀
+	# 7) 日志裁剪，避免存档无限膨胀
 	while log.size() > RECENT_LOG_LIMIT:
 		log.pop_front()
 

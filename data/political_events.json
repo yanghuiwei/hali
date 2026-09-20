@@ -1,0 +1,12 @@
+[
+  {"id": "reform_movement", "label": "改革运动", "category": "politics", "condition": "oligarchy_pressure", "major": true,
+   "text": "《预言家日报》称，一批麻瓜出身巫师与改革派纯血联名要求威森加摩改革席位分配；纯血家族则指责有人「借改革之名夺权」。"},
+  {"id": "coup_attempt", "label": "政变", "category": "politics", "condition": "lawlessness", "major": true,
+   "text": "魔法部内部传出消息：有人试图用夺魂咒控制关键部门的司长。政变没有成功，但没人说得清到底是谁在动手。"},
+  {"id": "prison_break", "label": "阿兹卡班越狱", "category": "law", "condition": "war_exhaustion", "major": true,
+   "text": "阿兹卡班发生越狱。摄魂怪失职的说法在巫师之间流传，魔法部只承认「正在统计失踪人数」。"},
+  {"id": "financial_crisis", "label": "古灵阁金融危机", "category": "economy", "condition": "economic_slump", "major": true,
+   "text": "古灵阁收紧兑付，几家老店开始只收加隆不收西可。《预言家日报》称之为「技术性调整」，对角巷的店主们管它叫挤兑。"},
+  {"id": "crackdown", "label": "魔法部镇压", "category": "law", "condition": "lawlessness", "major": true,
+   "text": "魔法部宣布一批「保密法违规」的紧急逮捕令。被抓的人里有走私犯，也有只是说了几句难听话的普通巫师。"}
+]
