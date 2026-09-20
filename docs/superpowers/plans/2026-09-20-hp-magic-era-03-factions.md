@@ -2077,7 +2077,12 @@ func _on_command_submitted(text: String) -> void:
 	_set_buttons_enabled(true)
 	_set_input_enabled(true)
 	command_edit.text = ""
-	if not bool(round_state.get("done", false)):
+	if engine == null:
+		# ⚠️ 计划原稿只给了 `_run_turn()` 里的 engine 守卫，**不够**：那里的 `return` 不置 `done`，
+		# 看门狗仍要等满 `turn_timeout_sec` 才恢复（Task 10 修复轮实测 5010ms = 探针上限）。
+		# 这里直接早退并**立即**恢复（实测 3ms）。
+		_append("（尚未建立回合引擎，本回合未结算。）")
+	else if not bool(round_state.get("done", false)):
 		_append("（本回合超过 %.0f 秒仍未返回，已恢复输入。请求可能仍在后台；若反复发生，请检查 LLM 配置或改用本地替身。）" % turn_timeout_sec)
 	else:
 		_render_turn_result(round_state.get("result", {}))
