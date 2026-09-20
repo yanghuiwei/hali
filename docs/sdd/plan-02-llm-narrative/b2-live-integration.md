@@ -137,7 +137,27 @@ if settings != null:
 
 ## 7. 未验证 / 待办
 
-1. **§3.3 的修复尚未实施**（等裁定）——修掉之前，窗口程序里的 LLM 路径实际仍会全部降级。
+### 7.0 修复后复测（2026-09-20，`§8#66` 修复提交 `3240af6` 之后）
+
+同一端点、同一模型、同一提示词，**不再手工注入 settings**（由 `LlmGameMaster` 自己灌）：
+
+```
+[probe] settings: configured=true model=glm-5.3-flash max_tokens=8192 timeout_ms=180000 temp=0.8
+[probe] GmResult: wall_ms=49674 narration=346 字 deltas=4 warnings=["支出未经校验（-493 纳特）"] last_error=
+[probe]   delta[0]={ "op": "set_location", "location_id": "diagon_alley" }
+[probe]   delta[1]={ "op": "add_money", "knuts": -493 }
+[probe]   delta[2]={ "op": "know_fact", "fact_id": "diagon_alley_entrance_leaky_cauldron", "source": "leaky_cauldron_tom" }
+[probe]   delta[3]={ "op": "relation_delta", "npc_id": "leaky_cauldron_tom", "trust": 5, "interest": 5, "hostility": 0 }
+[probe] StateOps errors=[]
+[probe] 最终 location=diagon_alley money=986
+[probe] PASS
+```
+
+⇒ **同一路径修复前是 `content` 恒空 → 降级，修复后不再降级**；`settings.max_tokens=8192` 真的进了请求。耗时 49.7s（思考型模型的真实成本）。
+
+### 7.1 仍未做
+
+1. ~~**§3.3 的修复尚未实施**（等裁定）~~ → **已完成**（`3240af6`，见 §7.0 复测）。
 2. **GUI 实跑未做**：等待期 `command_edit` + 整排按钮置灰是否正常、结束后是否恢复、窗口是否卡死（`NEXT-STEPS.md` B1/B2 的人工项）。
 3. **降级路径未实测**：断网 / 401 / 超时后是否如期降级为 `ScriptedGameMaster` 并给出提示（`LlmGameMaster` 有 2 次尝试 + 降级；本次只验到 `HTTPRequest.timeout` 会打断请求，未验 UI 表现）。
 4. **多回合未测**：连续 3–5 回合的延迟/费用/`world.tick()` 叠加；本次单回合 29.6s（思考型模型的实际体验成本）。

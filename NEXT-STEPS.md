@@ -91,7 +91,7 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
   - 写 `user://llm_settings.json`（Windows：`%APPDATA%\Godot\app_userdata\<项目名>\`）或设 `HALI_LLM_API_KEY`；跑一回合，确认：拿到真实叙事、`ops` 生效、等待期窗口不卡死、断网/超时自动降级为 `ScriptedGameMaster` 且有提示。
   - 已知未验证项（来自 `task-811-rereviewer.log`）：真实 `HTTPRequest` 链路（`await request_completed`、`add_child`、timeout、4xx/5xx）、`api_key` 掩码的端到端执行、提示注入的实际绕过率。
   - ✅ **已实测通过**（2026-09-20，内网 OpenAI 兼容网关 + 思考型模型）：`HTTPRequest` 真实链路、中文 UTF-8 往返、`response_format: json_object` 被接受、`PromptBuilder` 提示词被正确人格化（叙事里出现玩家真实学院）、模型产出的 ops 全部经`OpGuard`/`StateOps` 落地（`errors=[]`，状态真的变了）、`warnings → op_errors` 透出链有效。
-  - 🔴 **阻塞（`§8#66`）**：`llm_settings.json` 的 `temperature`/`max_tokens`/`timeout_ms` **根本不进请求**（全仓零引用）→ 遇到「始终思考」型模型时 `content` 恒空、**每回合都降级**，且改配置救不回来。**报告已附最小补丁草案**；另发现 `§8#67`（超时/截断的错误串不可区分）。需裁定：现在就修（极小改动 + 一条回归断言），还是归计划 03。
+  - 🔴 ~~**阻塞（`§8#66`）**~~ **已修（`3240af6`）**：`LlmGameMaster` 现在把 settings 的 `temperature`/`max_tokens`/`timeout_ms` 灌进两处 request（含 `build_repair` 重试），`main.gd:_build_gm()` 同步传参；`§8#67`（错误串可诊断）同批修掉。`[llm]` 65→79，反证承重，**真机复测不再降级**（叙事 346 字、4 条 ops 落地、`errors=[]`、49.7s）。⚠️ 配置仍需显式给 `max_tokens ≥ 8192` / `timeout_ms ≥ 120000`（思考型模型），见 README「LLM 配置」。
   - ⏭️ **仍未验**：GUI 等待期不卡死（需 B1）、断网/401/超时后真的降级且有提示、连续多回合、`api_key` 掩码的端到端执行、提示注入实际绕过率、思考档位参数名（见报告 §7）。
   - ⚠️ **安全**：仓库是 **public**，报告内网地址用占位符；**建议轮换该 key**（已出现在会话记录里）。
 
@@ -126,8 +126,8 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 | §8#63 | 计划 02 重跑盲审：provider 泄漏 `HTTPRequest` 节点（每次开始/读档 1 个）+ `timeout` 只生效一次 | **计划 03**（已裁定；建议与「设置界面」小计划一起） |
 | §8#64 | 计划 02 重跑盲审：测试可判别性批次（`build_repair` 不可判别 / `narration.length()>0` 准恒真 / 无 `api_key` 负向断言） | **计划 03**（已裁定；可与 §8#8/#40/#43 合并） |
 | §8#65 | 计划 02 重跑盲审：契约文档与类型守卫漂移（`act` 未注「可协程」/ `_resolve` vs spec `_post_submit` / `gm is` 具体类型 + blocked 空文案） | **计划 03**（已裁定） |
-| **§8#66** | **B2 实测发现的阻塞 bug：`llm_settings.json` 的 `temperature`/`max_tokens`/`timeout_ms` 完全不生效**（思考型模型下 100% 降级，改配置救不回来） | ⚠️ **待裁定**：建议**立即修**（报告 §5 有补丁草案，极小改动 + 一条回归断言），否则 B2/B1 拿不到真实 LLM 叙事 |
-| §8#67 | B2 实测：错误串诊断性不足（超时→`HTTP 0（）`；思维吃光预算→`响应内容为空` 丢了 `finish_reason`）+ 思考型模型需 `max_tokens≥8192`/`timeout≥120s` | 可选，建议与 §8#66 同批（很便宜） |
+| ~~**§8#66**~~ | ~~B2 实测发现的阻塞 bug：`llm_settings.json` 的 `temperature`/`max_tokens`/`timeout_ms` 完全不生效~~ | ✅ **已修（`3240af6`，2026-09-20）** |
+| ~~§8#67~~ | ~~B2 实测：错误串诊断性不足~~ | ✅ **已修（`3240af6`）**；残留：默认值仍 1024（已在 README 写明思考型模型需显式配大） |
 
 ---
 

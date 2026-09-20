@@ -57,10 +57,17 @@ Windows 上 `bash` 来自 Git Bash。Godot 可执行文件不入库，请放在�
 默认走离线替身；要启用真实 LLM，把配置写到 `user://llm_settings.json`（在仓库之外，不入库）：
 
 ```json
-{"provider":"openai_compat","base_url":"https://api.example.com/v1","model":"...","api_key":"...","temperature":0.8,"max_tokens":1024,"timeout_ms":30000}
+{"provider":"openai_compat","base_url":"https://api.example.com/v1","model":"...","api_key":"...","temperature":0.8,"max_tokens":8192,"timeout_ms":120000}
 ```
 
-`HALI_LLM_API_KEY` 环境变量可覆盖 `api_key`。未配置时窗口会用 `ScriptedGameMaster` 并在状态行提示。
+`HALI_LLM_API_KEY` 环境变量可覆盖 `api_key`。未配置时窗口会用 `ScriptedGameMaster` 并在状态行提示。四个字段全部**真正进入请求**（`temperature`/`max_tokens`/`timeout_ms` 由 `LlmGameMaster` 灌入，`§8#66` 已修）；只有 `base_url`/`model`/`api_key` 三者齐全才算已配置。
+
+需要注意的几点（都是真机联调实测得出，见 [`docs/sdd/plan-02-llm-narrative/b2-live-integration.md`](docs/sdd/plan-02-llm-narrative/b2-live-integration.md)）：
+
+- **`base_url` 要写到 OpenAI 兼容基址**（通常以 `/v1` 结尾）：provider 会拼 `base_url + "/chat/completions"`。
+- **思考（reasoning）型模型必须给足预算**：这类模型的思维链与正文**共用** `max_tokens`，且可能**无法关闭思考**。实测某思考型模型在同一提示词下：`max_tokens=1024` → `finish_reason=length`、正文为空（于是每回合都降级）；`8192` → `finish_reason=stop`、正文正常。故建议 **`max_tokens ≥ 8192`**。
+- **思考型模型的延迟是几十秒级**（实测单回合 ≈30–50s，新手上路几乎不消耗提示词上下文），`timeout_ms` 请给 **≥120000**，否则请求会被 `HTTPRequest.timeout` 打断（窗口在等待期会置灰输入与按钮，不会卡死）。
+- 解析/超时报错会写明病因（`finish_reason=length`、`HTTP 状态 0：连接失败/超时中断`），便于排查。
 
 ## 目录约定
 
