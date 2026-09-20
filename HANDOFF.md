@@ -327,6 +327,13 @@ taskkill //PID <PID> //F
 64. **（重跑盲审新增，Minor，测试可判别性批次）** `tests/llm_test.gd`：①「解析失败 → `build_repair` 再试」**不可判别**（mock 不看请求内容，把 `build_repair` 换成 `build` 仍绿）→ 应断言 `requests[1].system_prompt` 含修复提示；②`res3.narration.length() > 0` **准恒真**（`fallback != null` 时必然非空）→ 应改断言含「本地规则结算」；③`api_key` 脱敏只有正向断言（「头里有 key」），**无**任何「错误串不含 key」的负向断言。可与 §8#8/#40/#43 的测试加固批次合并。
 65. **（重跑盲审新增，Minor）契约文档与类型守卫漂移**：①`src/gm/game_master.gd` 的 `act` 未注明「可协程」（设计 §5 文件表要求）；②实现是 `TurnEngine._resolve`，spec §6.3 写的是 `_post_submit`（读 spec 会找不到符号）；③`submit()` 用 `gm is LlmGameMaster` 这种**具体类型**判断拒绝协程 GM——换任何「协程 `act` 的非 `LlmGameMaster`」就会把协程对象送进 `_resolve` 而崩，且拒绝分支 `narration` 为空（UI 无提示）。建议：spec/注释就地同步 + 改鸭子类型判定（或至少补 blocked 文案）。
 
+### B2 真机 LLM 联调新增（2026-09-20）
+
+> 完整报告（已脱敏，不含 key 与内网域名）：`docs/sdd/plan-02-llm-narrative/b2-live-integration.md`。
+
+66. **🔴（B2，Important）`llm_settings.json` 的 `temperature` / `max_tokens` / `timeout_ms` 三个字段完全不生效**：`grep -rn "settings\.\(temperature\|max_tokens\|timeout_ms\)" src/` **零命中**——`PromptBuilder.build()` 造出的 `LlmRequest` 带的是 `llm_provider.gd:7-9` 的**类默认值**（0.8 / 1024 / 30000），`LlmGameMaster.act()` 从不把 settings 灌进去，而 `OpenAiCompatProvider.complete()` 用的是 `request.max_tokens`/`request.timeout_ms`。实证：把配置改成 `max_tokens=8192` 后，Godot 实际发出的请求体仍是 `"max_tokens": 1024`。**后果**：遇到「始终思考」型模型（如本次的 `glm-5.3-flash`）时，思维链吃光 1024 预算 → `content` 恒空 → 每回合都降级 `ScriptedGameMaster`，**玩家改配置也救不回来**（必须改代码）。两个类默认值恰与 `LlmSettings` 默认值相同，所以单测与计划 01/02 都发现不了。**建议修复**（报告 §5 有补丁草案）：`LlmGameMaster` 加可选 `settings` 参并把它灌进两处 request（`build` 与 `build_repair`），`main.gd:_build_gm()` 同步；配套 `[llm]` 断言「settings 的三个值真的进了 `MockLlmProvider.requests[i]`」——这条断言即回归护栏。
+67. **（B2，Minor）LLM 错误串诊断性不足 + 思考模型默认值**：①超时/传输失败时 `_parse_http(0, "")` 产出 **`error="HTTP 0（）"`**，看不出是超时；②思维链吃光预算时只报 **`"响应内容为空"`**，丢掉了 `finish_reason=length`（provider 手里其实拿得到完整响应体）——两者病因完全不同却长得一样。③实测该模型在真实提示词（system 2505 + user 1110 字）下：`max_tokens=1024` → `finish_reason=length`/`reasoning_tokens=1023`/`content` 空；`8192` → `finish=stop`/`content` 738 字。④`timeout_ms=30000` 对思考模型是临界值（实测一次 29.6s 成功、一次 29.94s 被 `HTTPRequest.timeout` 打断）。建议：`status==0` 时报「请求被超时/传输中断」、`content` 为空时把 `finish_reason` 写进 `error`；并把 `LlmSettings` 的 `max_tokens` 默认值提高或在 README 里标注「思考型模型需 ≥8192 / timeout ≥120s」。
+
 ---
 
 ## 9. 环境与卫生

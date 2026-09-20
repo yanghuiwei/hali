@@ -87,9 +87,13 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
   - `./Godot_v4.7.2-stable_win64_console.exe --path .`，按计划 01 Step 6 的 8 项清单逐项确认：创建界面 7 个下拉 / 哑炮角色 / 练魔药收益递减 / 打工加钱 / 魔法·关系·势力面板 / 存档·读档 / 重启后创建界面直接读档 / 第 15 回合自检挂起与「确认自检」。
   - 计划 02 追加：等待 LLM 期间 `command_edit` 与整排按钮置灰、结束恢复；未配置时状态行显示提示（创建路径与**读档路径**都要看，后者正是 F4）。
 
-- [ ] **B2 真机 LLM 联调（HANDOFF §0「下一步」）**
+- [ ] **B2 真机 LLM 联调（HANDOFF §0「下一步」）** —— 🔶 **2026-09-20 部分完成**（报告 `docs/sdd/plan-02-llm-narrative/b2-live-integration.md`，已脱敏）
   - 写 `user://llm_settings.json`（Windows：`%APPDATA%\Godot\app_userdata\<项目名>\`）或设 `HALI_LLM_API_KEY`；跑一回合，确认：拿到真实叙事、`ops` 生效、等待期窗口不卡死、断网/超时自动降级为 `ScriptedGameMaster` 且有提示。
   - 已知未验证项（来自 `task-811-rereviewer.log`）：真实 `HTTPRequest` 链路（`await request_completed`、`add_child`、timeout、4xx/5xx）、`api_key` 掩码的端到端执行、提示注入的实际绕过率。
+  - ✅ **已实测通过**（2026-09-20，内网 OpenAI 兼容网关 + 思考型模型）：`HTTPRequest` 真实链路、中文 UTF-8 往返、`response_format: json_object` 被接受、`PromptBuilder` 提示词被正确人格化（叙事里出现玩家真实学院）、模型产出的 ops 全部经`OpGuard`/`StateOps` 落地（`errors=[]`，状态真的变了）、`warnings → op_errors` 透出链有效。
+  - 🔴 **阻塞（`§8#66`）**：`llm_settings.json` 的 `temperature`/`max_tokens`/`timeout_ms` **根本不进请求**（全仓零引用）→ 遇到「始终思考」型模型时 `content` 恒空、**每回合都降级**，且改配置救不回来。**报告已附最小补丁草案**；另发现 `§8#67`（超时/截断的错误串不可区分）。需裁定：现在就修（极小改动 + 一条回归断言），还是归计划 03。
+  - ⏭️ **仍未验**：GUI 等待期不卡死（需 B1）、断网/401/超时后真的降级且有提示、连续多回合、`api_key` 掩码的端到端执行、提示注入实际绕过率、思考档位参数名（见报告 §7）。
+  - ⚠️ **安全**：仓库是 **public**，报告内网地址用占位符；**建议轮换该 key**（已出现在会话记录里）。
 
 - [ ] **B3 计划 03「派系与政治经济」启动**
   - 边界见计划 02 spec §15：03 派系与政治经济（`world_vars` 之外的九大支柱）→ 04 神奇生物生态与区域危险度 → 05 NPC 自主与信息可信度 → 06 多世代传承与世界记忆。
@@ -122,6 +126,8 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 | §8#63 | 计划 02 重跑盲审：provider 泄漏 `HTTPRequest` 节点（每次开始/读档 1 个）+ `timeout` 只生效一次 | **计划 03**（已裁定；建议与「设置界面」小计划一起） |
 | §8#64 | 计划 02 重跑盲审：测试可判别性批次（`build_repair` 不可判别 / `narration.length()>0` 准恒真 / 无 `api_key` 负向断言） | **计划 03**（已裁定；可与 §8#8/#40/#43 合并） |
 | §8#65 | 计划 02 重跑盲审：契约文档与类型守卫漂移（`act` 未注「可协程」/ `_resolve` vs spec `_post_submit` / `gm is` 具体类型 + blocked 空文案） | **计划 03**（已裁定） |
+| **§8#66** | **B2 实测发现的阻塞 bug：`llm_settings.json` 的 `temperature`/`max_tokens`/`timeout_ms` 完全不生效**（思考型模型下 100% 降级，改配置救不回来） | ⚠️ **待裁定**：建议**立即修**（报告 §5 有补丁草案，极小改动 + 一条回归断言），否则 B2/B1 拿不到真实 LLM 叙事 |
+| §8#67 | B2 实测：错误串诊断性不足（超时→`HTTP 0（）`；思维吃光预算→`响应内容为空` 丢了 `finish_reason`）+ 思考型模型需 `max_tokens≥8192`/`timeout≥120s` | 可选，建议与 §8#66 同批（很便宜） |
 
 ---
 
