@@ -292,7 +292,6 @@ taskkill //PID <PID> //F
 44. **（Task 9 Minor，§8#5 触发）** `Money` 负值显示已经由 `player_panel`/`power_panel` 暴露到 UI；见 §8#5。
 45. **（Task 9 Minor，§8#9 同类）** `var rel: Dictionary = p.relations[npc_id]`、`var family: Dictionary = flags.get("family", {})`、`float(world_vars[key])` 在畸形/手改状态下可能运行期报错；建议加 `typeof` 回退，或明确「状态只由 `to_dict()` 产出」。
 46. **（Task 9 Minor）** `SelfCheck.ooc_report` 的 `timeline_detail` 在「年份早于锚点」与「canon 事实超前」同时成立时被后者覆盖，只报最后一条异常原因（不影响 yes/no 判定）。
-
 ### Task 10 审查新增（均不阻塞 Task 11，但需登记）
 
 47. **（Task 10 Minor，嵌套校验缺失）** `SaveCodec._validate_payload` 只做**顶层**类型检查；容器类型正确但内层值类型错时，`PlayerState.from_dict`/`WorldState.from_dict` 会报错并使子对象为 null（现已被 `decode` 的 null 兜底转为 `ok=false`），或在无类型化赋值的路径静默降级（如 `player.magic:{"known_spells":123}`、`rng_state:{"streams":123}` 到使用点才报错）。建议改为嵌套白名单校验，或不依赖赋值错误。
@@ -309,6 +308,12 @@ taskkill //PID <PID> //F
 55. **（Task 11，人工验收缺口）** 计划 Step 6 的 8 项 GUI 验收 headless 无法自动执行（点击创建、下拉/SpinBox、存档/读档按钮、重启读档、第 15 回合挂起与「确认自检」）；两轮审查均只做了静态论证 + 场景可加载冒烟。**留待人类实际跑一遍**。
 56. **（加固批次发现，Minor）** `run_tests.gd` 新增的 `report_calls` 哨兵只覆盖「套件中途中止、未调用 `report()`」；**非中止**运行期错误（如字符串 `%r` 格式错误）仍会 `EXIT=0`。若要全堵，需对 stderr 做白名单扫描或让套件返回期望断言数。
 57. **（加固批次发现，Minor）** `save_test.gd` 「非十六进制校验和被拒」断言命名夸大（实现只是普通校验和不匹配，并无 hex 解析）；建议改名。
+
+### 计划 02 审查复审新增（来自 Tasks 8–11 修复轮后的独立 scoped 复审，2026-09-20）
+
+58. **（计划 02 新增，Minor）UI 等待期无超时/取消**：`src/ui/main.gd` 的 `await engine.submit_async(text)` 若因异常永不恢复，`command_edit.editable=false` 与整排按钮的禁用态将**停留在禁用态**（GDScript 无 try/catch，UI 层无看门狗）。缓解：`LlmGameMaster` 有 2 次尝试 + 降级，`OpenAiCompatProvider` 设了 `HTTPRequest.timeout`（默认 30s），故正常流程下概率低。裁定项：是否补 UI 层超时/「取消」按钮（建议随「设置界面」小计划或计划 03 的 UI 改动一起）。
+59. **（计划 02 新增，已接受）** `src/ui/main.gd` 的 `_on_command_submitted` 结束时以 `PanelFormatter.status_line(...)` 整体刷新状态行，故「未配置 LLM」提示在**首条指令后**消失（创建路径与读档路径都是如此）。计划侧已明确接受（`task-11-report.md`），登记备查、无需修改。
+60. **（计划 02 新增，文档漂移，已修）** 计划文档 `docs/superpowers/plans/2026-09-19-...-02-llm-narrative.md` 的 `_on_load` 步骤片段仍在写旧顺序（`rng=…; engine=TurnEngine.new(world, _build_gm(), rng)`），按该片段重实施会**复现 F4**。已在 2026-09-20 同步为「先写 status_line、再建 GM」并加注 `18eaa5c`。
 
 ---
 

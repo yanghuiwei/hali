@@ -1359,9 +1359,13 @@ func _build_gm() -> GameMaster:
 	engine = TurnEngine.new(world, _build_gm(), rng)
 ```
 
-3. `_on_load` 里同样改为
+3. `_on_load` 里同样改为（**顺序很重要**：先写状态行，再建 GM —— 首轮审查 F4 的修复 `18eaa5c`）
 ```gdscript
 	rng = RngService.new(world.game_seed)
+	creation_box.visible = false
+	play_box.visible = true
+	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
+	# 先设状态行，再建 GM：_build_gm 在未配置时会向状态行追加提示（F4）
 	engine = TurnEngine.new(world, _build_gm(), rng)
 ```
 

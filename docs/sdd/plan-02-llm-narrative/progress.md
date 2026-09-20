@@ -4,7 +4,7 @@
 流程同计划 01：brief → worker（deepseek-flash）→ 绿灯 → 报告 → 只读 reviewer → 修复轮 + scoped 复审 → 台账。
 
 > 2026-09-20 补录：收尾时本文件只写到 Task 7，Tasks 8–12 缺条目（`.superpowers/.../progress.md` 同样只有 1–7）。本次按提交/diff/报告/简报补齐 Tasks 8–12，并新增「台账覆盖核对」节。
-> **注意**：首轮审查正文 `task-811-review.md` 与复审正文 `task-811-rereview.md` 的原始 reviewer log 已随旧机器丢失，本文件与 `NEXT-STEPS.md` 队列 A 中的 F1–F6 与审查结论为**重建版**（依据 = 提交、diff、报告、简报 + 2026-09-20 实测反证），非 reviewer 原文。
+> **注意**：首轮审查 `task-811-review.md` 与复审 `task-811-rereview.md` 的原始 reviewer log 已随旧机器丢失（见两文件页首的排查记录）。现已按提交/diff/报告/简报 + 实测反证出**重建版**并在页首显式标注；其中 `task-811-rereview.md` 附录 A 是 **2026-09-20 独立只读 reviewer** 对 `15c1ff0..18eaa5c` 的复审**原文**（非重建）。
 
 ## Task 1（协程探针 + 运行器 async 化）
 - brief `task-1-brief.md`；worker 提交 `ccd08ef`（3 files）：`tests/async_probe_test.gd`(+uid)、`tests/run_tests.gd`（`_initialize`/`_run_suite` 改 await；SUITES +async_probe）。未走备份方案：`SceneTree._initialize` 可 await，实测一次跑绿。
@@ -108,7 +108,9 @@ worker 发现计划测试 2 处自相矛盾并最小修正（系统提示含字�
 
 ## F4 闭合（读档路径状态行顺序）`18eaa5c`
 - `_on_load` 调整顺序：先 `status_label.text = PanelFormatter.status_line(...)`，**再** `engine = TurnEngine.new(world, _build_gm(), rng)`，使 `_build_gm()` 的「未配置 LLM」追加提示得以保留（1 文件，+2/−1）。
-- 该修复当时**没有**对应的复审文件（首轮复审在 `a48f108` 处已结，`18eaa5c` 在其后）；2026-09-20 补 scoped 复审记录（见 `task-811-rereview.md` 附录）。
+- 该修复当时**没有**对应的复审文件；2026-09-20 补 scoped 复审：按 §D2 派**独立只读 reviewer**（内置 `reviewer` agent，read/grep/find/ls，`deepseek-flash` + thinking high），范围 `15c1ff0..18eaa5c`，新增审查包 `review-15c1ff0..18eaa5c.diff`。
+- **结论：通过 —— F1–F6 全部 ADDRESSED，F4 已真正闭合**（读档路径不再覆盖提示；创建路径 `_on_start_pressed` 之后无 `status_label.text` 赋值，同样保住提示；`_on_save`/`_on_status`/`_on_audit` 等分支均不写状态行）。原文见 `task-811-rereview.md` 附录 A。
+- 复审另报 3 条 Minor：①首条指令后提示被正常状态行刷新（**接受**，计划既定行为）→ 登记 HANDOFF §8#59；②`await submit_async` 不恢复则输入与按钮停在禁用态、UI 无超时/取消 → 登记 HANDOFF §8#58；③**计划文档漂移**：计划 `Task 11` 的 `_on_load` 片段仍是旧顺序（按片段重实施会复现 F4）→ **已同步修正计划**并加注 `18eaa5c`（HANDOFF §8#60）。
 
 ## Task 12（文档收尾：README / HANDOFF / 台账）`1f82483` + 合入 `main` `d885cf9`
 - **Task 12 由控制器直接执行，无独立 brief / report / reviewer 工件**（纯文档；NEXT-STEPS A7 采「在台账注明」方案）。
@@ -118,5 +120,5 @@ worker 发现计划测试 2 处自相矛盾并最小修正（系统提示含字�
 
 ## 台账覆盖核对（2026-09-20）
 Tasks 1–12 均有条目且各自可指到提交哈希与断言数：1 `ccd08ef`+`632ff2e` / 2 `a33a33a` / 3 `2544bec` / 4 `b0d2258` / 5 `d888989`（+`9920ba0` 修复）/ 6 `0a86471` / 7 `38589b4`（+`59a70ed` 修复）/ 8 `fed4767` / 9 `878e9e3` / 10 `c87959e` / 11 `15c1ff0`（+`a48f108`、`18eaa5c` 修复）/ 12 `1f82483` + `d885cf9`。
-**已知缺口（不因本次补录而消失）**：首轮审查正文 `task-811-review.md` 与复审正文 `task-811-rereview.md` 的**原始 reviewer log 已随旧机器丢失**（`.superpowers/sdd/2026-09-19-...` 未随源码走，本机 `~/.pi/agent/sessions/--E--Hali--/subagent-artifacts/` 只有计划 01 的 2026-09-18 工件）。上表 F1–F6 与结论系据提交、diff、报告、简报与本次实测反证重建，**属重建版而非 reviewer 原文**。详见 `NEXT-STEPS.md` 队列 A 的 A2 待办与说明。
+**已知缺口（部分收口）**：首轮审查与复审的**原始 reviewer log 已随旧机器丢失**（`.superpowers/sdd/2026-09-19-...` 未随源码走，本机 `~/.pi/agent/sessions/--E--Hali--/subagent-artifacts/` 只有计划 01 的 2026-09-18 工件）。现已补 **重建版** `task-811-review.md` + `task-811-rereview.md`（页首标注非原文，依据 = 提交/diff/报告/简报 + 实测反证）；`task-811-rereview.md` 附录 A 含 2026-09-20 独立只读复审**原文**。**残余不可恢复**：首轮 reviewer 自己的反证过程与措辞已不可复原。
 

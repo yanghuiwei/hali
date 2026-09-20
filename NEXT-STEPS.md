@@ -42,19 +42,21 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
   - 素材：提交 `fed4767`（Task 8 `LlmGameMaster`）、`878e9e3`（Task 9 `submit_async`）、`c87959e`（Task 10 provider）、`15c1ff0`（Task 11 UI）、`a48f108`（Tasks 8–11 修复轮）、`18eaa5c`（F4 修复）、`1f82483` / `d885cf9`（Task 12 文档收尾）；报告 `task-8/9/10/11-report.md`；审查包 `review-*.diff`。
   - 验收：Tasks 1–12 在台账里都有条目，且每条都能指到提交哈希与断言数。
 
-- [ ] **A2 把 Tasks 8–11 审查结论提升为耐久副本**
+- [x] **A2 把 Tasks 8–11 审查结论提升为耐久副本** —— 按下文核对结论的 **(a) 重建版**方案完成：`task-811-review.md` + `task-811-rereview.md` 已落盘，页首均显式标注「非 reviewer 原文」及重建依据。
   - 现状：`docs/sdd/plan-02-llm-narrative/` 只有 `task-811-review-brief.md`、`task-811-rereview-brief.md`；**缺** `task-811-review.md` 与 `task-811-rereview.md`。
   - 正文只存在于被忽略的 `.superpowers/sdd/2026-09-19-hp-magic-era-02-llm-narrative/task-811-reviewer.log`（首轮，11.7KB）与 `task-811-rereviewer.log`（复审，9.0KB）。
   - 要做：把两份 log 的**完整结论**（发现表 F1–F9、反证表、未验证清单）原样落进 `docs/sdd/plan-02-llm-narrative/`（可清理成干净 md），提交。
   - 验收：`docs/sdd/plan-02-llm-narrative/` 下有 `task-811-review.md` + `task-811-rereview.md`，内容与 log 一致且无省略。
   - ⚠️ **核对结论（2026-09-20，在 `main` 上实测）**：两份 log **在本机不存在**，无法「原样落进」。已排除的可能位置：`.superpowers/sdd/2026-09-19-hp-magic-era-02-llm-narrative/`（目录不存在，本机 `.superpowers/sdd/` 只有计划 01 的 2026-09-18 目录）、`~/.pi/agent/sessions/--E--Hali--/subagent-artifacts/`（只有 2026-09-18 的计划 01 worker/oracle/reviewer 工件，无 09-19）、`git log --all`（从未入库）、stash（空）。**结论：文件已随旧机器丢失，`内容与 log 一致` 这条验收标准不可达**。
-  - 可行的替代（待裁定）：(a) 出**重建版**并显式标注「非 reviewer 原文」（素材：提交 `a48f108` diff、`task-811-*-brief.md`、`task-8/9/10/11-report.md`，外加可复跑的实测反证）；(b) 放弃 A2，把该缺口登记入 HANDOFF §8 后勾掉。
+  - 可行的替代（已裁定）：**采 (a)**——出重建版并显式标注「非 reviewer 原文」。已落盘：`task-811-review.md`（首轮：范围/结论 Approved with findings/发现表 F1–F6/反证表/未验证清单）与 `task-811-rereview.md`（修复轮复审重建 + F4 闭合 + 2026-09-20 独立只读复审原文）。
+  - ℹ️ **数目订正**：本项写的「发现表 F1–F9」与 A3 的「首轮审查 6 条」不一致；按 A3 + 修复轮 diff 核对，实为 **F1–F6（6 条）**，无 F7–F9。
 
-- [ ] **A3 补记 F4 的修复与最终结论**
+- [x] **A3 补记 F4 的修复与最终结论** —— 已在 `task-811-rereview.md` §2 + 附录 A 闭合：**F1–F6 全部 ADDRESSED、F4 已真正闭合**（指向 `18eaa5c`）。
   - 首轮审查 6 条：F1/F5/F6（Minor，已修）、**F3 Important**（等待期按钮行未禁用，已修）、**F2**（`choices[0]` 非对象导致降级链断，已修）、**F4 Minor**（`_on_load` 里 `_build_gm()` 的「未配置 LLM」提示被下一行 `status_label.text` 覆盖）。
   - 复审（对比 `15c1ff0..a48f108`）：F2/F3 **ADDRESSED** 且反证承重，**F4 当时仍未闭合**；此后 `18eaa5c` 才修掉（读档路径先设状态行再建 GM）。该修复**没有**对应的复审文件。
   - 要做：在 A2 的复审记录里补一条「F4 后续由 `18eaa5c` 修复 + 结论」；若要更严格，可对 `15c1ff0..18eaa5c` 起一份 scoped 复审（改动 1 文件 2 行，10 分钟内可完成）。
   - 验收：F4 在耐久工件里状态为「已闭合」，并指到 `18eaa5c`。
+  - 执行记录：按 §D2 派了**独立只读 reviewer**（内置 `reviewer` agent，read/grep/find/ls，`deepseek-flash` + thinking high，与主会话同模型）对 `15c1ff0..18eaa5c` 做 scoped 复审，新增审查包 `review-15c1ff0..18eaa5c.diff`；结论 **通过**（逐项证据 + 未验证清单原文见 `task-811-rereview.md` 附录 A）。它另报 3 条 Minor：①提示在首条指令后消失（**已接受**，计划既定行为）、②UI 等待期无超时/取消（**已登记** HANDOFF §8#58）、③**计划文档 `_on_load` 片段漂移**（按片段重实施会复现 F4）→ **已同步修正计划**。
 
 - [ ] **A4 订正 HANDOFF §1 / §9 的过期分支信息**
   - `HANDOFF.md` §1 表格仍写「执行分支 `main`（顶端 `026efe3`）」「当前 HEAD `plan-01-core-foundation` == `main` == `026efe3`」，与 §0 及实际 `d885cf9` 冲突；§9 首行仍写「分支：`plan-01-core-foundation`」。
@@ -106,6 +108,7 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 | §8#26 | 载入路径不重跑 `validate_choices`，手改存档可塞进非法组合 | 存档格式 v2 或载入流程 |
 | §8#49 | `SaveStore.save` 无 temp+rename，写盘中断会毁旧档 | 存档格式 v2 |
 | §8#55 | 人工 GUI 验收缺口 | 见 B1 |
+| §8#58 | 计划 02 新增：UI 等待期无超时/取消（`await submit_async` 不恢复则输入与按钮停在禁用态） | 计划 03 动 UI 时，或「设置界面」小计划 |
 
 ---
 
