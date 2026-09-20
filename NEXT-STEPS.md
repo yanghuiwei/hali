@@ -83,26 +83,25 @@ main scene ready, godot=4.7.2-stable (official)
 
 ## B. 队列 B —— 计划 03 与人工验收
 
-- [ ] **B1 人工 GUI 验收（HANDOFF §6 第 1 项 / §8#55，**只能人来跑**）**
-  - `./Godot_v4.7.2-stable_win64_console.exe --path .`，按计划 01 Step 6 的 8 项清单逐项确认：创建界面 7 个下拉 / 哑炮角色 / 练魔药收益递减 / 打工加钱 / 魔法·关系·势力面板 / 存档·读档 / 重启后创建界面直接读档 / 第 15 回合自检挂起与「确认自检」。
-  - 计划 02 追加：等待 LLM 期间 `command_edit` 与整排按钮置灰、结束恢复；未配置时状态行显示提示（创建路径与**读档路径**都要看，后者正是 F4）。
-  - ⏸️ **人类裁定（2026-09-20）：暂不逐项跑，先推进计划 03**。已做过一次非正式点击（开窗 → 建角 → 4 回合 → 存档），控制器**从存档反推**出部分结论：
-    - ✅ 哑炮角色确实无魔法无魔杖（`no_magic=true`/`magic_tier=0`/`known_spells=[]`）；4 回合均推进且 `world.tick()` 生效（`world_vars` 已漂移、`world.log` 有 rumor/mundane）；存档 `user://saves/slot1.json` 生成成功。实测角色：哑炮 / auror_family / 格兰芬多 / 11 岁 / brutal_realism / custom 时代（1991）/ `potions 7`。
-    - ❌ **仍无任何痕迹可查**：叙事到底来自 LLM 还是本地替身、四个面板、读档、第 15 回合自检与「确认自检」、等待期置灰与恢复、断网降级、密钥脱敏的实际表现。
-  - 💡➡️✅ **已实现（`be9cddc`，2026-09-20）：`HALI_DEBUG_LOG=1` 调试镜像**——人工验收不再靠存档反推。
-    - 用法：`HALI_DEBUG_LOG=1 ./Godot_v4.7.2-stable_win64_console.exe --path .` → 界面文本每行带 `[HALI]` 前缀进 stdout（Godot 落进 `user://logs/*.log`），人工点窗口、控制器读日志即可完成 B1。
-    - 覆盖：叙事/面板（`_append`）、状态行（含 F4 的「未配置 LLM」提示，创建与读档两条路径）、玩家输入、创建界面 7 个下拉的选项数与当前值、姓名/性别/年龄/目标/性格、`[输入框] editable=…` 与 `[按钮] 整排 可用/禁用`（等待期置灰与恢复）、存档/读档/自检结果、创建界面错误。
-    - **默认行为逐字未变**：不设该变量时一行都不输出，由 `tools/test.sh` 的 `3/4` 反向断言（出现 `[HALI]` 即失败）。
-    - 回归测试：`tests/debug_mirror_test.gd`（开关语义，`[debug_mirror]`=23） + `4/4` 镜像冒烟（`tools/ui_debug_probe.gd`，真实节点上驱动 `_append`/状态行/置灰四条路径）。
-    - 实现：`src/ui/debug_mirror.gd` + `src/ui/main.gd` 的 `_mirror()` 唯一出口。
-  - ⚠️ **日志现状**（已查清）：引擎 stdout → `user://logs/*.log`（本次会话 0 报错）；游戏内日志 → 存档 `world.log`；**叙事/面板/玩家输入既不 `print` 也不入档**——上一条的镜像就是为此而生（开镜像后即可从外部观测回合内容）。
+- [x] **B1 人工 GUI 验收（HANDOFF §6 第 1 项 / §8#55）** —— ✅ **2026-09-20 完成（自动化通道）**：`bash tools/b1_acceptance.sh` → 计划 01 Step 6 的 8 项 + 计划 02 追加的 2 项**逐项核对通过，78/78 断言，EXIT=0**。报告：`docs/sdd/plan-02-llm-narrative/b1-acceptance.md`。
+  - 关键转折：它**不再需要人手动点击**——`HALI_DEBUG_LOG` 镜像（`be9cddc`）让界面文本可外部观测，`tools/b1_acceptance.gd` 直接驱动界面处理器（等同于点按钮/回车）并从真实控件状态 + 真实日志文本断言。
+  - 覆盖：7 个创建下拉 / 哑炮角色（无魔法无魔杖，`house_id` 见 §8#69）/ 练药收益递减（第三次「重复练习收益下降」）/ 打工加钱 / 四面板（哑炮分支）/ 存档·读档回合与财富一致 / 新实例重启后直接读档 / 第 15 回合自检挂起·拒绝行动·「确认自检」后可继续 / 等待期置灰与恢复（400ms 慢 provider 造真实等待窗）/ 未配置 LLM 提示的创建与读档两条路径（F4）。
+  - 原「人工清单」文本：
+    - `./Godot_v4.7.2-stable_win64_console.exe --path .`，按计划 01 Step 6 的 8 项清单逐项确认：创建界面 7 个下拉 / 哑炮角色 / 练魔药收益递减 / 打工加钱 / 魔法·关系·势力面板 / 存档·读档 / 重启后创建界面直接读档 / 第 15 回合自检挂起与「确认自检」。
+    - 计划 02 追加：等待 LLM 期间 `command_edit` 与整排按钮置灰、结束恢复；未配置时状态行显示提示（创建路径与**读档路径**都要看，后者正是 F4）。
+  - ⏸️ 历史记录（2026-09-20 早先那次非正式点击 + 人类裁定「暂不逐项跑」）：哑炮确实无魔法无魔杖、4 回合均推进且 `world.tick()` 生效、存档生成成功；但叙事来源/四个面板/读档/自检/置灰/降级全部无痕——这正是本次补镜像 + 补自动验收的起因。
+  - ✅ **已实现（`be9cddc`）：`HALI_DEBUG_LOG=1` 调试镜像**——界面文本带 `[HALI]` 前缀进 stdout（真窗口下实测落进 `user://logs/godot.log`）。不设该变量时一行都不输出（`tools/test.sh` `3/4` 反向断言）。
+  - ⚠️ **日志现状**（已查清）：引擎 stdout → `user://logs/*.log`；游戏内日志 → 存档 `world.log`；**叙事/面板/玩家输入既不 `print` 也不入档**——镜像就是为此而生。
+  - ⚠️ **仍未做的（不影响 B1 结论，已登记）**：真实 OS 鼠标/键盘事件、像素级排版可读性、真的关进程重开（用同进程新实例模拟）、真机 LLM 的几十秒等待与断网降级（属 B2）。
+  - 🕳️ 新登记坑（已入 `HANDOFF §4`）：`RichTextLabel.text` **不会**被 `append_text()` 更新，必须用 `get_parsed_text()`；headless 下 `get_line_count()` 恒为 0。
 
-- [ ] **B2 真机 LLM 联调（HANDOFF §0「下一步」）** —— 🔶 **2026-09-20 部分完成**（报告 `docs/sdd/plan-02-llm-narrative/b2-live-integration.md`，已脱敏）
+- [ ] **B2 真机 LLM 联调（HANDOFF §0「下一步」）** —— 🔶 **2026-09-20 部分完成**（报告 `docs/sdd/plan-02-llm-narrative/b2-live-integration.md`，已脱敏）；⏸️ **用户裁定（2026-09-20）：暂不做**，先把 B3 推起来（剩余项见下方「仍未验」）。
   - 写 `user://llm_settings.json`（Windows：`%APPDATA%\Godot\app_userdata\<项目名>\`）或设 `HALI_LLM_API_KEY`；跑一回合，确认：拿到真实叙事、`ops` 生效、等待期窗口不卡死、断网/超时自动降级为 `ScriptedGameMaster` 且有提示。
   - 已知未验证项（来自 `task-811-rereviewer.log`）：真实 `HTTPRequest` 链路（`await request_completed`、`add_child`、timeout、4xx/5xx）、`api_key` 掩码的端到端执行、提示注入的实际绕过率。
   - ✅ **已实测通过**（2026-09-20，内网 OpenAI 兼容网关 + 思考型模型）：`HTTPRequest` 真实链路、中文 UTF-8 往返、`response_format: json_object` 被接受、`PromptBuilder` 提示词被正确人格化（叙事里出现玩家真实学院）、模型产出的 ops 全部经`OpGuard`/`StateOps` 落地（`errors=[]`，状态真的变了）、`warnings → op_errors` 透出链有效。
   - 🔴 ~~**阻塞（`§8#66`）**~~ **已修（`3240af6`）**：`LlmGameMaster` 现在把 settings 的 `temperature`/`max_tokens`/`timeout_ms` 灌进两处 request（含 `build_repair` 重试），`main.gd:_build_gm()` 同步传参；`§8#67`（错误串可诊断）同批修掉。`[llm]` 65→79，反证承重，**真机复测不再降级**（叙事 346 字、4 条 ops 落地、`errors=[]`、49.7s）。⚠️ 配置仍需显式给 `max_tokens ≥ 8192` / `timeout_ms ≥ 120000`（思考型模型），见 README「LLM 配置」。
-  - ⏭️ **仍未验**：GUI 等待期不卡死（需 B1）、断网/401/超时后真的降级且有提示、连续多回合、`api_key` 掩码的端到端执行、提示注入实际绕过率、思考档位参数名（见报告 §7）。
+  - ⏭️ **仍未验**：断网/401/超时后真的降级且有提示、连续多回合、`api_key` 掩码的端到端执行、提示注入实际绕过率、思考档位参数名（见报告 §7）。
+    - （原「GUI 等待期不卡死（需 B1）」已在 B1 自动验收里用 mock 慢 provider 覆盖置灰/恢复；真机几十秒等待仍属本条。）
   - ⚠️ **安全**：仓库是 **public**，报告内网地址用占位符；**建议轮换该 key**（已出现在会话记录里）。
 
 - [ ] **B3 计划 03「派系与政治经济」启动**

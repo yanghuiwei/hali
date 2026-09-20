@@ -7,9 +7,9 @@
 
 ## 0. 一句话状态
 
-**计划 01「核心模拟地基」与计划 02「LLM 叙事引擎」均已完成并合入 `main`。** 计划 02（12 任务）：`LlmProvider`/`MockLlmProvider`/`OpenAiCompatProvider`、`LlmSettings`、`GmResponseParser`、`PromptBuilder`、`OpGuard`、`LlmGameMaster`（重试+降级）、`TurnEngine.submit_async`、UI 异步接线；另有 `StateOps.train_skill` 与 §8#33 RNG 加盐。计划全文：`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`；设计 spec：`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`。下一步：真机 LLM 联调（人工）或计划 03。
+**计划 01「核心模拟地基」与计划 02「LLM 叙事引擎」均已完成并合入 `main`；B1 人工 GUI 验收已用自动化通道跑完（78/78 断言通过）。** 计划 02（12 任务）：`LlmProvider`/`MockLlmProvider`/`OpenAiCompatProvider`、`LlmSettings`、`GmResponseParser`、`PromptBuilder`、`OpGuard`、`LlmGameMaster`（重试+降级）、`TurnEngine.submit_async`、UI 异步接线；另有 `StateOps.train_skill` 与 §8#33 RNG 加盐。计划全文：`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`；设计 spec：`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`。下一步：**计划 03（派系与政治经济）**；真机 LLM 联调剩余项（B2）用户已裁定暂不做。
 
-**接下来要做什么：见 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（队列 A = 计划 02 文档收口；队列 B = 人工验收 / 计划 03；含恢复核对命令与协作约定）。
+**接下来要做什么：见 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（队列 A 已完；队列 B：B1 已完成、B2 暂不做、B3 = 计划 03 启动；含恢复核对命令与协作约定）。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -135,7 +135,9 @@ HALI_DEBUG_LOG=1 ./Godot_v4.7.2-stable_win64_console.exe --path .
 哈利·波特·魔法纪元.md   # 正典规格（唯一事实来源）
 README.md                # 项目说明、进度表、目录约定
 project.godot            # Godot 工程定义（features=4.7，gl_compatibility）
-tools/test.sh            # 唯一测试入口
+tools/test.sh            # 唯一测试入口（4 步：导入 → 单测 → 默认冒烟 → 调试镜像冒烟）
+tools/b1_acceptance.sh   # B1 自动验收（会写 user://，故不进 test.sh；自带备份/还原）
+tools/ui_debug_probe.gd  # 镜像冒烟的探针（test.sh 第 4 步）
 data/*.json              # 内容即数据：改内容不改代码（时代/血统/身份/资质/学院/风格/倾向…）
 src/core/                # registry(内容表) · game_clock · rng_service · json_util · turn_engine
 src/model/               # money · player_state · world_state（均已完成）
@@ -144,7 +146,7 @@ src/rules/               # magic_level(已完成) · character_creation · spell
 src/gm/                  # game_master(接口) · scripted_game_master(离线替身) · llm_game_master(计划 02) · op_guard · prompt_builder · gm_response_parser · llm_settings
 src/gm/providers/        # llm_provider(接口) · openai_compat_provider(HTTP) · mock_provider(测试)
 src/persist/             # save_codec · save_store（已完成，第七十一章）
-src/ui/                  # main.tscn · main.gd（窗口程序）· panel_formatter（面板）
+src/ui/                  # main.tscn · main.gd（窗口程序）· panel_formatter（面板）· debug_mirror（HALI_DEBUG_LOG 观测通道）
 tests/                   # run_tests.gd(运行器) · assert.gd(零依赖断言库) · *_test.gd(每任务一套件)
 docs/superpowers/plans/  # 实现计划
 docs/sdd/                # 过程台账/简报/报告/审查包（第 7 节）
@@ -171,6 +173,8 @@ taskkill //PID <PID> //F
 7. **CRLF/LF 警告是正常的**：`.gitattributes` 强制 `eol=lf`，Windows 上 `git add` 计划文档时会看到 "CRLF will be replaced by LF"，不影响内容。
 8. **引擎固定 4.7.2 stable + 纯 GDScript**：不引入第三方插件、外部素材、网络依赖；玩家可见文本用中文，标识符用英文；源码与数据一律 UTF-8。
 9. **正典优先**：原著明确设定 ＞ 模拟器推演。每完成一个任务，若发现计划文本与正典冲突（Task 3 就发生过：计划把 510 纳特写成 `[1,0,17]`），**改计划、不要顺着错的计划写实现**，并在报告里写明依据的正典行号。
+10. **`RichTextLabel.text` 不会被 `append_text()` 更新**：实测 `append_text("abc")` 后 `label.text` 仍是 `""`，要读内容必须用 `get_parsed_text()`；headless 下 `get_line_count()` 恒为 0（无布局）。生产代码目前没有读 `log_view.text` 的地方，但写观测/探针工具时会踩（B1 验收探针就踩过一次）。
+11. **`%r` 不是 Godot 的格式占位符**：`"x=%r" % v` 会在运行期报 "String formatting error: unsupported format character"，而运行器**不会**因此变红（见 §8#56）。用 `%s`。
 
 ---
 
@@ -327,8 +331,8 @@ taskkill //PID <PID> //F
 52. **（Task 11 Minor，UI 仪轨）** `_on_audit` 按钮先打印报告再立即 `acknowledge_audit()`，弱化「必须读完再确认」的仪式感（引擎侧第 72 章不变量仍成立）；若要保留，改为提示输入「确认自检」。（未做，留待裁定）
 53. ~~**（Task 11 Minor，假绿风险）**~~ **已收口（`e094a52`）**：`tools/test.sh` 冒烟 `tee` + `grep -q "main scene ready"`，未命中即失败；临时文件加 `trap ... EXIT`。
 54. ~~**（Task 11 Minor）**~~ **已收口（`e094a52`）**：删除死变量 `_turn_count`。
-55. **（Task 11，人工验收缺口）** 计划 Step 6 的 8 项 GUI 验收 headless 无法自动执行（点击创建、下拉/SpinBox、存档/读档按钮、重启读档、第 15 回合挂起与「确认自检」）；两轮审查均只做了静态论证 + 场景可加载冒烟。**留待人类实际跑一遍**。
-    - ➕ **2026-09-20 已补观测通道（`HALI_DEBUG_LOG` 调试镜像，见 §2 末尾）**：以 `HALI_DEBUG_LOG=1` 启动窗口时，界面文本（叙事/面板/状态行/输入与按钮置灰/创建选项）镜像到 stdout 并落进 `user://logs/*.log`，于是「人点窗口 + 控制器读日志」即可验收，不必再靠存档反推。默认不设则一行不输出（`tools/test.sh` `3/4` 反向断言）。
+55. **（Task 11，人工验收缺口）~~已完成（2026-09-20）~~** —— 已用**自动化通道**跑完计划 Step 6 的 8 项 + 计划 02 追加 2 项：`bash tools/b1_acceptance.sh` → 78/78 断言、EXIT=0，报告 `docs/sdd/plan-02-llm-narrative/b1-acceptance.md`。关键：`HALI_DEBUG_LOG` 镜像（见 §2 末尾）让界面文本可外部观测，探针直接驱动界面处理器（等同点按钮/回车），并从真实控件状态 + `get_parsed_text()` 断言。
+    - **仍未做的（不影响验收结论，已登记）**：真实 OS 鼠标/键盘事件、像素级排版可读性、真的关进程重开（用同进程新实例模拟）、真机 LLM 几十秒等待与断网降级（属 B2，用户裁定暂不做）。
 56. **（加固批次发现，Minor）** `run_tests.gd` 新增的 `report_calls` 哨兵只覆盖「套件中途中止、未调用 `report()`」；**非中止**运行期错误（如字符串 `%r` 格式错误）仍会 `EXIT=0`。若要全堵，需对 stderr 做白名单扫描或让套件返回期望断言数。
 57. **（加固批次发现，Minor）** `save_test.gd` 「非十六进制校验和被拒」断言命名夸大（实现只是普通校验和不匹配，并无 hex 解析）；建议改名。
 
@@ -358,6 +362,7 @@ taskkill //PID <PID> //F
 67. ~~**（B2，Minor）LLM 错误串诊断性不足 + 思考模型默认值**~~ **已修（`3240af6`）**：`_parse_http` 现对 `status == 0` 报「请求未到达服务端（HTTP 状态 0：连接失败/超时中断）」（原为 `HTTP 0（）`），对空 `content` 带上 `finish_reason`，并在 `length` 时提示「思考型模型需提高 max_tokens」；`[llm]` 新增 6 条断言（反证：退回含糊版 → 3 条红）。**残留（未改代码，已在 README/B2 报告写明）**：`LlmSettings` 的 `max_tokens` 默认值仍为 1024 —— 思考型模型需使用者显式配 `max_tokens ≥ 8192`、`timeout_ms ≥ 120000`（实测：1024 → `finish_reason=length`/`content` 空；8192 → `stop`/738 字；`timeout=30s` 处临界）。
 68. **（复审新增，Minor，范围外）`LlmSettings.provider` 无读取端**：`provider` 字段（`llm_settings.gd:6`）全仓无 `grep settings\.provider` 命中，仅作 JSON 往返保留——当前只有 `openai_compat` 一种实现。等计划 03 做 provider 路由/本地模型时顺手处理（要么消费它，要么从配置里删掉）。
 69. **（B1 非正式点击新发现，正典保真）哑炮却有学院**：实测存档案（`user://saves/slot1.json`）里 `bloodline_id=squib` 而 `house_id=gryffindor`。根因：`character_creation.gd:175` `p.house_id = assign_house(choices, rng, registry)` 在哑炮分支（`:205` 设 `flags["no_magic"]`）**之前**无条件执行。正典第七章/第二十四章：哑炮不进霍格沃茨（通常被送往麻瓜学校），故「哑炮 + 某学院」疑似违背正典。`data/houses.json` 已有 `none` 可用作候选取值。**待裁定**：哑炮是否应 `house_id="none"`（或标记为“未入学”），还是保留当前行为（把学院当作家世/归属标签）。
+    - 2026-09-20 B1 自动验收**再次独立复现并留证**：`bash tools/b1_acceptance.sh` 的哑炮角色 `house_id=gryffindor`（见 `b1-acceptance.md` §5）。
 70. **（B1 非正式点击新发现，UX）创建界面的姓名与性别**：`src/ui/main.gd:114` 把姓名框预填「无名者」，`:171` 把 `gender` 硬编码成「未定」——玩家不改名直接开局，就会得到一个“无名者·未定”的角色（实测存档确实如此）。且**创建界面没有性别输入**，全部角色性别恒为“未定”。非 bug，但影响代入感与后续按性别分支的规则（若有）。
 
 > 📝 **修复的复审记录**（`fix/plan-02-llm-settings`，独立只读 reviewer）：`docs/sdd/plan-02-llm-narrative/fix-settings-review.md`（含原文）。结论 **通过 / 0 Critical / 0 Important**；其 3 条 Minor 已分别处置（M-a → 本条 #68 登记；M-b `content:null` 经实证为真缺陷 → 已修 `c9a0c95`；M-c 断言强度 → 已采纳）。

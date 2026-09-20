@@ -80,8 +80,8 @@ main scene ready, godot=4.7.2-stable (official)      ← 且全篇无 [HALI]（�
 
 ## 5. 残余 / 未验证（诚实登记）
 
-1. **未在真实窗口 + `user://logs/*.log` 上实跑**：本次只验了 headless stdout 与 grep。日志文件路径由 Godot 自身 `print` 落盘机制保证，风险低但未实测（B1 人工验收时顺带确认）。
-2. **`[创建] 成功：…` 与存档/读档/自检行未在冒烟中驱动**（探针不带 world，无法走完 `_on_start_pressed`/`_on_save`/`_on_load`/`_on_audit`）。这些行都经由同一条 `_append`/`_set_status` 出口，逻辑上同源；完整覆盖要等 B1 人工实跑或后续加「带 world 的 UI 探针」。
+1. ~~**未在真实窗口 + `user://logs/*.log` 上实跑**~~ **已实测（2026-09-20，见 `b1-acceptance.md` §3）**：`HALI_DEBUG_LOG=1 ./Godot_…_console.exe --path . --quit-after 60` 真实开窗（OpenGL/Intel Arc），`user://logs/godot.log` 内含 `[HALI]` 行。
+2. ~~**`[创建] 成功：…` 与存档/读档/自检行未在冒烟中驱动**~~ **已覆盖（2026-09-20）**：`tools/b1_acceptance.gd` 真的调界面处理器走完创建/练药/打工/存档/读档/自检全流程，逐条断言日志文本（见 `b1-acceptance.md`）。
 3. **`_show_creation_error` 走独立的 `_mirror` 调用**（不经过 `_append`，因为它在 `log_view` 可能为空时也要写 `creation_error`）。行为正确，但破坏了「唯一出口」的字面整洁——已在代码注释说明。
 4. **不解决 §8#58/#62**：等待期仍无超时/取消，UI 提交路径仍无失败恢复。镜像只是让「卡住」这件事**可观测**（能看到 `editable=false` 后没有恢复行），修复仍留给计划 03。
 5. 镜像内容是**未经脱敏的界面文本**：若配置了真实 LLM，叙事会进 stdout/日志文件。key 本身不在镜像里（它只在 `LlmSettings` 与请求头中），但**日志文件仍应按敏感数据对待**，不要贴进公开仓库（仓库是 public）。
