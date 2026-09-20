@@ -25,6 +25,30 @@ func stream_pick(name: String, options: Array):
 		return null
 	return options[stream(name).randi_range(0, options.size() - 1)]
 
+# 计划 03a（§8#16/#21）：按权重抽取。权重非正（≤0）的条目永不被抽中；权重键缺失时默认 1.0（等价均匀）。
+# 总权重为 0（含全部条目权重≤0）时回退到均匀抽取，保证与 stream_pick 同样「总能抽到点什么」。
+# ⚠️ 故意**不加**返回类型标注：空列表时本函数返回 null，而 GDScript 对
+# 「null 赋给有类型变量」是解析期错误（实测 Cannot assign a value of type "null" as "Dictionary"）。
+# 权重键缺失时默认 1.0 ⇒ 传一个表里没有的键名等价于均匀抽取（不要用它假装「权重已生效」）。
+func stream_pick_weighted(name: String, entries: Array, weight_key: String = "weight"):
+	if entries.is_empty():
+		return null
+	var total := 0.0
+	for e in entries:
+		if typeof(e) == TYPE_DICTIONARY:
+			total += maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
+	if total <= 0.0:
+		return stream_pick(name, entries)
+	var roll := stream_float(name) * total
+	var acc := 0.0
+	for e in entries:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		acc += maxf(float((e as Dictionary).get(weight_key, 1.0)), 0.0)
+		if roll <= acc:
+			return e
+	return entries[entries.size() - 1]
+
 func chance(name: String, probability: float) -> bool:
 	return stream_float(name) < clampf(probability, 0.0, 1.0)
 

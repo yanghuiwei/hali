@@ -162,4 +162,73 @@ func run() -> int:
 		var r := CharacterCreation.create(c, reg, RngService.new(42))
 		a.eq(r.errors.size(), 0, "血统 %s 可创建" % bloodline_id)
 
+	# ---- 计划 03a（§8#69）：哑炮不进霍格沃茨 ----
+	# ⚠️ 计划原文的测试片段实测有两个问题（控制器实测，见 task-12-report.md）：
+	#   ① personality 只给 1 项 → validate_choices 报「需要 3 个性格关键词」⇒ player==null，
+	#      后续 `squib_res.player.house_id` 是**空引用访问**，会把整个套件**中止**（红得不干净）。
+	#   ② house_id="system" 时 assign_house 早就在 `magic_aptitude=false` 上返回 "none"
+	#      （见本文件下方 "哑炮不判学院" 断言）⇒ 该断言**改前改后都绿 = 无判别力**。
+	#   真正的缺陷路径是**玩家显式指定学院**（创建界面 house 下拉默认就是 gryffindor）⇒
+	#   必须用 house_id="gryffindor" 才能判别（与 B1 探针实测到的 house_id=gryffindor 完全对应）。
+	var t12_squib := {
+		"era_id": "modern", "bloodline_id": "squib", "birth_identity_id": "ordinary_wizard_family",
+		"name_text": "测试哑炮", "gender": "未定", "age_years": 11, "birthplace": "london_muggle",
+		"family_status": "由系统生成", "aptitude_id": "squib", "aptitude_special": "", "wand": {},
+		"house_id": "gryffindor", "political_leaning_id": "blood_equality",
+		"personality": ["好奇", "固执", "怕黑"],
+		"life_goal": "活下去", "sim_style_id": "brutal_realism",
+	}
+	var t12_squib_res := CharacterCreation.create(t12_squib, reg, RngService.new(5))
+	a.eq(t12_squib_res.errors.size(), 0, "哑炮建角无错误")
+	# 用「取不到就返回可鉴别的哨兵串」代替解引用，避免 null 中止套件（红要红得干净）
+	var t12_squib_house := "<player==null>"
+	if t12_squib_res.player != null:
+		t12_squib_house = str(t12_squib_res.player.house_id)
+	a.eq(t12_squib_house, "none", "哑炮不进霍格沃茨：显式指定 gryffindor 也必须被覆盖为 none")
+	a.is_true(t12_squib_res.player != null and bool(t12_squib_res.player.flags.get("no_magic", false)),
+		"哑炮仍无魔法")
+	# 未显式指定学院（system）时同样是 none —— 防回归（这条改前就绿，不具判别力，只钉住不倒退）
+	var t12_squib_sys := t12_squib.duplicate(true)
+	t12_squib_sys["house_id"] = "system"
+	var t12_squib_sys_res := CharacterCreation.create(t12_squib_sys, reg, RngService.new(5))
+	var t12_squib_sys_house := "<player==null>"
+	if t12_squib_sys_res.player != null:
+		t12_squib_sys_house = str(t12_squib_sys_res.player.house_id)
+	a.eq(t12_squib_sys_house, "none", "哑炮 + house_id=system 同样不入学")
+	# 非哑炮：玩家显式指定学院必须仍然优先（不得被这次修正误伤）
+	var t12_normal := t12_squib.duplicate(true)
+	t12_normal["bloodline_id"] = "half_blood"
+	t12_normal["aptitude_id"] = "normal"
+	var t12_normal_res := CharacterCreation.create(t12_normal, reg, RngService.new(5))
+	var t12_normal_house := "<player==null>"
+	if t12_normal_res.player != null:
+		t12_normal_house = str(t12_normal_res.player.house_id)
+	a.eq(t12_normal_house, "gryffindor", "非哑炮：玩家指定学院仍然优先")
+
+	# ---- 计划 03a（§8#21）：杖芯权重必须真的生效 ----
+	# ⚠️ rarity 是字符串标签，float("common")==0.0，不能直接当权重；权重来自新增的数值字段 "weight"。
+	var t12_core_entries: Array = []
+	for cid in reg.ids("wand_cores"):
+		t12_core_entries.append(reg.entry("wand_cores", str(cid)))
+	var t12_weighted_rng := RngService.new(7)
+	var t12_common_hits := 0
+	var t12_rare_hits := 0
+	for i in 3000:
+		var t12_picked: Dictionary = t12_weighted_rng.stream_pick_weighted("wand_core_test", t12_core_entries, "weight")
+		if str(t12_picked.get("rarity", "")) == "rare":
+			t12_rare_hits += 1
+		else:
+			t12_common_hits += 1
+	a.is_true(t12_common_hits > t12_rare_hits * 4,
+		"常见杖芯显著多于稀有杖芯（weight 生效；全为 1 时均匀⇒必红）实际 common=%d rare=%d" % [t12_common_hits, t12_rare_hits])
+	a.is_true(t12_rare_hits > 0, "稀有杖芯仍会被抽中（weight 不是硬排除）")
+	# 端到端：光是 helper 正确还不够，generate_wand 必须真的走权重（把 "weight" 改回 "rarity" 时本条必红）
+	var t12_wand_rare := 0
+	for i in 400:
+		var t12_wand := CharacterCreation.generate_wand(RngService.new(5000 + i), reg)
+		if str(reg.entry("wand_cores", str(t12_wand["core"])).get("rarity", "")) == "rare":
+			t12_wand_rare += 1
+	a.is_true(t12_wand_rare < 120,
+		"generate_wand 的稀有杖芯远低于均匀占比（400 支里 %d 支；均匀时≈200，加权时≈57）" % t12_wand_rare)
+
 	return a.report("creation")

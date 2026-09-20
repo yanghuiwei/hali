@@ -2,6 +2,8 @@ extends Control
 
 const SAVE_SLOT := "slot1"
 const SEED_SALT := 20260918
+# §8#70：创建界面的性别选项（原来界面没有性别输入，所有角色性别恒为「未定」）
+const GENDERS: PackedStringArray = ["男", "女", "未定"]
 
 var registry: Registry = null
 var world: WorldState = null
@@ -16,6 +18,7 @@ var command_edit: LineEdit = null
 var status_label: Label = null
 var dropdowns: Dictionary = {}
 var name_edit: LineEdit = null
+var gender_dropdown: OptionButton = null
 var goal_edit: LineEdit = null
 var age_spin: SpinBox = null
 var personality_edit: LineEdit = null
@@ -108,6 +111,7 @@ func _show_creation() -> void:
 	for child in creation_box.get_children():
 		child.queue_free()
 	dropdowns.clear()
+	gender_dropdown = null
 	var title := Label.new()
 	title.text = "【选择你的起点】（第七十五章）"
 	creation_box.add_child(title)
@@ -131,9 +135,27 @@ func _show_creation() -> void:
 	name_label.custom_minimum_size = Vector2(120, 0)
 	name_row.add_child(name_label)
 	name_edit = LineEdit.new()
-	name_edit.text = "无名者"
+	# §8#70：不再预填「无名者」——留空 + 占位提示，逼玩家给角色起名
+	# （validate_choices 会拒绝空名字，不会静默给一个“无名者”角色）
+	name_edit.text = ""
+	name_edit.placeholder_text = "你的名字（例：艾拉·卡文迪什）"
 	name_row.add_child(name_edit)
 	creation_box.add_child(name_row)
+
+	# §8#70：性别下拉。同时登记进 dropdowns，这样既能让 _selected()/镜像循环统一取用，
+	# 也能让 B1 探针用通用的 _select(node, "gender", "男") 驱动。
+	var gender_row := HBoxContainer.new()
+	var gender_label := Label.new()
+	gender_label.text = "性别"
+	gender_label.custom_minimum_size = Vector2(120, 0)
+	gender_row.add_child(gender_label)
+	gender_dropdown = OptionButton.new()
+	for index in GENDERS.size():
+		gender_dropdown.add_item(GENDERS[index], index)
+		gender_dropdown.set_item_metadata(index, GENDERS[index])
+	dropdowns["gender"] = gender_dropdown
+	gender_row.add_child(gender_dropdown)
+	creation_box.add_child(gender_row)
 
 	var age_row := HBoxContainer.new()
 	var age_label := Label.new()
@@ -180,7 +202,7 @@ func _show_creation() -> void:
 
 	if _debug_mirror:
 		for key in ["era_id", "bloodline_id", "birth_identity_id", "aptitude_id", "house_id",
-				"political_leaning_id", "sim_style_id"]:
+				"political_leaning_id", "sim_style_id", "gender"]:
 			_mirror("[创建界面] %s 选项数=%d 当前=%s" % [key, (dropdowns[key] as OptionButton).item_count, _selected(key)])
 
 func _selected(key: String) -> String:
@@ -193,7 +215,7 @@ func _on_start_pressed() -> void:
 		"bloodline_id": _selected("bloodline_id"),
 		"birth_identity_id": _selected("birth_identity_id"),
 		"name_text": name_edit.text,
-		"gender": "未定",
+		"gender": str(gender_dropdown.get_item_metadata(gender_dropdown.selected)),
 		"age_years": int(age_spin.value),
 		"birthplace": "london_muggle",
 		"family_status": "由系统生成",

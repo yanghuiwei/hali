@@ -229,17 +229,22 @@ func _part1_creation_ui(node: Node) -> void:
 		"主场景指向 src/ui/main.tscn")
 	check((node.get("creation_box") as VBoxContainer).visible, "开场显示创建界面")
 	check(not (node.get("play_box") as VBoxContainer).visible, "开场不显示游戏界面")
-	check(_dropdown_count(node) == 7, "创建界面有 7 个下拉框（实际 %d）" % _dropdown_count(node))
+	check(_dropdown_count(node) == 8, "创建界面有 8 个下拉框（7 个内容表 + §8#70 新增的性别，实际 %d）" % _dropdown_count(node))
 	for key in ["era_id", "bloodline_id", "birth_identity_id", "aptitude_id", "house_id",
-			"political_leaning_id", "sim_style_id"]:
+			"political_leaning_id", "sim_style_id", "gender"]:
 		var option: OptionButton = (node.get("dropdowns") as Dictionary)[key]
 		check(option.item_count > 0, "下拉 %s 有选项（%d 项）" % [key, option.item_count])
 
 # 清单 2：哑炮角色创建
 func _part2_squib_start(node: Node) -> void:
-	part("清单 2 · 哑炮 + 姓名/年龄/性格/目标 → 开始人生")
+	part("清单 2 · 哑炮 + 姓名/性别/年龄/性格/目标 → 开始人生")
 	check(_select(node, "bloodline_id", "squib"), "能选中血统「哑炮」")
 	check(_select(node, "aptitude_id", "squib"), "能选中资质「哑炮无魔法天赋」")
+	# §8#70：必须在写入姓名**之前**检查默认值，否则测的是自己刚写进去的字符串
+	check((node.get("name_edit") as LineEdit).text.strip_edges() == "", "姓名框默认为空（不再预填「无名者」）")
+	check(not (node.get("name_edit") as LineEdit).placeholder_text.is_empty(), "姓名框带占位提示")
+	check(node.get("gender_dropdown") != null, "创建界面有性别下拉")
+	check(_select(node, "gender", "男"), "能选中性别「男」")
 	(node.get("name_edit") as LineEdit).text = "测试哑炮"
 	(node.get("age_spin") as SpinBox).value = 11
 	(node.get("goal_edit") as LineEdit).text = "我想知道魔法到底能走多远"
@@ -266,8 +271,10 @@ func _part2_squib_start(node: Node) -> void:
 	check(world.player.magic_tier == MagicLevel.Tier.SQUIB, "哑炮 magic_tier=SQUIB")
 	check(world.player.wand.is_empty(), "哑炮没有魔杖")
 	check(world.player.magic.get("known_spells", []).is_empty(), "哑炮没有已掌握魔咒")
-	note("观察（§8#69）：哑炮的 house_id = %s（正典里哑炮不进霍格沃茨）" % world.player.house_id)
-	note("观察（§8#70）：姓名来自输入框，性别恒为「%s」（创建界面没有性别输入）" % world.player.gender)
+	check(world.player.gender == "男", "性别取自创建界面下拉（world.player.gender=男）")
+	check(world.player.house_id == "none", "§8#69：哑炮不进霍格沃茨（house_id=none，即使学院下拉默认 gryffindor）")
+	note("观察（§8#69）：哑炮 house_id = %s（已按正典第七章/第二十四章修正为 none）" % world.player.house_id)
+	note("观察（§8#70）：性别取自创建界面下拉 =「%s」" % world.player.gender)
 
 # 清单 3：练魔药收益递减
 func _part3_train_deduction(node: Node) -> void:

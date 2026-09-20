@@ -115,7 +115,8 @@ func tick() -> Array:
 		if month_rng.chance("extra_rumor", 0.35 * intensity):
 			rumor_count = 2
 		for i in rumor_count:
-			var picked: Dictionary = month_rng.stream_pick("pick_%d" % i, candidates)
+			# 计划 03a（§8#16）：传入传闻模板的 weight 必须真的生效（原为均匀抽取 ⇒ 稀有度旋钮失效）
+			var picked: Dictionary = month_rng.stream_pick_weighted("pick_%d" % i, candidates, "weight")
 			if picked.is_empty():
 				continue
 			var is_major := bool(picked.get("major", false))

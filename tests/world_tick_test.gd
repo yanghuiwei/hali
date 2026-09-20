@@ -167,4 +167,54 @@ func run() -> int:
 		a.is_true(not fstate.is_empty(), "tick 后 %s 仍有状态" % str(fid))
 		a.between(float(fstate.get("power", -1.0)), 0.0, 1.0, "%s 实力在界内" % str(fid))
 
+	# ---- 计划 03a（§8#16）：weight 必须真的生效 ----
+	var t12_wrng := RngService.new(99)
+	var t12_light: Array = [{"id": "a", "weight": 0.0}, {"id": "b", "weight": 1.0}]
+	var t12_picked_b := 0
+	for i in 50:
+		var t12_picked: Dictionary = t12_wrng.stream_pick_weighted("w_test", t12_light)
+		if str(t12_picked.get("id", "")) == "b":
+			t12_picked_b += 1
+	a.eq(t12_picked_b, 50, "weight=0 的条目永远不会被抽中（50/50 次）")
+	var t12_all_zero: Array = [{"id": "a", "weight": 0.0}, {"id": "b", "weight": 0.0}]
+	a.is_true(t12_wrng.stream_pick_weighted("w_zero", t12_all_zero) != null,
+		"全零权重回退到均匀抽取，不返回 null")
+	a.is_true(t12_wrng.stream_pick_weighted("w_empty", []) == null, "空列表返回 null")
+
+	# ---- 计划 03a（§8#16）端到端：tick() 本身必须走权重（只测 helper 不足以证明接线）----
+	# 夹具：把 rumors 表换成「同一个 zone 两条」，weight=1 的在前、weight=0 的在后。
+	# 加权 ⇒ weight=0 那条永远抽不到；均匀（回到 stream_pick）⇒ 40 回合内几乎必然抽到（P(全不中)≈0.5^40）。
+	# 两条 id 的字典序 "..one" < "..zero" ⇒ 注册表排序后 weight=1 稳定在前（不受 roll==0 的边界影响）。
+	var t12_tables := {}
+	for t12_table_name in Registry.TABLE_FILES.keys():
+		var t12_entries: Array = []
+		for t12_eid in reg.ids(t12_table_name):
+			t12_entries.append(reg.entry(t12_table_name, str(t12_eid)))
+		t12_tables[t12_table_name] = t12_entries
+	a.is_true((reg.ids("rumors") as PackedStringArray).size() > 2, "E2E 前置：默认传闻表确实是多条的（未被夹具偷换）")
+	t12_tables["rumors"] = [
+		{"id": "t12_weight_one", "label": "权重一的传闻", "category": "测试", "text": "权重 1 的传闻",
+			"weight": 1.0, "major": false, "min_year": 0, "zones": ["diagon_alley"], "requires_flags": []},
+		{"id": "t12_weight_zero", "label": "权重零的传闻", "category": "测试", "text": "权重 0 的传闻",
+			"weight": 0.0, "major": false, "min_year": 0, "zones": ["diagon_alley"], "requires_flags": []},
+	]
+	var t12_reg := Registry.from_tables(t12_tables)
+	var t12_p := PlayerState.new_default()
+	t12_p.name_text = "权重测试者"
+	t12_p.location_id = "diagon_alley"
+	var t12_world := WorldState.create("modern", t12_p, 424242, t12_reg)
+	var t12_saw_one := 0
+	var t12_saw_zero := 0
+	for i in 40:
+		for t12_ev in t12_world.tick():
+			if str(t12_ev.get("kind", "")) != "rumor":
+				continue
+			match str(t12_ev.get("rumor_id", "")):
+				"t12_weight_one":
+					t12_saw_one += 1
+				"t12_weight_zero":
+					t12_saw_zero += 1
+	a.is_true(t12_saw_one > 0, "E2E：weight=1 的传闻会被抽中（实际 %d 次）" % t12_saw_one)
+	a.eq(t12_saw_zero, 0, "E2E：weight=0 的传闻 40 回合内一次都不该被抽中（tick 回到 stream_pick ⇒ 必红）")
+
 	return a.report("world_tick")
