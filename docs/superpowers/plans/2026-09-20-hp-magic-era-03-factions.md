@@ -1766,7 +1766,7 @@ Expected: 失败（摘要无「政体：」「已知势力：」）。
 	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
 	if gov_id.is_empty():
 		gov_id = WorldFactions.government_type(world)
-	out["government"] = str(world.registry.entry("governments", gov_id).get("label", gov_id))
+	out["government"] = "政体：%s" % str(world.registry.entry("governments", gov_id).get("label", gov_id))
 	var faction_parts: Array[String] = []
 	for fid in WorldFactions.visible_faction_ids(world):
 		var id := str(fid)
@@ -1775,7 +1775,7 @@ Expected: 失败（摘要无「政体：」「已知势力：」）。
 			WorldFactions.power_of(world, id),
 			world.player.standing_of(id),
 			",所属" if world.player.faction_id == id else ""])
-	out["known_factions"] = "无" if faction_parts.is_empty() else " ".join(faction_parts)
+	out["known_factions"] = "已知势力：无" if faction_parts.is_empty() else "已知势力：%s" % " ".join(faction_parts)
 	return out
 ```
 
