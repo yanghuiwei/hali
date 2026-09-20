@@ -80,6 +80,22 @@ assets/
 2. 键的**命名空间点号**（`faction.ministry`）让「内容 id」与「素材键」自动对齐，不必逐个写代码分支。
 3. `palette` 是**唯一**允许把"颜色"写进配置的地方——所有 `StyleBoxFlat`/字体色都从它取，代码里不许出现魔法颜色常量。
 
+> 🔒 **接口冻结（控制器裁定，2026-09-20）——P1–P5 一律照此实现，不得改形状。**
+>
+> 1. **`data/presentation.json` / `data/audio_cues.json` 不注册进 `Registry.TABLE_FILES`。**
+>    依据（实测读码 `src/core/registry.gd`）：`Registry` 的契约是「**Array of `{id,label}`**，且每表非空」——
+>    `from_tables()`（`:28-42`）对**非数组**表直接 `continue` ⇒ 该表在 `_tables` 里不存在 ⇒
+>    `validate()`（`:75-82`）报「缺少数据表」，`load_default()`（`:45-52`）也把非数组替成 `[]` ⇒ 报「数据表为空」。
+>    本清单是**嵌套字典**，塞进去会当场把 `registry.validate()` 弄红、并污染 `registry_test` 的既有断言。
+>    ⇒ 两张清单的加载与校验归**表现层**：`src/ui/presentation.gd`（安全加载/缓存/回退）+ `tests/presentation_test.gd`（形状 + 回退 + 与 CREDITS 对账）。
+>    「内容进 `data/`」这条铁律**不受影响**：清单确实在 `data/` 下，只是它不是「内容表」。
+> 2. 键名与嵌套层次按本节与 §3 的示例**逐字**实现：
+>    顶层只有 `fonts` / `ui` / `emblems` / `backdrops` / `portraits` / `palette`；
+>    `audio_cues.json` 顶层只有 `cues` / `bgm_by_era` / `bgm_by_location` / `master_volume`。
+> 3. 点号命名空间：`faction.<faction_id>` / `house.<house_id>` / `era.<era_id>` / `location.<location_id>` / `player.default`。
+> 4. 所有路径一律以 `res://assets/` 开头；**清单里出现的每条路径都必须能在 `assets/CREDITS.md` 总表里查到**
+>    （缺失则 `presentation_test` 红）。
+
 ## 3. 音频线索表：`data/audio_cues.json`
 
 ```json
@@ -131,7 +147,7 @@ assets/
 
 | # | 任务 | 交付 |
 | --- | --- | --- |
-| P1 | ~~目录骨架~~（**已落位**，见 §8.4）+ 两张清单表 + Registry 注册与校验（CREDITS 已建） | 可加载的清单；`validate` 通过；**清单路径必须在 CREDITS 有登记** |
+| P1 | ~~目录骨架~~（**已落位**，见 §8.4）+ 两张清单表（**不注册进 Registry**，见 §2 接口冻结）+ `Presentation` 加载 + 校验（CREDITS 已建） | 可加载的清单；清单形状断言通过；**清单里每条路径都能在 `assets/CREDITS.md` 查到** |
 | P2 | `Presentation`（安全加载/缓存/回退）+ `presentation_test`（含"缺文件必须优雅回退"的断言） | 无素材也全绿 |
 | P3 | `ThemeBuilder` + `main.gd` 应用主题 + `project.godot` 设默认主题（**含 CJK 字体**） | 中文字面可读、配色统一 |
 | P4 | `AudioDirector` + 8 个 cue 触发点接线 + BGM 切换 + 音量 | 有素材就有声、无素材静音 |
