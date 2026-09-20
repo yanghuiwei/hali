@@ -208,7 +208,7 @@
     "id": "black_market",
     "label": "翻倒巷黑市",
     "kind": "commerce",
-    "aliases": ["翻倒巷黑市", "黑市", "翻倒巷"],
+    "aliases": ["翻倒巷黑市", "黑市"],
     "legal_status": "outlaw",
     "secrecy": "semi",
     "domains": ["economy", "secrecy_enforcement"],

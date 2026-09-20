@@ -211,4 +211,99 @@ func run() -> int:
 	a.eq(w.player.standing_of("ministry"), 5, "立场累加")
 	a.is_true(int(WorldFactions.state_of(w, "ministry").get("stance_to_player", 0)) > 0, "派系态度反向变化")
 
+	# ---- 计划 03a（Task 9）：离线替身也支持派系动作（第五十章）----
+	# tie-break 规则（控制器点名风险 2）：`_detect_faction()` 按 `visible_faction_ids()`（id 字典序）
+	# 返回**第一个**命中者；下面「同句两个已揭示派系」的断言把这个确定性规则钉住。
+	var sg := ScriptedGameMaster.new(RngService.new(7))
+
+	# 加入：产出 join_faction，端到端写入所属
+	var sw := make_world()
+	WorldFactions.initialize(sw)
+	var join_res := sg.act(sw, "我要加入魔法部")
+	var joined := false
+	for d in join_res.deltas:
+		if str(d.get("op", "")) == "join_faction" and str(d.get("faction_id", "")) == "ministry":
+			joined = true
+	a.is_true(joined, "关键词「加入魔法部」产出 join_faction")
+	a.is_true(join_res.tags.has("faction"), "派系动作打 faction 标签")
+	a.is_true(join_res.narration.contains("魔法部"), "加入旁白用内容表的 label（不硬编码）")
+	StateOps.apply(sw, join_res.deltas)
+	a.eq(sw.player.faction_id, "ministry", "端到端：加入后所属写入")
+
+	# 退出：产出 leave_faction，端到端清空所属
+	var leave_res := sg.act(sw, "我要退出魔法部")
+	var leaving := false
+	for d in leave_res.deltas:
+		if str(d.get("op", "")) == "leave_faction":
+			leaving = true
+	a.is_true(leaving, "关键词「退出」产出 leave_faction")
+	StateOps.apply(sw, leave_res.deltas)
+	a.eq(sw.player.faction_id, "", "端到端：退出后所属清空")
+
+	# 支持 / 反对：产出正负立场
+	var support_res := sg.act(sw, "我公开支持魔法部")
+	var support_delta := 0
+	for d in support_res.deltas:
+		if str(d.get("op", "")) == "faction_standing_delta":
+			support_delta = int(d.get("delta", 0))
+	a.eq(support_delta, 5, "关键词「支持」产出 +5 立场")
+	var oppose_res := sg.act(sw, "我要抗议魔法部")
+	var oppose_delta := 0
+	for d in oppose_res.deltas:
+		if str(d.get("op", "")) == "faction_standing_delta":
+			oppose_delta = int(d.get("delta", 0))
+	a.eq(oppose_delta, -5, "关键词「抗议」产出 -5 立场")
+
+	# 控制器点名风险 4：泛称别名「部长」映射到魔法部（有意），且仅在该派系可见时命中
+	var minister_res := sg.act(sw, "我支持部长")
+	var minister_delta := 0
+	for d in minister_res.deltas:
+		if str(d.get("op", "")) == "faction_standing_delta" and str(d.get("faction_id", "")) == "ministry":
+			minister_delta = int(d.get("delta", 0))
+	a.eq(minister_delta, 5, "泛称别名「部长」映射到魔法部")
+
+	# 控制器点名风险 3：未揭示派系（第四十三/五十七章）
+	a.eq(sg._detect_faction(sw, "我要加入食死徒"), "", "未揭示派系识别为空")
+	a.eq(sg._detect_faction(sw, "我支持那个人"), "", "未揭示派系的泛称别名也不命中")
+	var hidden_res := sg.act(sw, "我要加入食死徒")
+	a.eq(hidden_res.deltas.size(), 0, "未揭示派系的动作不产出任何 op")
+	a.is_true(hidden_res.tags.has("idle"), "未揭示派系的动作落到 idle")
+
+	# 控制器点名风险 2：同句两个已揭示派系 → 取 id 字典序第一个（gringotts < ministry）
+	var two_res := sg.act(sw, "我支持魔法部和古灵阁")
+	var two_id := ""
+	for d in two_res.deltas:
+		if str(d.get("op", "")) == "faction_standing_delta":
+			two_id = str(d.get("faction_id", ""))
+	a.eq(two_id, "gringotts", "同句多派系：确定性取 id 字典序第一个")
+
+	# 控制器点名风险 1：普通动作不得被派系分支吞掉（tags 必须走原分支，且不产出派系 op）
+	var plain_cases := {
+		"我去对角巷打工赚钱": "work",
+		"我要练习魔药学": "train",
+		"我去打听消息": "social",
+		"我要休息一下": "rest",
+		"我念出 照明咒": "cast",
+	}
+	for plain_text in plain_cases.keys():
+		var plain_res := sg.act(sw, str(plain_text))
+		a.is_true(plain_res.tags.has(str(plain_cases[plain_text])),
+			"「%s」仍走原分支 %s" % [str(plain_text), str(plain_cases[plain_text])])
+		var faction_ops := 0
+		for d in plain_res.deltas:
+			if ["join_faction", "leave_faction", "faction_standing_delta"].has(str(d.get("op", ""))):
+				faction_ops += 1
+		a.eq(faction_ops, 0, "「%s」不产出派系 op" % str(plain_text))
+
+	# 控制器裁定：黑市别名不得含裸地点名「翻倒巷」（否则「去翻倒巷」被误判成派系动作）
+	var bm_aliases: Array = sw.registry.entry("factions", "black_market").get("aliases", [])
+	a.is_false(bm_aliases.has("翻倒巷"), "black_market.aliases 不再含裸地点名「翻倒巷」")
+	a.is_true(bm_aliases.has("黑市"), "黑市简称保留")
+	a.is_true(bm_aliases.has("翻倒巷黑市"), "黑市正式别名保留")
+	a.eq(sg._detect_faction(sw, "我去翻倒巷买点材料"), "", "揭示前：裸地名不识别为派系动作")
+	WorldFactions.reveal(sw, "black_market", "破釜酒吧传闻")
+	a.eq(sg._detect_faction(sw, "我去翻倒巷买点材料"), "", "揭示后：裸地名仍不识别为派系动作")
+	a.eq(sg._detect_faction(sw, "我要加入翻倒巷黑市"), "black_market", "揭示后：正式别名「翻倒巷黑市」可识别")
+	a.eq(sg._detect_faction(sw, "我要加入黑市"), "black_market", "揭示后：简称「黑市」可识别")
+
 	return a.report("gm")
