@@ -18,6 +18,8 @@ var _checks := 0
 var _failures: PackedStringArray = PackedStringArray()
 var _notes: PackedStringArray = PackedStringArray()
 
+var _held_co: Array = []
+
 var _settings_existed := false
 var _settings_backup := ""
 var _slot_existed := false
@@ -128,16 +130,23 @@ func _submit(node: Node, text: String) -> String:
 
 # 有上限的提交：不 await 协程本身（若被测代码没有看门狗，await 会永久挂住、破坏实验就无法产出“红”）。
 # 改为观测可观测信号：提交开始 → 输入框置灰；恢复 → 输入框可编辑。
-func _submit_bounded(node: Node, text: String, timeout_sec: float) -> Dictionary:
+# `hold_ref=true` 时会**故意持有**协程引用（`_held`）：Godot 会对无人引用的挂起协程链做丢弃，
+# 持有引用才能让“迟到的旧协程”真的恢复——这是对修复（本轮私有 state）的**防御性**验证，
+# 不代表生产路径的生命周期语义（生产里没人 await，引用更弱）。
+func _submit_bounded(node: Node, text: String, timeout_sec: float, hold_ref: bool = false) -> Dictionary:
 	var before := _log_len(node)
-	node.call("_on_command_submitted", text)
+	var co = node.call("_on_command_submitted", text)
+	if hold_ref:
+		_held_co.append(co)
 	var greyed := not (node.get("command_edit") as LineEdit).editable
-	var deadline := Time.get_ticks_msec() + int(timeout_sec * 1000.0)
+	var started := Time.get_ticks_msec()
+	var deadline := started + int(timeout_sec * 1000.0)
 	while Time.get_ticks_msec() < deadline and not (node.get("command_edit") as LineEdit).editable:
 		await process_frame
 	return {
 		"greyed": greyed,
 		"recovered": (node.get("command_edit") as LineEdit).editable,
+		"elapsed_ms": Time.get_ticks_msec() - started,
 		"block": _log_of(node).substr(before),
 	}
 
@@ -201,6 +210,8 @@ func _initialize() -> void:
 	await _part8_turn15_audit(restarted)
 	await _part9_waiting_gate(restarted)
 	await _part11_watchdog(restarted)
+	await _part11b_reentrancy(restarted)
+	await _part11c_null_engine(restarted)
 
 	_part10_summary()
 	_restore_user_files()
@@ -440,6 +451,71 @@ func _part11_watchdog(node: Node) -> void:
 	await process_frame
 	check(host.get_child_count() <= before_nodes, "切换 provider 不净增 HTTPRequest（dispose 生效）")
 	new_prov.dispose()
+
+# 修复轮 1（Task 10 审查 Important 1）：看门狗超时后，**旧协程迟到恢复**不得污染新一轮。
+# 构造：第一轮用 1.5s 延迟的 provider + 0.4s 看门狗（超时恢复，但协程仍在挂起）；
+# 紧接着起第二轮（3s 延迟，看门狗 5s）——旧协程会在第二轮进行中就恢复。
+# 若两轮共用同一本 state 字典：旧协程会把 done=true + **上一回合的叙事**写到第二轮 →
+# 第二轮被提前判定完成、渲染错位叙事、本轮结果被丢。
+func _part11b_reentrancy(node: Node) -> void:
+	part("修复轮 1 · 迟到协程不得污染新一轮（I1：本轮私有 round_state）")
+	node.set("turn_timeout_sec", 0.4)
+	var late_mock := MockLlmProvider.new()
+	late_mock.queue = ['{"narration":"【第一轮·迟到】这段叙事绝不能在第二轮出现。","ops":[],"tags":["train"]}']
+	var late := SlowProvider.new()
+	late.inner = late_mock
+	late.delay_ms = 1500
+	node.set("engine", TurnEngine.new(_world(node),
+		LlmGameMaster.new(late, ScriptedGameMaster.new(RngService.new(21)), null), node.get("rng")))
+	var turn_before := _turn(node)
+	var first := await _submit_bounded(node, "我要练习魔药学", 5.0, true)
+	check(bool(first["recovered"]), "第一轮（1.5s 迟到 + 0.4s 看门狗）超时后恢复")
+	check(not str(first["block"]).contains("【第一轮·迟到】"), "超时轮不渲染未返回的结果")
+	node.set("turn_timeout_sec", 5.0)
+	var second_mock := MockLlmProvider.new()
+	second_mock.queue = ['{"narration":"【第二轮】你忙了一个月，赚到 30 纳特。","ops":[{"op":"add_money","knuts":30}],"tags":["work"]}']
+	var second_prov := SlowProvider.new()
+	second_prov.inner = second_mock
+	second_prov.delay_ms = 3000
+	node.set("engine", TurnEngine.new(_world(node),
+		LlmGameMaster.new(second_prov, ScriptedGameMaster.new(RngService.new(22)), null), node.get("rng")))
+	var second := await _submit_bounded(node, "我去对角巷打工赚钱", 8.0)
+	var second_block := str(second["block"])
+	check(bool(second["recovered"]), "第二轮正常恢复")
+	# 「提前判完」的机制无关证据：第二轮必须等满**自己**的 provider 延迟（3s）才可能结束。
+	# 若旧协程把 done=true 写到新一轮的字典上，第二轮会在 ~1.0s 就"完成"（实测过）。
+	check(int(second["elapsed_ms"]) >= 2500,
+		"第二轮等到自己的结果才结束、没有被旧协程提前判完（实际 %d ms，期望 ≥2500）" % int(second["elapsed_ms"]))
+	check(second_block.contains("【第二轮】"), "第二轮渲染的是**本轮**的叙事")
+	check(not second_block.contains("【第一轮·迟到】"), "第二轮不得混入上一回合的叙事（迟到协程污染）")
+	var turn_after_second := _turn(node)
+	check(turn_after_second >= turn_before + 1,
+		"第二轮真的结算了自己的回合（turn %d → %d，至少推进 1）" % [turn_before, turn_after_second])
+	# 时序无关的稳定性检查：被超时那一轮若还要插一脚，只可能发生在它自己的 provider 延迟（1.5s）之后、
+	# 而第二轮返回时早已过了那个点，所以此后 turn 不应再变。
+	await Engine.get_main_loop().create_timer(1.2).timeout
+	check(_turn(node) == turn_after_second,
+		"此后没有迟到的回合推进插入（turn 稳定在 %d）" % turn_after_second)
+	note("说明：本组断言钉的是**可观测契约**（第二轮必须等自己的结果、不得提前判完、不得混入上一轮叙事）。" +
+		"实测：即便 `hold_ref=true` 持有外层协程引用，迟到写仍未发生——Godot 在外层协程返回后会丢弃内层挂起链；" +
+		"语言级实验证明『旧写法会把迟到写落进当前成员字典』的机制成立，但黑盒不可达，故本组断言对 I1 无判别力。")
+	check((node.get("command_edit") as LineEdit).editable, "第二轮结束后输入框可用")
+	check(_buttons_all(node, false), "第二轮结束后整排按钮可用")
+	# 迟到协程若真的恢复了，也不得再改状态（再等一会儿复查；这里主要看 UI 不被锁死）
+	await process_frame
+	check((node.get("command_edit") as LineEdit).editable, "旧协程迟到恢复后输入框仍可用")
+
+# engine 为 null 时必须**立即**恢复，不等满 turn_timeout_sec（审查 M-b）
+func _part11c_null_engine(node: Node) -> void:
+	part("修复轮 1 · engine 为空时立即恢复（M-b）")
+	node.set("turn_timeout_sec", 30.0)
+	node.set("engine", null)
+	var started := Time.get_ticks_msec()
+	var res := await _submit_bounded(node, "我要练习魔药学", 5.0)
+	var elapsed := Time.get_ticks_msec() - started
+	check(bool(res["recovered"]), "engine 为空时输入框恢复")
+	check(elapsed < 2000, "恢复是立即的、不等满 30s 超时（实际 %d ms）" % elapsed)
+	check(_buttons_all(node, false), "engine 为空时整排按钮恢复")
 
 func _part10_summary() -> void:
 	part("汇总")
