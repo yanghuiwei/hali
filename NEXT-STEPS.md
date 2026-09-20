@@ -104,8 +104,13 @@ main scene ready, godot=4.7.2-stable (official)
     - （原「GUI 等待期不卡死（需 B1）」已在 B1 自动验收里用 mock 慢 provider 覆盖置灰/恢复；真机几十秒等待仍属本条。）
   - ⚠️ **安全**：仓库是 **public**，报告内网地址用占位符；**建议轮换该 key**（已出现在会话记录里）。
 
-- [ ] **B3 计划 03「派系与政治经济」启动**
+- [~] **B3 计划 03「派系与政治经济」启动** —— 🔶 **2026-09-20 进行中**
+  - ✅ **范围裁定（用户，2026-09-20）**：一个 spec 装不下，拆为 **03a 政治与派系骨架（先做）→ 03b 经济骨架 → 03c 社会与法律**；用户选 **(A)** 先做 03a。
+  - ✅ 分支已建：`plan-03-factions`（从 `main`@`685af4b`）。
+  - ✅ spec 已写：`docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md`（289 行）—— **待用户评审（评审通过前不写实现代码，brainstorming 硬门禁）**。评审时请顺带回答 spec §3 末尾的 4 个问题（Q1 是否含国际实体 / Q2 面板新增【已知势力】行 / Q3 能否加入食死徒 / Q4 是否把 revealed 派系暴露给 LLM 提示词）。
+  - ⏭️ 下一步：评审通过 → writing-plans 出 `docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md`（13 任务草案：内容表/WorldFactions/玩家立场与 op/tick 演化/社会矛盾与政治事件/面板重写/信息揭示/UI 接线/顺手项 3 组/收尾）。
   - 边界见计划 02 spec §15：03 派系与政治经济（`world_vars` 之外的九大支柱）→ 04 神奇生物生态与区域危险度 → 05 NPC 自主与信息可信度 → 06 多世代传承与世界记忆。
+    - 🔄 **2026-09-20 细化**：只把「03」拆成三个子计划（03a/03b/03c，编号沿用原 03 前缀），**04/05/06 编号不变**（即「03 派系与政治经济」仍对应 03a+03b+03c 三块）。
   - 流程（沿用计划 01/02）：`git checkout main && git checkout -b plan-03-...` → brainstorming 探需求 → 写 spec（`docs/superpowers/specs/`）→ writing-plans 出计划（`docs/superpowers/plans/`）→ 逐任务 brief → worker → 绿灯 → 报告 → 只读 reviewer → 台账 → 合入 `main`。
   - spec 里要顺带处理的世界观级遗留：`power_panel` 7 标签映射到 4 个 `world_vars`（HANDOFF §8#7）、`rumors.weight` 与 `wand_cores.rarity` 声明了但未生效（§8#16/#21）。
   - **2026-09-20 裁定带入**：`NEXT-STEPS.md` §C 全表项（尤其 `§8#58`、`§8#61–#65` 计划 02 遗留）**不单开加固批次**，由计划 03 顺手处理 —— 启动 03 时把这 6 条列入任务拆解（`§8#61/#64/#65` 是完全廉价的单点修，`§8#62/#63` 要动 UI/provider）。
