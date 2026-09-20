@@ -28,10 +28,104 @@ func run() -> int:
 	var p := Presentation.load_default()
 
 	_test_theme(a, p)
+	_test_textured_styleboxes(a, p)
 	_test_audio(a, p)
 	_test_wiring(a)
 
 	return a.report("theme_audio")
+
+
+# ---------------- B8（P5b）：切片接进主题 ----------------
+
+const BUTTON_NORMAL_PNG := "res://assets/ui/button_normal.png"
+const BUTTON_HOVER_PNG := "res://assets/ui/button_hover.png"
+const BUTTON_PRESSED_PNG := "res://assets/ui/button_pressed.png"
+const TEXTFIELD_PNG := "res://assets/ui/textfield.png"
+const SCROLLBAR_BG_PNG := "res://assets/ui/scrollbar_bg.png"
+const SCROLLBAR_GRAB_PNG := "res://assets/ui/scrollbar_grab.png"
+
+
+# 说明：这些断言不加 `VScrollBar.new()` 这类**控件实例**——非 RefCounted 的节点不 free 会在退出时
+# 报「RID allocations leaked」= 多一条 `ERROR:` ⇒ 直接打破 `tools/test.sh` 的 stderr 噪音门禁。
+func _test_textured_styleboxes(a: TestAssert, p: Presentation) -> void:
+	var theme := ThemeBuilder.build(p)
+
+	# ① 真实清单：接线真的生效（防「清单元件但没人消费」的死旋钮）
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		a.is_true(theme.get_stylebox(state, "Button") is StyleBoxTexture,
+			"真实清单：Button.%s 是九宫格贴图（B8 接线生效）" % state)
+	a.is_true(theme.get_stylebox("normal", "OptionButton") is StyleBoxTexture,
+		"OptionButton 与 Button 用同一套按钮贴图（否则创建界面两类控件观感不一致）")
+	a.is_true(theme.get_stylebox("normal", "LineEdit") is StyleBoxTexture, "真实清单：LineEdit.normal 是贴图")
+	a.is_true(theme.get_stylebox("read_only", "LineEdit") is StyleBoxTexture, "真实清单：LineEdit.read_only 用同一张贴图")
+	for bar in ["VScrollBar", "HScrollBar"]:
+		a.is_true(theme.get_stylebox("scroll", bar) is StyleBoxTexture, "真实清单：%s.scroll 是贴图" % bar)
+		a.is_true(theme.get_stylebox("grabber", bar) is StyleBoxTexture, "真实清单：%s.grabber 是贴图" % bar)
+	a.is_true(theme.has_stylebox("scroll", "VScrollBar"), "真实清单 ⇒ 明确设了 VScrollBar.scroll（不是靠内置默认主题）")
+
+	# ② 贴图路径必须就是清单里那几张（防接错文件）
+	var bn := theme.get_stylebox("normal", "Button") as StyleBoxTexture
+	a.is_true(bn != null and bn.texture != null
+			and bn.texture.resource_path.ends_with("button_normal.png"),
+		"Button.normal 的贴图就是清单里的 button_normal.png")
+	var tf := theme.get_stylebox("normal", "LineEdit") as StyleBoxTexture
+	a.is_true(tf != null and tf.texture != null and tf.texture.resource_path.ends_with("textfield.png"),
+		"LineEdit.normal 的贴图就是清单里的 textfield.png")
+	var sb := theme.get_stylebox("scroll", "VScrollBar") as StyleBoxTexture
+	a.is_true(sb != null and sb.texture != null and sb.texture.resource_path.ends_with("scrollbar_bg.png"),
+		"滚动条槽的贴图就是清单里的 scrollbar_bg.png")
+
+	# ③ 不该被接的：focus 必须仍是扁平（焦点环叠在按钮之上，不透明贴图会盖住本体）；
+	#    panel_bg 未接（需真实布局落点，B8 范围外）
+	a.is_true(theme.get_stylebox("focus", "Button") is StyleBoxFlat, "Button.focus 仍是扁平焦点环")
+	a.is_true(theme.get_stylebox("panel", "PanelContainer") is StyleBoxFlat, "PanelContainer.panel 仍是扁平（panel_bg 未接）")
+	a.is_true(theme.get_stylebox("normal", "CheckBox") is StyleBoxFlat, "CheckBox 不套按钮贴图（勾选框本体不是按钮底）")
+
+	# ④ 逐键独立回退：只配一个 hover ⇒ 只有 hover 变贴图，其余仍扁平
+	var only_hover := Presentation.from_dicts({
+		"ui": {"button_hover": {"path": BUTTON_HOVER_PNG, "nine_patch": [1, 2, 3, 4]}},
+	}, {})
+	var ht := ThemeBuilder.build(only_hover)
+	a.is_true(ht.get_stylebox("hover", "Button") is StyleBoxTexture, "只配 ui.button_hover ⇒ hover 用贴图")
+	a.is_true(ht.get_stylebox("normal", "Button") is StyleBoxFlat, "只配 hover ⇒ normal 仍回退扁平（逐键独立）")
+	a.is_true(ht.get_stylebox("pressed", "Button") is StyleBoxFlat, "只配 hover ⇒ pressed 仍回退扁平")
+	a.is_true(ht.get_stylebox("disabled", "Button") is StyleBoxFlat, "只配 hover ⇒ disabled 仍回退扁平")
+
+	# ⑤ 九宫格顺序：[上,右,下,左]（spec §2 约定 4）。用**非对称值**，否则左右/上下写反也测不出来。
+	var hb := ht.get_stylebox("hover", "Button") as StyleBoxTexture
+	a.eq(hb.texture_margin_top, 1.0, "nine_patch [1,2,3,4] 的『上』= 第 1 个数")
+	a.eq(hb.texture_margin_right, 2.0, "…的『右』= 第 2 个数")
+	a.eq(hb.texture_margin_bottom, 3.0, "…的『下』= 第 3 个数")
+	a.eq(hb.texture_margin_left, 4.0, "…的『左』= 第 4 个数")
+
+	# ⑥ content_margin 与扁平盒一致 ⇒ 换素材不会让文字位置/最小高度跳一下
+	a.eq(hb.content_margin_left, ThemeBuilder.CONTENT_MARGIN_H, "贴图盒的内容边距与扁平盒一致（横向）")
+	a.eq(hb.content_margin_top, ThemeBuilder.CONTENT_MARGIN_V, "贴图盒的内容边距与扁平盒一致（纵向）")
+
+	# ⑦ 调制色：保留「禁用/只读看上去更暗」的可用性信号；grabber 三态同图但靠调制区分
+	a.ne((theme.get_stylebox("disabled", "Button") as StyleBoxTexture).modulate_color, ThemeBuilder.TINT_NONE,
+		"禁用态用中性贴图 + 调制（保留「变暗」信号，不是原色贴图）")
+	a.ne((theme.get_stylebox("read_only", "LineEdit") as StyleBoxTexture).modulate_color, ThemeBuilder.TINT_NONE,
+		"只读输入框用同一贴图 + 调制（保留「更暗」信号）")
+	a.eq((theme.get_stylebox("grabber", "VScrollBar") as StyleBoxTexture).modulate_color, ThemeBuilder.TINT_NONE,
+		"grabber 常态不加调制（原色）")
+	a.ne((theme.get_stylebox("grabber_highlight", "VScrollBar") as StyleBoxTexture).modulate_color, ThemeBuilder.TINT_NONE,
+		"grabber 悬停态是同一贴图的调制派生（不设会回落到内置默认盒子，观感突变）")
+	a.ne((theme.get_stylebox("grabber_pressed", "VScrollBar") as StyleBoxTexture).modulate_color, ThemeBuilder.TINT_NONE,
+		"grabber 按下态同样有调制派生")
+
+	# ⑧ 缺键 ⇒ **与改造前一致**：滚动条保持「未设」（继续用内置默认样式），**不得**补一个扁盒子
+	var flat := ThemeBuilder.build(Presentation.from_dicts({"palette": {"text": "#010203"}}, {}))
+	a.is_true(flat.get_stylebox("normal", "Button") is StyleBoxFlat, "无 ui.* ⇒ Button 回退扁平")
+	a.is_false(flat.has_stylebox("scroll", "VScrollBar"), "无 ui.scrollbar_bg ⇒ **不设** VScrollBar.scroll（与改造前一致，不引入新观感）")
+	a.is_false(flat.has_stylebox("grabber", "VScrollBar"), "无 ui.scrollbar_grab ⇒ 不设 grabber")
+	a.is_false(flat.has_stylebox("scroll", "HScrollBar"), "HScrollBar 同理")
+
+	# ⑨ 清单写了路径但**文件不存在** ⇒ 同样回退（不崩、不报错）
+	var bad := ThemeBuilder.build(Presentation.from_dicts({
+		"ui": {"button_normal": {"path": "res://assets/ui/__nope__.png", "nine_patch": [1, 2, 3, 4]}},
+	}, {}))
+	a.is_true(bad.get_stylebox("normal", "Button") is StyleBoxFlat, "路径指向不存在的贴图 ⇒ 回退扁平（不崩）")
 
 
 # ---------------- P3：ThemeBuilder ----------------

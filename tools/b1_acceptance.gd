@@ -231,8 +231,18 @@ func _part12_theme_audio(node: Node, restarted: Node) -> void:
 	var theme: Theme = node.get("theme")
 	check(theme != null, "根节点挂了 Theme（ThemeBuilder.build 真的被应用）")
 	if theme != null:
-		check(theme.get_stylebox("normal", "Button") is StyleBoxFlat,
-			"主题里 Button 的 normal 槽位来自 ThemeBuilder（不是 Godot 默认）")
+		# ⚠️ B8（P5b）修正：原断言用「`is StyleBoxFlat`」当「来自 ThemeBuilder」的**代理**，
+		# 但实测它**从来不是判别器**——Godot 内置默认主题的 `Button.normal` **也是** `StyleBoxFlat`
+		# （content_margin 4/4/4/4）。B8 之后我们这层的 normal 换成九宫格贴图（`StyleBoxTexture`）
+		# ⇒ 代理当场失效，才把这个假绿暴露出来。
+		# 换用**真判别器**：内容边距 == `ThemeBuilder.CONTENT_MARGIN_H`（内置默认 4，我们是 8）。
+		# 该值对扁平盒与贴图盒**都**成立（`_box()` 与 `_textured()` 共用同一常量）
+		# ⇒ 以后在「扁平/贴图」之间切换素材，这条断言不会假红也不会假绿。
+		var button_normal: StyleBox = theme.get_stylebox("normal", "Button")
+		check(button_normal != null
+				and is_equal_approx(button_normal.content_margin_left, ThemeBuilder.CONTENT_MARGIN_H),
+			"主题里 Button 的 normal 槽位来自 ThemeBuilder（内容边距 = %s，内置默认是 4）"
+				% str(ThemeBuilder.CONTENT_MARGIN_H))
 		check(theme.get_color("font_color", "Label").a == 1.0, "Label 前景色是不透明色（palette 真的读到了）")
 	var audio: AudioDirector = node.get("audio")
 	check(audio != null, "根节点下建了 AudioDirector")

@@ -3,6 +3,15 @@
 		"body": {"path": "res://assets/fonts/body_cjk.ttf", "size": 16},
 		"title": {"path": "res://assets/fonts/Cinzel-Variable.ttf", "size": 28}
 	},
+	"ui": {
+		"button_normal": {"path": "res://assets/ui/button_normal.png", "nine_patch": [8, 8, 8, 6]},
+		"button_hover": {"path": "res://assets/ui/button_hover.png", "nine_patch": [8, 8, 8, 6]},
+		"button_pressed": {"path": "res://assets/ui/button_pressed.png", "nine_patch": [8, 8, 8, 6]},
+		"button_neutral": {"path": "res://assets/ui/button_neutral.png", "nine_patch": [8, 8, 8, 6]},
+		"textfield": {"path": "res://assets/ui/textfield.png", "nine_patch": [5, 4, 4, 5]},
+		"scrollbar_bg": {"path": "res://assets/ui/scrollbar_bg.png", "nine_patch": [5, 4, 4, 4]},
+		"scrollbar_grab": {"path": "res://assets/ui/scrollbar_grab.png"}
+	},
 	"icons": {
 		"barn_owl": "res://assets/icons/barn-owl.svg",
 		"bolt_spell_cast": "res://assets/icons/bolt-spell-cast.svg",
