@@ -42,6 +42,8 @@ bash tools/test.sh                        # 期望 EXIT=0；18 套件、**1746 �
 timeout 300 bash tools/b1_acceptance.sh   # 期望 EXIT=0；探针 105 断言 / 0 失败（会临时移走 llm_settings.json 并逐字还原）
 ```
 
+> 📋 **新会话开场语**：整段可直接复制的内容在 [`NEXT-SESSION-PROMPT.md`](NEXT-SESSION-PROMPT.md)（体检命令 + 读文件顺序 + 接下来做什么 + 流程铁律 + 运行纪律）。下面是同一份信息的展开版。
+
 **读文件顺序（不要跳）**
 
 1. `HANDOFF.md` —— 现状、铁律、§4 踩坑、§7 耐久副本规则、§8 待裁定项
