@@ -22,14 +22,25 @@ var personality_edit: LineEdit = null
 var creation_error: Label = null
 var button_row: HBoxContainer = null
 
+# B1 人工验收用：HALI_DEBUG_LOG=1 时把界面文本镜像到 stdout（默认关闭，行为完全不变）。
+var _debug_mirror: bool = false
+
 func _ready() -> void:
 	registry = Registry.load_default()
 	var errors := registry.validate()
 	for e in errors:
 		push_warning("内容表问题：%s" % e)
 	print("main scene ready, godot=", Engine.get_version_info().string)
+	_debug_mirror = DebugMirror.from_env()
+	if _debug_mirror:
+		print(DebugMirror.format("调试镜像已启用：界面文本将镜像到 stdout（user://logs/*.log）；内容表问题 %d 条" % errors.size()))
 	_build_ui()
 	_show_creation()
+
+# 镜像通道的**唯一出口**：所有对外可见的界面文本都经这里，方便 B1 从外部观测。
+func _mirror(text: String) -> void:
+	if _debug_mirror:
+		print(DebugMirror.format(text))
 
 func _build_ui() -> void:
 	root_box = VBoxContainer.new()
@@ -38,7 +49,7 @@ func _build_ui() -> void:
 	add_child(root_box)
 
 	status_label = Label.new()
-	status_label.text = "《哈利·波特·魔法纪元》魔法世界沙盘·超高自由度人生模拟器"
+	_set_status("《哈利·波特·魔法纪元》魔法世界沙盘·超高自由度人生模拟器")
 	root_box.add_child(status_label)
 
 	creation_box = VBoxContainer.new()
@@ -158,6 +169,11 @@ func _show_creation() -> void:
 	load_btn.pressed.connect(_on_load)
 	creation_box.add_child(load_btn)
 
+	if _debug_mirror:
+		for key in ["era_id", "bloodline_id", "birth_identity_id", "aptitude_id", "house_id",
+				"political_leaning_id", "sim_style_id"]:
+			_mirror("[创建界面] %s 选项数=%d 当前=%s" % [key, (dropdowns[key] as OptionButton).item_count, _selected(key)])
+
 func _selected(key: String) -> String:
 	var option: OptionButton = dropdowns[key]
 	return str(option.get_item_metadata(option.selected))
@@ -181,11 +197,16 @@ func _on_start_pressed() -> void:
 		"life_goal": goal_edit.text,
 		"sim_style_id": _selected("sim_style_id"),
 	}
+	for key in ["era_id", "bloodline_id", "birth_identity_id", "aptitude_id", "house_id", "political_leaning_id", "sim_style_id"]:
+		_mirror("[创建] %s = %s" % [key, str(choices[key])])
+	_mirror("[创建] 姓名=%s 性别=%s 年龄=%d 目标=%s 性格=%s" % [choices["name_text"], choices["gender"],
+		choices["age_years"], choices["life_goal"], str(choices["personality"])])
 	rng = RngService.new(SEED_SALT + Time.get_ticks_msec() % 100000)
 	var result := CharacterCreation.create(choices, registry, rng)
 	if result.errors.size() > 0:
 		_show_creation_error("创建失败：\n%s" % "\n".join(result.errors))
 		return
+	_mirror("[创建] 成功：%s（种子 %d）" % [result.player.name_text, rng.seed_value])
 	world = WorldState.create(choices["era_id"], result.player, rng.seed_value, registry)
 	engine = TurnEngine.new(world, _build_gm(), rng)
 	creation_box.visible = false
@@ -208,17 +229,29 @@ func _build_gm() -> GameMaster:
 	var settings := LlmSettings.load_from()
 	if settings.is_configured():
 		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng), settings)
-	status_label.text += "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
+	_set_status(status_label.text + "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）")
 	return ScriptedGameMaster.new(rng)
 
 func _append(text: String) -> void:
 	log_view.append_text(text + "\n")
+	_mirror(text)
+
+# 状态行是所有「未配置提示」的唯一落点（创建路径与此后的读档路径共用），故这里也镜像。
+func _set_status(text: String) -> void:
+	status_label.text = text
+	_mirror("[状态行] " + text)
+
+# 输入框可编辑性同样镜像：B1 要确认等待 LLM 期间置灰、结束后恢复。
+func _set_input_enabled(enabled: bool) -> void:
+	command_edit.editable = enabled
+	_mirror("[输入框] editable=%s" % str(enabled))
 
 # 创建/读档失败时，creation_box 可能仍在前台：错误必须写进可见的 creation_error，而不是隐藏的 log_view。
 func _show_creation_error(message: String) -> void:
 	if creation_error != null:
 		creation_error.text = message
 	push_warning(message)
+	_mirror("[创建界面错误] " + message)
 	if log_view != null:
 		log_view.append_text(message + "\n")
 
@@ -232,7 +265,7 @@ func _on_command_submitted(text: String) -> void:
 		_append("（自检已确认。世界继续向前。）")
 		command_edit.text = ""
 		return
-	command_edit.editable = false
+	_set_input_enabled(false)
 	_set_buttons_enabled(false)
 	_append(">>> %s" % text)
 	_append("（世界正在回应…）")
@@ -246,9 +279,9 @@ func _on_command_submitted(text: String) -> void:
 	if str(result["audit"]) != "":
 		_append(str(result["audit"]))
 		_append("（自检完毕。等待你的指令——输入“确认自检”继续。）")
-	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
+	_set_status(PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn)
 	_set_buttons_enabled(true)
-	command_edit.editable = true
+	_set_input_enabled(true)
 	command_edit.text = ""
 
 # 等待 LLM 期间禁用整排按钮，防止“读档”等操作在 in-flight 回合中替换 world/engine。
@@ -258,6 +291,7 @@ func _set_buttons_enabled(enabled: bool) -> void:
 	for child in button_row.get_children():
 		if child is Button:
 			(child as Button).disabled = not enabled
+	_mirror("[按钮] 整排 %s" % ("可用" if enabled else "禁用"))
 
 func _on_status() -> void:
 	if world != null:
@@ -294,7 +328,7 @@ func _on_load() -> void:
 	rng = RngService.new(world.game_seed)
 	creation_box.visible = false
 	play_box.visible = true
-	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
+	_set_status(PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn)
 	# 先设状态行，再建 GM：_build_gm 在未配置时会向状态行追加提示（F4）
 	engine = TurnEngine.new(world, _build_gm(), rng)
 	if creation_error != null:

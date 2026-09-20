@@ -24,13 +24,13 @@
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
 | 执行分支 | **`main`**（计划 01 与计划 02 均已合入；**后续计划从 `main` 拉新分支**） |
 | `main` | 已包含**计划 01 全部**（Task 1–11 + 收尾加固，分支顶端 `026efe3`）与**计划 02 全部**（Tasks 1–12，收口 `1f82483`，合入记录 `d885cf9`）。 |
-| 当前 HEAD | `main`（顶端以 `git log --oneline -1` 为准；写本文件时 = `f2b4abf` 的 NEXT-STEPS 提交） |
+| 当前 HEAD | `main`（顶端以 `git log --oneline -1` 为准；**不要把 HEAD 钉死在文档里**——已漂移两次，见 §9 自检清单第 1 条） |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
 git checkout main        # 计划 01 + 计划 02 均已并入 main（接着开发的也从这里拉分支）
-git log --oneline -3     # 顶部应是本次 docs 提交（其历史里含 d885cf9 / 1f82483 / a48f108 / 15c1ff0 / f2b4abf）
+git log --oneline -3     # 顶部应是本次 docs 提交（其历史里含 3240af6 / d885cf9 / 1f82483 / a48f108 / 15c1ff0 / f2b4abf）
 ```
 
 **计划 01 的历史**（仅供追溯，不代表当前 HEAD）：收尾时把 `plan-01-core-foundation` 合回了 `main`。远端 PR #2 实际合并的是 Task 5 的旧 tip `d4186c5`（不含 Task 6–11），因此本地以 `026efe3` 把旧 merge 与完整分支合并修正，`origin/main` 与 `b196d26` 的 tree 完全一致。
@@ -64,15 +64,17 @@ GODOT=godot bash tools/test.sh
 Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 ```
 
-脚本行为（`tools/test.sh`）：`1/3` 先 `--headless --import` 生成 `.godot` 缓存（`class_name` 全局类依赖它，冷机器首次必须做）→ `2/3` 跑单元测试 → `3/3` 主场景冒烟（`src/ui/main.tscn` 已存在，会真正执行 `--headless --quit-after 5`；若缺失会打印"跳过"且不算失败）。
+脚本行为（`tools/test.sh`，共 4 步）：`1/4` 先 `--headless --import` 生成 `.godot` 缓存（`class_name` 全局类依赖它，冷机器首次必须做）→ `2/4` 跑单元测试 → `3/4` 主场景冒烟（`src/ui/main.tscn` 已存在，会真正执行 `--headless --quit-after 5`；若缺失会打印"跳过"且不算失败）→ `4/4` 调试镜像冒烟（`HALI_DEBUG_LOG=1` 跑 `tools/ui_debug_probe.gd`，断言界面文本真的镜像到 stdout）。
 
-**退出码语义**：`0` 全绿｜`1` 有失败（单测或冒烟）｜`2` 找不到 Godot 可执行文件。
+> `3/4` 还**反向**断言：未设 `HALI_DEBUG_LOG` 时输出里不得出现任何 `[HALI]` 行（证明默认行为逐字未变）。`4/4` 是 B1 人工验收观测通道的回归测试。
+
+**退出码语义**：`0` 全绿｜`1` 有失败（单测 / 冒烟 / 镜像）｜`2` 找不到 Godot 可执行文件。
 
 冷机器上第一次运行的预期输出：
 
 ```
-== 1/3 导入资源（生成 .godot 缓存，class_name 全局类依赖它） ==
-== 2/3 单元测试 ==
+== 1/4 导入资源（生成 .godot 缓存，class_name 全局类依赖它） ==
+== 2/4 单元测试 ==
 [probe] 故意失败: 期望 <2>，实际 <1>     ← 这是断言库自检探针，故意失败，不算失败
 [probe] 断言=1 失败=1                    ← 同上，probe 套件不在 SUITES 里
 [harness] 断言=8 失败=0
@@ -89,21 +91,41 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 [selfcheck] 断言=32 失败=0
 [save] 断言=97 失败=0
 [async_probe] 断言=2 失败=0
+[llm] 断言=84 失败=0
 [prompt] 断言=13 失败=0
-[llm] 断言=65 失败=0
+[debug_mirror] 断言=23 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
-== 3/3 主场景冒烟 ==
+== 3/4 主场景冒烟（默认配置：必须与未加调试镜像时逐字一致） ==
 Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 
 main scene ready, godot=4.7.2-stable (official)
+== 4/4 调试镜像冒烟（HALI_DEBUG_LOG=1，B1 人工验收的观测通道） ==
+[HALI] 调试镜像已启用：界面文本将镜像到 stdout（user://logs/*.log）；内容表问题 0 条
+[HALI] [创建界面] era_id 选项数=8 当前=custom
+…… 7 个下拉各一行 ……
+[HALI] PROBE-APPEND-MARK
+[HALI] [状态行] PROBE-STATUS-MARK
+[HALI] [输入框] editable=false
+[HALI] [按钮] 整排 禁用
 全部通过。
 ```
 
-> 套件 `SUITES` 共 **16** 项（+1 个不计入的 `[probe]` 探针），断言合计 **1048**。若你看到的数字比上表小（如 `money=15`、`magic_level=22`、`panel=65`、`selfcheck=26`）或看不到 `[async_probe]` / `[prompt]` / `[llm]`，说明文档过旧，**不是回归**：差额来自加固批次 `e094a52` 与计划 02。
+> 套件 `SUITES` 共 **17** 项（+1 个不计入的 `[probe]` 探针），断言合计 **1090**。若你看到的数字比上表小（如 `money=15`、`magic_level=22`、`panel=65`、`selfcheck=26`）或看不到 `[async_probe]` / `[prompt]` / `[llm]` / `[debug_mirror]`，说明文档过旧，**不是回归**：差额来自加固批次 `e094a52`、计划 02、以及 B1 观测通道。
 > 运行全程会有几条**刻意制造的 stderr 噪音**（`SCRIPT ERROR` / `Parse JSON failed`）——来自 `save` 的坏档负例与解析层负例，其所在套件失败数均为 0，不影响退出码（见 §8#48）。
 
 窗口程序已可用：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。
+
+### 调试镜像（B1 人工 GUI 验收的观测通道）
+
+游戏内的叙事、面板、玩家输入、创建界面选项、状态行、等待期置灰状态**既不 print 也不入档**，所以从外部无法观测一个回合到底发生了什么（B1 卡在这里）。为此加了可选镜像：
+
+```bash
+HALI_DEBUG_LOG=1 ./Godot_v4.7.2-stable_win64_console.exe --path .
+# 界面文本每行带 [HALI] 前缀进入 stdout，Godot 落进 user://logs/*.log
+```
+
+人工点窗口、控制器读日志即可完成 B1（不必改代码、不必从存档反推）。**未设置该变量时一行都不输出**，行为与加该功能前逐字一致（由 `tools/test.sh` 的 `3/4` 反向断言保证）。实现：`src/ui/debug_mirror.gd`（开关语义）+ `src/ui/main.gd`（`_mirror()` 是唯一出口，`_append`/`_set_status`/`_set_input_enabled`/`_set_buttons_enabled` 全部经过它）。
 
 ---
 
@@ -306,6 +328,7 @@ taskkill //PID <PID> //F
 53. ~~**（Task 11 Minor，假绿风险）**~~ **已收口（`e094a52`）**：`tools/test.sh` 冒烟 `tee` + `grep -q "main scene ready"`，未命中即失败；临时文件加 `trap ... EXIT`。
 54. ~~**（Task 11 Minor）**~~ **已收口（`e094a52`）**：删除死变量 `_turn_count`。
 55. **（Task 11，人工验收缺口）** 计划 Step 6 的 8 项 GUI 验收 headless 无法自动执行（点击创建、下拉/SpinBox、存档/读档按钮、重启读档、第 15 回合挂起与「确认自检」）；两轮审查均只做了静态论证 + 场景可加载冒烟。**留待人类实际跑一遍**。
+    - ➕ **2026-09-20 已补观测通道（`HALI_DEBUG_LOG` 调试镜像，见 §2 末尾）**：以 `HALI_DEBUG_LOG=1` 启动窗口时，界面文本（叙事/面板/状态行/输入与按钮置灰/创建选项）镜像到 stdout 并落进 `user://logs/*.log`，于是「人点窗口 + 控制器读日志」即可验收，不必再靠存档反推。默认不设则一行不输出（`tools/test.sh` `3/4` 反向断言）。
 56. **（加固批次发现，Minor）** `run_tests.gd` 新增的 `report_calls` 哨兵只覆盖「套件中途中止、未调用 `report()`」；**非中止**运行期错误（如字符串 `%r` 格式错误）仍会 `EXIT=0`。若要全堵，需对 stderr 做白名单扫描或让套件返回期望断言数。
 57. **（加固批次发现，Minor）** `save_test.gd` 「非十六进制校验和被拒」断言命名夸大（实现只是普通校验和不匹配，并无 hex 解析）；建议改名。
 

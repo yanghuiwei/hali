@@ -1,7 +1,7 @@
 # 下一步待办 · 哈利·波特·魔法纪元
 
 > 用途：换机器后接手**第一份**要读的执行清单（配合 `HANDOFF.md`）。HANDOFF 讲「现状与铁律」，本文件讲「接下来做什么、按什么顺序、验收标准是什么」。
-> 最后更新：2026-09-20（**队列 A（A1–A7）已全部完成**，分支 `docs/plan-02-closeout` → `main`；计划 01 + 计划 02 均已合入 `main`）。
+> 最后更新：2026-09-20（**队列 A（A1–A7）已全部完成**，分支 `docs/plan-02-closeout` → `main`；计划 01 + 计划 02 均已合入 `main`。**本次新增：B1 观测通道（`HALI_DEBUG_LOG` 调试镜像）已实现并纳入 `tools/test.sh`**，人工验收不再靠存档反推）。
 > 维护规则：每完成一项就在方框里打勾并补上提交哈希；**换机器前必须回来更新本文件**。
 
 ---
@@ -11,21 +11,21 @@
 ```bash
 cd /e/Hali
 git fetch origin && git status -sb     # 期望：工作区干净
-git log --oneline -1                   # 期望：读到本文件的那次 docs 提交（历史里含 d885cf9 / 1f82483 / a48f108 / 15c1ff0 / 38589b4）
-bash tools/test.sh                     # 期望：EXIT=0；16 套件失败=0；main scene ready
+bash tools/test.sh                     # 期望：EXIT=0；全部套件失败=0；main scene ready；4 步全过
 ```
 
 引擎：Windows + Git Bash，**Godot 4.7.2 stable（非 .NET）**，两个 exe 放仓库根（不入库，见 HANDOFF §2）。
-基线事实（本次核对确认）：`main` == `plan-02-llm-narrative` == `origin/main` == `origin/plan-02-llm-narrative` == `d885cf9`；工作区干净。
+基线事实：`main` == `origin/main`；工作区干净。**以 `git log --oneline -1` 为交付点**（本文件不再钉死 HEAD 哈希）。
 
-基线测试绿（本文件写下时实测）：
+基线测试绿（本文件写下时实测，`tools/test.sh` 已扩为 4 步）：
 
 ```
 [harness]=8  [registry]=26  [money]=18  [magic_level]=48  [model]=49  [clock]=47
 [world_tick]=104  [creation]=176  [spell]=229  [gm]=63  [panel]=71  [selfcheck]=32
-[save]=97  [async_probe]=2  [prompt]=13  [llm]=65
+[save]=97  [async_probe]=2  [llm]=84  [prompt]=13  [debug_mirror]=23
 ==== 总计失败=0，失败套件=0 ====   ALL TESTS PASSED
-main scene ready, godot=4.7.2-stable (official)   全部通过。
+main scene ready, godot=4.7.2-stable (official)
+[HALI] PROBE-APPEND-MARK（第 4 步：HALI_DEBUG_LOG=1 镜像冒烟）   全部通过。
 ```
 
 ---
@@ -89,8 +89,13 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
   - ⏸️ **人类裁定（2026-09-20）：暂不逐项跑，先推进计划 03**。已做过一次非正式点击（开窗 → 建角 → 4 回合 → 存档），控制器**从存档反推**出部分结论：
     - ✅ 哑炮角色确实无魔法无魔杖（`no_magic=true`/`magic_tier=0`/`known_spells=[]`）；4 回合均推进且 `world.tick()` 生效（`world_vars` 已漂移、`world.log` 有 rumor/mundane）；存档 `user://saves/slot1.json` 生成成功。实测角色：哑炮 / auror_family / 格兰芬多 / 11 岁 / brutal_realism / custom 时代（1991）/ `potions 7`。
     - ❌ **仍无任何痕迹可查**：叙事到底来自 LLM 还是本地替身、四个面板、读档、第 15 回合自检与「确认自检」、等待期置灰与恢复、断网降级、密钥脱敏的实际表现。
-  - 💡 **想让人工验收变成可控**（未做，待裁定）：给 `main.gd` 加一个**可选镜像** —— `HALI_DEBUG_LOG=1` 时把面板每行也 `print` 到 stdout（落进 `user://logs/godot.log`），默认不设则行为完全不变。之后由人类开窗点击、控制器读日志即可完成 B1/B2。
-  - ⚠️ **日志现状**（已查清）：引擎 stdout → `user://logs/*.log`（本次会话 0 报错）；游戏内日志 → 存档 `world.log`；**叙事/面板/玩家输入既不 `print` 也不入档**，故现在无法从外部观测回合内容。
+  - 💡➡️✅ **已实现（2026-09-20，本提交）：`HALI_DEBUG_LOG=1` 调试镜像**——人工验收不再靠存档反推。
+    - 用法：`HALI_DEBUG_LOG=1 ./Godot_v4.7.2-stable_win64_console.exe --path .` → 界面文本每行带 `[HALI]` 前缀进 stdout（Godot 落进 `user://logs/*.log`），人工点窗口、控制器读日志即可完成 B1。
+    - 覆盖：叙事/面板（`_append`）、状态行（含 F4 的「未配置 LLM」提示，创建与读档两条路径）、玩家输入、创建界面 7 个下拉的选项数与当前值、姓名/性别/年龄/目标/性格、`[输入框] editable=…` 与 `[按钮] 整排 可用/禁用`（等待期置灰与恢复）、存档/读档/自检结果、创建界面错误。
+    - **默认行为逐字未变**：不设该变量时一行都不输出，由 `tools/test.sh` 的 `3/4` 反向断言（出现 `[HALI]` 即失败）。
+    - 回归测试：`tests/debug_mirror_test.gd`（开关语义，`[debug_mirror]`=23） + `4/4` 镜像冒烟（`tools/ui_debug_probe.gd`，真实节点上驱动 `_append`/状态行/置灰四条路径）。
+    - 实现：`src/ui/debug_mirror.gd` + `src/ui/main.gd` 的 `_mirror()` 唯一出口。
+  - ⚠️ **日志现状**（已查清）：引擎 stdout → `user://logs/*.log`（本次会话 0 报错）；游戏内日志 → 存档 `world.log`；**叙事/面板/玩家输入既不 `print` 也不入档**——上一条的镜像就是为此而生（开镜像后即可从外部观测回合内容）。
 
 - [ ] **B2 真机 LLM 联调（HANDOFF §0「下一步」）** —— 🔶 **2026-09-20 部分完成**（报告 `docs/sdd/plan-02-llm-narrative/b2-live-integration.md`，已脱敏）
   - 写 `user://llm_settings.json`（Windows：`%APPDATA%\Godot\app_userdata\<项目名>\`）或设 `HALI_LLM_API_KEY`；跑一回合，确认：拿到真实叙事、`ops` 生效、等待期窗口不卡死、断网/超时自动降级为 `ScriptedGameMaster` 且有提示。
@@ -161,4 +166,4 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 | 计划 02 计划 / spec / 台账 | `docs/superpowers/plans/2026-09-19-...-02-llm-narrative.md` / `docs/superpowers/specs/2026-09-19-...-02-llm-narrative-design.md` / `docs/sdd/plan-02-llm-narrative/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎） |
 | 正典规格 | `哈利·波特·魔法纪元.md`（仓库根，勿移动改名） |
-| 下一步第一件事 | **A1**（补计划 02 台账 Tasks 8–12），或先做 B1 人工验收 |
+| 下一步第一件事 | **B3 启动计划 03**（先 `git checkout main && git checkout -b plan-03-...`）；人工验收则用 B1 的镜像通道（`HALI_DEBUG_LOG=1`） |

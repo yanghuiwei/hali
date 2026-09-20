@@ -44,7 +44,7 @@
 # 启动游戏窗口（主场景 src/ui/main.tscn）
 ./Godot_v4.7.2-stable_win64_console.exe --path .
 
-# 运行全部测试：导入 → 单元测试 → 主场景冒烟
+# 运行全部测试：导入 → 单元测试 → 主场景冒烟 → 调试镜像冒烟（四步，任一步失败即非零退出）
 bash tools/test.sh
 ```
 
@@ -69,6 +69,18 @@ Windows 上 `bash` 来自 Git Bash。Godot 可执行文件不入库，请放在�
 - **思考型模型的延迟是几十秒级**（实测单回合 ≈30–50s，新手上路几乎不消耗提示词上下文），`timeout_ms` 请给 **≥120000**，否则请求会被 `HTTPRequest.timeout` 打断（窗口在等待期会置灰输入与按钮，不会卡死）。
 - 解析/超时报错会写明病因（`finish_reason=length`、`HTTP 状态 0：连接失败/超时中断`），便于排查。
 
+### 调试镜像（人工验收用，B1）
+
+游戏内的叙事、面板、玩家输入、状态行与等待期置灰状态既不 `print` 也不入档，从窗口外部观测不到。以环境变量开启可选镜像后即可观测：
+
+```bash
+HALI_DEBUG_LOG=1 ./Godot_v4.7.2-stable_win64_console.exe --path .
+# 界面文本每行带 [HALI] 前缀进入 stdout（Windows 下 Godot 落进 user://logs/*.log）
+```
+
+镜像覆盖：叙事与面板（`_append`）、状态行（含未配置 LLM 提示）、玩家输入、创建界面 7 个下拉的选项数与当前值、姓名/性别/年龄等创建参数、`[输入框] editable=…` 与 `[按钮] 整排 可用/禁用`、存档/读档/自检结果与错误。
+**不设该变量时一行都不输出**，程序行为与加该功能前逐字一致（`tools/test.sh` 的 `3/4` 会反向断言这一点，`4/4` 用 `HALI_DEBUG_LOG=1` 断言镜像真的生效）。实现：`src/ui/debug_mirror.gd` + `src/ui/main.gd` 的 `_mirror()`。
+
 ## 目录约定
 
 - `data/*.json`：内容（时代、血统、出生身份、资质、学院、技能、魔杖、地点、传闻、魔咒）。改内容不需要改代码。
@@ -77,7 +89,7 @@ Windows 上 `bash` 来自 Git Bash。Godot 可执行文件不入库，请放在�
 - `src/core/`：内容注册表、确定性随机服务、回合引擎。
 - `src/gm/`：叙事接口。`ScriptedGameMaster` 是离线确定性替身；`LlmGameMaster` 接 LLM（计划 02）。`src/gm/providers/` 放 `LlmProvider` 实现（`openai_compat`、`mock`）。
 - `src/persist/`：存档编解码与存槽。
-- `src/ui/`：Godot 主场景与主界面（`main.tscn` / `main.gd`）＋面板格式化（第六十二至六十五章文本面板）。
+- `src/ui/`：Godot 主场景与主界面（`main.tscn` / `main.gd`）＋面板格式化（第六十二至六十五章文本面板）＋`debug_mirror.gd`（人工验收的 `HALI_DEBUG_LOG` 观测通道）。
 - `tests/`：全部测试。新增套件必须把路径追加到 `tests/run_tests.gd` 的 `SUITES`。
 
 ## 存档位置

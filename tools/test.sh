@@ -13,14 +13,15 @@ if [ ! -x "$GODOT" ] && ! command -v "$GODOT" >/dev/null 2>&1; then
 	exit 2
 fi
 
-echo "== 1/3 导入资源（生成 .godot 缓存，class_name 全局类依赖它） =="
+echo "== 1/4 导入资源（生成 .godot 缓存，class_name 全局类依赖它） =="
 "$GODOT" --headless --path . --import >/dev/null 2>&1
 
-echo "== 2/3 单元测试 =="
+echo "== 2/4 单元测试 =="
 "$GODOT" --headless --path . --script res://tests/run_tests.gd
 unit=$?
 
-echo "== 3/3 主场景冒烟 =="
+echo "== 3/4 主场景冒烟（默认配置：必须与未加调试镜像时逐字一致） =="
+smoke=0
 if [ -f "$ROOT/src/ui/main.tscn" ]; then
 	smoke_log="$(mktemp)"
 	trap 'rm -f "$smoke_log"' EXIT
@@ -31,14 +32,37 @@ if [ -f "$ROOT/src/ui/main.tscn" ]; then
 		echo "主场景冒烟未出现 'main scene ready'（脚本可能未加载）" >&2
 		smoke=1
 	fi
+	# 反向断言：没设 HALI_DEBUG_LOG 时一行镜像都不许出现（默认行为不变）
+	if grep -q -F '[HALI]' "$smoke_log"; then
+		echo "主场景冒烟在未设置 HALI_DEBUG_LOG 时出现了镜像输出（默认行为被改变）" >&2
+		smoke=1
+	fi
 	rm -f "$smoke_log"
 else
 	echo "（跳过：src/ui/main.tscn 尚未创建，任务 11 将启用）"
-	smoke=0
 fi
 
-if [ "$unit" -ne 0 ] || [ "$smoke" -ne 0 ]; then
-	echo "测试失败：单测=$unit 冒烟=$smoke" >&2
+echo "== 4/4 调试镜像冒烟（HALI_DEBUG_LOG=1，B1 人工验收的观测通道） =="
+probe=0
+if [ -f "$ROOT/tools/ui_debug_probe.gd" ]; then
+	probe_log="$(mktemp)"
+	trap 'rm -f "$probe_log"' EXIT
+	HALI_DEBUG_LOG=1 "$GODOT" --headless --path . --script res://tools/ui_debug_probe.gd 2>&1 | tee "$probe_log"
+	probe=${PIPESTATUS[0]}
+	for marker in '[HALI] 调试镜像已启用' '[HALI] PROBE-APPEND-MARK' '[HALI] [状态行] PROBE-STATUS-MARK' \
+			'[HALI] [输入框] editable=false' '[HALI] [按钮] 整排 禁用'; do
+		if ! grep -q -F "$marker" "$probe_log"; then
+			echo "调试镜像未输出预期行: $marker" >&2
+			probe=1
+		fi
+	done
+	rm -f "$probe_log"
+else
+	echo "（跳过：tools/ui_debug_probe.gd 不存在）"
+fi
+
+if [ "$unit" -ne 0 ] || [ "$smoke" -ne 0 ] || [ "$probe" -ne 0 ]; then
+	echo "测试失败：单测=$unit 冒烟=$smoke 镜像=$probe" >&2
 	exit 1
 fi
 echo "全部通过。"
