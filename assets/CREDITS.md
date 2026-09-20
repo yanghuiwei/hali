@@ -21,8 +21,15 @@
 | `fonts/HarryP/HARRYP__.TTF` | 字体 | dafont.com「Harry P」（作者署名 GM，粉丝字体，模仿官方 Logo 字形） | 100% Free · 个人免费，商用需授权 | ❌ 需另行授权 | 见同目录 `harryp-readme.txt` |
 | `fonts/HarryP/harryp-readme.txt` | 文档 | 同上，原作者说明 | 随字体 | — | — |
 | `icons/*.svg`（15 个） | 图标 | game-icons.net | CC-BY 3.0 | ✅ 是 | **必须署名 game-icons.net** |
+| `icons/ICON-MEANINGS.md` | 文档 | 本项目自制 —— 15 个图标**实际渲染后**逐格核定的图形描述 | 项目自有 | — | — |
 | `textures/runic_codex.png` | 贴图 | opengameart.org — Idylwilds Runic Codex | CC0 | ✅ 是 | 否 |
 | `ui/interface.psd` | 界面 | opengameart.org — RPG Game UI（600×800，尚未切片） | CC0 | ✅ 是 | 否 |
+| `fonts/body_cjk.ttf` | 字体 | LXGW WenKai（霞鹜文楷）Regular v1.522 — https://github.com/lxgw/LxgwWenKai/releases/tag/v1.522 | OFL-1.1 | ✅ 是 | 否（随附许可证文本，见下行） |
+| `fonts/OFL-LXGWWenKai.txt` | 文档 | 同上，SIL OFL 1.1 原文（含 Reserved Font Name 的附加许可条款） | 随字体 | — | — |
+| `fonts/OFL-Cinzel.txt` | 文档 | Google Fonts `ofl/cinzel/OFL.txt`（Cinzel 官方许可证原文） | OFL-1.1 | — | — |
+| `fonts/OFL-IMFellEnglish.txt` | 文档 | Google Fonts `ofl/imfellenglish/OFL.txt`（IM Fell English 官方许可证原文） | OFL-1.1 | — | — |
+| `fonts/OFL-MedievalSharp.txt` | 文档 | Google Fonts `ofl/medievalsharp/OFL.txt`（MedievalSharp 官方许可证原文） | OFL-1.1 | — | — |
+| `ui/*.png`（13 个切片） | 界面 | 同 `ui/interface.psd`（opengameart.org「RPG Game UI」，由该 PSD 图层切出） | CC0 | ✅ 是 | 否 |
 
 图标清单（15 个，全部 CC-BY 3.0 / game-icons.net）：
 
@@ -50,8 +57,8 @@
 
 | 缺口 | 为什么必须 | 状态 |
 | --- | --- | --- |
-| **CJK 正文字体** | Godot 4 内置字体**不含中日韩字形**（实测 `ThemeDB.fallback_font.has_char('你') == false`）⇒ 全中文界面在无系统字体回退的机器上是豆腐块。**这是「能不能读」的硬前提。** | ⛔ 未解决（`assets/` 下现有 4 个字体实测 CJK 覆盖全为 0） |
-| UI 切片 PNG | `ui/interface.psd` 不能被 Godot 直接使用，需切成九宫格面板底 / 按钮三态 / 滚动条等 PNG | ⛔ 未解决（本机无 PIL / psd_tools / ImageMagick，切图路径待定） |
+| **CJK 正文字体** | Godot 4 内置字体**不含中日韩字形**（实测 `ThemeDB.fallback_font.has_char('你') == false`）⇒ 全中文界面在无系统字体回退的机器上是豆腐块。**这是「能不能读」的硬前提。** | ✅ 已解决：`fonts/body_cjk.ttf`（LXGW WenKai v1.522，OFL-1.1，24.4 MiB，覆盖自检 PASS） |
+| UI 切片 PNG | `ui/interface.psd` 不能被 Godot 直接使用，需切成九宫格面板底 / 按钮三态 / 滚动条等 PNG | ✅ 已解决：`ui/` 下 13 个 RGBA PNG（`panel_bg` / `button_normal·hover·pressed` / `scrollbar_bg·grab` + 7 个附加件） |
 | 短音效 SFX / 环境音 ambient | `data/audio_cues.json` 的 cue 触发点已规划，缺素材则静音（可接受） | ⏳ 可选 |
 
 ## 五、使用约定
