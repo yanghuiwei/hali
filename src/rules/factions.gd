@@ -451,6 +451,14 @@ static func apply_rumor_reveals(world: WorldState, events: Array) -> void:
 
 # ---------- 政体推导（第十一章 + 第十二章） ----------
 
+# 计划 03a Task 11（Task 8 审查 M5）：政体 id 的**唯一取法**——缓存优先、无缓存（空串）现算。
+# 面板与提示词原本各抄一份这 3 行（DRY 破损，改一处容易漏另一处）。
+static func government_id(world: WorldState) -> String:
+	var cached := str(world.flags.get(GOVERNMENT_FLAG, ""))
+	if not cached.is_empty():
+		return cached
+	return government_type(world)
+
 static func government_type(world: WorldState) -> String:
 	# 1) 凤凰社抵抗：战争压力高 + 抵抗组织强于魔法部（第十一章第 4 条）
 	if float(world.world_vars.get("war_pressure", 0.0)) >= 0.6 \

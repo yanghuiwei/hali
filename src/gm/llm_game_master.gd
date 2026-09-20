@@ -57,12 +57,22 @@ func act(world: WorldState, action_text: String) -> GmResult:
 	r.warnings = guard.warnings
 	return r
 
+# §8#65③：声明自己是协程实现，供 TurnEngine 做鸭子类型判定（不再依赖具体类型）。
+func is_async() -> bool:
+	return true
+
+# §8#61：降级时**必须**把原因透出给调用方。原实现只把它写进 `last_error`（全仓只有声明与赋值、
+# 没有读取者），玩家与调用方只能看到一句笼统的「暂不可用」，无法区分「网络抖动」与「模型不吐 JSON」。
+# 现在两条分支都往 `warnings` 追加一条——`TurnEngine` 会把 warnings 并进 `op_errors`，UI 会打印。
+# 有 fallback 时原因**不进叙事**（叙事仍由本地替身产出 + 一句降级说明），只走 warnings。
 func _fallback(world: WorldState, action_text: String, reason: String) -> GmResult:
 	last_error = reason
 	if fallback == null:
 		var r := GmResult.new()
 		r.narration = "%s（原因：%s）" % [FALLBACK_NOTE, reason]
+		r.warnings.append("LLM 降级：%s" % reason)
 		return r
 	var r2 := fallback.act(world, action_text)
 	r2.narration = "%s %s" % [r2.narration, FALLBACK_NOTE]
+	r2.warnings.append("LLM 降级：%s" % reason)
 	return r2

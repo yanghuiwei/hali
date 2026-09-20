@@ -87,4 +87,15 @@ func run() -> int:
 	# ---- 计划 03a（Task 9 审查 M2）：提示词的 tags 白名单必须含 faction（与解析器白名单一致） ----
 	a.is_true(PromptBuilder.system_prompt(fw).contains("faction"), "提示词 tags 白名单含 faction")
 
+	# ---- 计划 03a Task 11 · Task 8 审查 M1：空可见集分支（make_world() 有 11 个 public 派系，原本永不执行）----
+	var empty_w := make_world()
+	WorldFactions.initialize(empty_w)
+	for fid in empty_w.registry.ids("factions"):
+		WorldFactions.ensure_state(empty_w, str(fid))["revealed"] = false
+	a.eq(WorldFactions.visible_faction_ids(empty_w).size(), 0, "夹具前置：可见集确实为空")
+	a.eq(str(PromptBuilder.state_digest(empty_w).get("known_factions", "")), "已知势力：无",
+		"空可见集 → 摘要恰好是「已知势力：无」")
+	a.is_true(str(PromptBuilder.state_digest(empty_w).get("government", "")).begins_with("政体："),
+		"空可见集不影响政体键的形态")
+
 	return a.report("prompt")

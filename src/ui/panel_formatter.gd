@@ -104,9 +104,7 @@ static func relation_panel(world: WorldState) -> String:
 static func power_panel(world: WorldState) -> String:
 	var vars := world.world_vars
 	var ic := WorldFactions.institution_control(world)
-	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
-	if gov_id.is_empty():
-		gov_id = WorldFactions.government_type(world)
+	var gov_id := WorldFactions.government_id(world)
 	var lines: Array[String] = []
 	lines.append("《哈利·波特·魔法纪元·势力面板》")
 	lines.append("【魔法部状态】政体：%s 部长：%s 法律执行：%.2f（%s） 傲罗：%.2f（%s） 威森加摩：%.2f（%s） 财政：%.2f 国际：%.2f（%s） 稳定度：%.2f 腐败度：%.2f 纯血影响：%.2f 麻瓜关系：%.2f" % [

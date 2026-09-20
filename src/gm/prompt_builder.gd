@@ -70,9 +70,7 @@ static func state_digest(world: WorldState) -> Dictionary:
 	var location := world.current_location()
 	# 计划 03a Task 8：政治格局两行。**只给已揭示（revealed）的派系**——未揭示的绝不进提示词（第四十三/五十七章）。
 	# 注：`state_digest()` 返回 Dictionary（计划 02 spec §6.5 的键集合契约），故两行以两个字符串键承载。
-	var gov_id := str(world.flags.get(WorldFactions.GOVERNMENT_FLAG, ""))
-	if gov_id.is_empty():
-		gov_id = WorldFactions.government_type(world)
+	var gov_id := WorldFactions.government_id(world)
 	var faction_parts: Array[String] = []
 	for fid in WorldFactions.visible_faction_ids(world):
 		var id := str(fid)

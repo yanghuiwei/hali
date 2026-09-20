@@ -130,9 +130,10 @@ func _submit(node: Node, text: String) -> String:
 
 # 有上限的提交：不 await 协程本身（若被测代码没有看门狗，await 会永久挂住、破坏实验就无法产出“红”）。
 # 改为观测可观测信号：提交开始 → 输入框置灰；恢复 → 输入框可编辑。
-# `hold_ref=true` 时会**故意持有**协程引用（`_held`）：Godot 会对无人引用的挂起协程链做丢弃，
-# 持有引用才能让“迟到的旧协程”真的恢复——这是对修复（本轮私有 state）的**防御性**验证，
-# 不代表生产路径的生命周期语义（生产里没人 await，引用更弱）。
+# `hold_ref=true` 时会**故意持有外层**协程引用（`_held`）：用来验证「即便持有外层句柄，
+# 迟到写也不会发生」——Godot 对外层协程返回后**内层挂起链**失去唯一引用即丢弃，持有**外层**
+# 句柄救不回内层链（见 `_part11b` 末尾 note 与实测 `hold_ref=true` 仍全绿）。
+# 生产路径无人 await，生命周期语义更弱，因此这只用于钉住可观测契约，不代表能复现 I1。
 func _submit_bounded(node: Node, text: String, timeout_sec: float, hold_ref: bool = false) -> Dictionary:
 	var before := _log_len(node)
 	var co = node.call("_on_command_submitted", text)
@@ -458,7 +459,7 @@ func _part11_watchdog(node: Node) -> void:
 # 若两轮共用同一本 state 字典：旧协程会把 done=true + **上一回合的叙事**写到第二轮 →
 # 第二轮被提前判定完成、渲染错位叙事、本轮结果被丢。
 func _part11b_reentrancy(node: Node) -> void:
-	part("修复轮 1 · 迟到协程不得污染新一轮（I1：本轮私有 round_state）")
+	part("修复轮 1 · 迟到协程不得污染新一轮（可观测契约，非 I1 护栏）")
 	node.set("turn_timeout_sec", 0.4)
 	var late_mock := MockLlmProvider.new()
 	late_mock.queue = ['{"narration":"【第一轮·迟到】这段叙事绝不能在第二轮出现。","ops":[],"tags":["train"]}']

@@ -772,4 +772,30 @@ func run() -> int:
 	a.is_true(WorldFactions.state_of(half_world, "death_eaters").is_empty(),
 		"畸形世界不得留下部分写入（删掉 reveal 的早退 → 该断言必红）")
 
+	# ---- 计划 03a Task 11 · Task 8 审查 M5：government_id 统一取法（缓存优先、空缓存现算）----
+	var gid_w := make_world("modern")
+	WorldFactions.initialize(gid_w)
+	gid_w.flags.erase(WorldFactions.GOVERNMENT_FLAG)
+	var computed := WorldFactions.government_type(gid_w)
+	a.eq(WorldFactions.government_id(gid_w), computed, "无缓存时现算（等于 government_type）")
+	gid_w.flags[WorldFactions.GOVERNMENT_FLAG] = "pureblood_oligarchy"
+	a.eq(WorldFactions.government_id(gid_w), "pureblood_oligarchy", "有缓存时优先用缓存")
+	a.is_true(gid_w.registry.has("governments", WorldFactions.government_id(gid_w)), "缓存值来自内容表")
+	gid_w.flags[WorldFactions.GOVERNMENT_FLAG] = ""
+	a.eq(WorldFactions.government_id(gid_w), computed, "空字符串缓存视为无缓存")
+
+	# ---- 计划 03a Task 11 · Task 9 审查 M8：未揭示派系不得被支持/反对（join 已有这道门）----
+	var sv_w := make_world("modern")
+	WorldFactions.initialize(sv_w)
+	a.is_false(WorldFactions.visible_faction_ids(sv_w).has("death_eaters"), "夹具前置：食死徒未揭示")
+	var sv_errs := StateOps.apply(sv_w, [{"op": "faction_standing_delta", "faction_id": "death_eaters", "delta": 5}])
+	a.is_true(" | ".join(sv_errs).contains("未揭示"), "未揭示派系的立场调整被拒")
+	a.eq(sv_w.player.standing_of("death_eaters"), 0, "被拒的调整不写玩家立场")
+	a.eq(int(WorldFactions.state_of(sv_w, "death_eaters").get("stance_to_player", 0)), 0, "被拒的调整不改派系对玩家的态度")
+	WorldFactions.ensure_state(sv_w, "death_eaters")["revealed"] = true
+	var sv_errs2 := StateOps.apply(sv_w, [{"op": "faction_standing_delta", "faction_id": "death_eaters", "delta": 5}])
+	a.eq(sv_errs2.size(), 0, "已揭示派系可正常支持/反对")
+	a.eq(sv_w.player.standing_of("death_eaters"), 5, "已揭示时立场真的写入")
+	a.eq(int(WorldFactions.state_of(sv_w, "death_eaters").get("stance_to_player", 0)), 2, "已揭示时派系态度反向变化")
+
 	return a.report("factions")

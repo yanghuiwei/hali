@@ -358,4 +358,48 @@ func run() -> int:
 	a.eq(lerrs2.size(), 0, "不带 faction_id 的退出仍兼容（清空）")
 	a.eq(lw.player.faction_id, "", "兼容路径真的清空")
 
+	# ---- 计划 03a Task 11 · §8#65③：鸭子类型判定 + blocked 非空文案 ----
+	a.is_false(ScriptedGameMaster.new(RngService.new(1)).is_async(), "离线替身声明为同步")
+	a.is_true(LlmGameMaster.new(null, null, null).is_async(), "LLM 主模块声明为协程")
+	var sync_world := make_world()
+	WorldFactions.initialize(sync_world)
+	var async_engine := TurnEngine.new(sync_world, LlmGameMaster.new(null, null, null), RngService.new(1))
+	var blocked_out: Dictionary = async_engine.submit("我要去上课")
+	a.is_true(bool(blocked_out["blocked"]), "同步 submit 拒绝协程 GM")
+	a.is_true(not str(blocked_out["narration"]).is_empty(), "拒绝时给出非空提示（UI 不会白屏）")
+	a.is_true(str(blocked_out["narration"]).contains("异步"), "提示说明要走异步路径")
+	a.eq(sync_world.clock.turn, 0, "被拒的提交不推进回合")
+
+	# ---- 计划 03a Task 11 · Task 9 审查 M4：命中派系名但四关键词都不中 → 不得抢走普通分支 ----
+	var fallback_w := make_world()
+	WorldFactions.initialize(fallback_w)
+	var plain := ScriptedGameMaster.new(RngService.new(7)).act(fallback_w, "我去魔法部打听消息")
+	a.is_true(plain.tags.has("social"), "「去魔法部打听消息」仍走 social 分支（派系名不抢分支）")
+	var faction_ops := 0
+	for d in plain.deltas:
+		var op_name := str(d.get("op", ""))
+		if op_name == "join_faction" or op_name == "leave_faction" or op_name == "faction_standing_delta":
+			faction_ops += 1
+	a.eq(faction_ops, 0, "回退路径不产出任何派系 op")
+
+	# ---- 计划 03a Task 11 · Task 9 审查 M5：旁白 label 来自 registry（不是硬编码）----
+	var base_reg := Registry.load_default()
+	var tables := {}
+	for table_name in Registry.TABLE_FILES.keys():
+		var rows: Array = []
+		for row_id in base_reg.ids(table_name):
+			rows.append((base_reg.entry(table_name, str(row_id)) as Dictionary).duplicate(true))
+		tables[table_name] = rows
+	for row in (tables["factions"] as Array):
+		if str((row as Dictionary).get("id", "")) == "ministry":
+			(row as Dictionary)["label"] = "奥术部"
+	var renamed_reg := Registry.from_tables(tables)
+	a.eq(str(renamed_reg.entry("factions", "ministry").get("label", "")), "奥术部", "临时 registry 改名生效（夹具自检）")
+	var renamed_w := WorldState.create("modern", PlayerState.new_default(), 7, renamed_reg)
+	WorldFactions.initialize(renamed_w)
+	a.eq(WorldFactions.government_id(renamed_w), WorldFactions.government_type(renamed_w), "改名 registry 下 government_id 可用（前置）")
+	var renamed_res := ScriptedGameMaster.new(RngService.new(9)).act(renamed_w, "我要加入奥术部")
+	a.is_true(renamed_res.narration.contains("奥术部"), "旁白使用 registry 的 label（说明不是硬编码）")
+	a.is_false(renamed_res.narration.contains("魔法部"), "旁白不得出现旧 label")
+
 	return a.report("gm")

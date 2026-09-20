@@ -70,7 +70,7 @@ UI (main.gd)  --await-->  TurnEngine.submit_async()
 | `src/gm/llm_game_master.gd` | `LlmGameMaster extends GameMaster`：build → provider → parse → guard → `GmResult`；重试 + 降级 |
 | `src/gm/llm_settings.gd` | 读写 `user://llm_settings.json`；env `HALI_LLM_API_KEY` 覆盖；不入库 |
 | 修改 `src/gm/game_master.gd` | `act` 文档改为「可协程」；`GmResult` 不变 |
-| 修改 `src/core/turn_engine.gd` | 抽 `_pre_submit`/`_post_submit`；新增 `submit_async()`；`submit()` 保留；修 §8#33 |
+| 修改 `src/core/turn_engine.gd` | 抽 `_pre_submit`/`_resolve`；新增 `submit_async()`；`submit()` 保留；修 §8#33 |
 | 修改 `src/rules/state_ops.gd` | 新增 `train_skill` op（`Progression.gain` 记账 + 加技能，反刷收进 StateOps）；`world_gm_rng` 按调用序号加盐（§8#33） |
 | 修改 `src/ui/main.gd` | `await engine.submit_async`；等待期禁用输入 + 提示；无配置则用 Scripted |
 | 新增 `tests/prompt_test.gd`、`tests/llm_test.gd` | 见 §12 |
@@ -92,6 +92,7 @@ class GmResult:
 	var audit_required: bool = false
 
 # 实现可以是同步函数，也可以是含 await 的协程；调用方统一写 `await gm.act(...)`。
+# 协程实现必须覆写 is_async() 返回 true（TurnEngine.submit() 用鸭子类型判定能否走同步路径）。
 func act(_world: WorldState, _action_text: String) -> GmResult:
 	var r := GmResult.new()
 	r.narration = "（尚未接入叙事引擎）"
@@ -156,7 +157,7 @@ func submit(action_text: String) -> Dictionary
 func submit_async(action_text: String) -> Dictionary
 ```
 
-两者共用：`_pre_submit()`（死亡/自检挂起守卫，返回是否放行）与 `_post_submit(gm_result)`（`StateOps.apply` → `world.tick()` → `world.rng_state = rng.state_dict()` → 第 15 回合自检 → 组装返回字典）。返回字典键与计划 01 一致：`narration/deltas_applied/op_errors/events/audit/blocked`。
+两者共用：`_pre_submit()`（死亡/自检挂起守卫，返回是否放行）与 `_resolve(out, gm_result)`（命名以 `src/core/turn_engine.gd` 实现为准——本 spec 原写 `_post_submit`，读 spec 会找不到符号，见 `HANDOFF §8#65②`）（`StateOps.apply` → `world.tick()` → `world.rng_state = rng.state_dict()` → 第 15 回合自检 → 组装返回字典）。返回字典键与计划 01 一致：`narration/deltas_applied/op_errors/events/audit/blocked`。
 
 ### 6.4 LLM 响应 JSON schema
 

@@ -58,9 +58,12 @@ func submit(action_text: String) -> Dictionary:
 	var out := _blank_result()
 	if not _pre_submit(out):
 		return out
-	if gm is LlmGameMaster:
-		push_error("submit() 不能驱动 LlmGameMaster；请用 submit_async()")
+	# §8#65③：用鸭子类型判定（is_async()）而不是 `gm is LlmGameMaster`——后者只认一个具体类，
+	# 换任何「协程 act」的实现都会把协程对象送进 _resolve 而崩；且拒绝时原来 narration 为空，UI 白屏。
+	if gm.is_async():
+		push_error("submit() 不能驱动协程 GM；请用 submit_async()")
 		out["blocked"] = true
+		out["narration"] = "本模块需要异步回合（请走 submit_async 路径）；本回合未结算。"
 		return out
 	return _resolve(out, gm.act(world, action_text))
 

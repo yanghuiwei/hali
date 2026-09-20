@@ -28,7 +28,6 @@ var _debug_mirror: bool = false
 # §8#58/#62：等待期的上限（秒）。不设 HALI_TURN_TIMEOUT_SEC 时行为与改造前一致，
 # 只是多了一层「有上限的等待」——超时后一定恢复输入与按钮。
 var turn_timeout_sec: float = 180.0
-var _turn_state: Dictionary = {}
 var _llm_provider: OpenAiCompatProvider = null
 
 func _ready() -> void:
@@ -295,9 +294,8 @@ func _on_command_submitted(text: String) -> void:
 	# ⚠️ 用**本轮私有的**字典（不是共享成员）：超时后旧协程可能迟到恢复，若共用成员字典，
 	# 它会把 done=true 写到**新一轮**的字典上 → 要么渲染上一回合的叙事（错位），要么渲染空字典
 	# 触发 result["narration"] 运行期错误 → 恢复两行被跳过 → **输入永久禁用（§8#62 回归）**。
-	# Task 10 审查 Important 1（plan-mandated）的收口。
+	# Task 10 审查 Important 1（plan-mandated）的收口；Task 10 复审 P2-2：不再保留只写的成员镜像。
 	var round_state := {"done": false, "result": {}}
-	_turn_state = round_state          # 仅作调试镜像，判定一律用 round_state
 	_run_turn(text, round_state)
 	var deadline := Time.get_ticks_msec() + int(maxf(turn_timeout_sec, 0.1) * 1000.0)
 	while not bool(round_state.get("done", false)) and Time.get_ticks_msec() < deadline:

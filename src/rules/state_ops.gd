@@ -98,6 +98,11 @@ static func apply(world: WorldState, deltas: Array) -> PackedStringArray:
 				var standing_id := str(raw.get("faction_id", ""))
 				if not world.registry.has("factions", standing_id):
 					errors.append("未知派系: %s" % standing_id)
+				# Task 9 审查 M8：与 join_faction 同门——未揭示的派系玩家根本不知道其存在，
+				# 不该被"支持/反对"（第四十三/五十七章）。normal 路径的识别层已限定 visible，
+				# 但 LLM/OpGuard 路径只有提示词层保护，故在这里补第二道门。
+				elif not WorldFactions.visible_faction_ids(world).has(standing_id):
+					errors.append("该派系尚未揭示，无法表态: %s" % standing_id)
 				else:
 					var raw_delta = raw.get("delta", 0)
 					var delta := int(raw_delta) if (typeof(raw_delta) == TYPE_INT or typeof(raw_delta) == TYPE_FLOAT) else 0
