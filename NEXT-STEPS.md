@@ -34,6 +34,7 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 
 > ✅ **本队列已于 2026-09-20 全部完成（A1–A7）**，分支 `docs/plan-02-closeout`，合入 `main`。提交：`0367eb7`(A1) · `18a1cf5`(A1 勾选 + A2 缺失核对) · `c17263f`(A4/A5/A6/A7) · `e6fdc24`(A2/A3) · 本勾选提交。
 > 遗留说明：A2 的**原始 reviewer log 已随旧机器丢失**，已用**重建版**代替并在工件页首显式标注（见 A2 条目）；不可恢复的部分已登记。
+> 后续追加（采 A2 方案 (2)）：对首轮范围做了一次**独立盲审重跑** → `task-811-review-rerun.md`（11 条：P1×2/P2×9；独立复现首轮 3 条，新报 5 条仍成立的问题 → `HANDOFF §8#61–#65`）。
 
 计划 02 的功能与测试已全部完成并绿灯，但「过程台账」的耐久副本（`docs/sdd/`，见 HANDOFF §7 的交接规则）在收尾时没跟上。以下 7 项都是**只动文档**，风险低、可一次分支批量完成。
 
@@ -53,6 +54,7 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
   - ⚠️ **核对结论（2026-09-20，在 `main` 上实测）**：两份 log **在本机不存在**，无法「原样落进」。已排除的可能位置：`.superpowers/sdd/2026-09-19-hp-magic-era-02-llm-narrative/`（目录不存在，本机 `.superpowers/sdd/` 只有计划 01 的 2026-09-18 目录）、`~/.pi/agent/sessions/--E--Hali--/subagent-artifacts/`（只有 2026-09-18 的计划 01 worker/oracle/reviewer 工件，无 09-19）、`git log --all`（从未入库）、stash（空）。**结论：文件已随旧机器丢失，`内容与 log 一致` 这条验收标准不可达**。
   - 可行的替代（已裁定）：**采 (a)**——出重建版并显式标注「非 reviewer 原文」。已落盘：`task-811-review.md`（首轮：范围/结论 Approved with findings/发现表 F1–F6/反证表/未验证清单）与 `task-811-rereview.md`（修复轮复审重建 + F4 闭合 + 2026-09-20 独立只读复审原文）。
   - ℹ️ **数目订正**：本项写的「发现表 F1–F9」与 A3 的「首轮审查 6 条」不一致；按 A3 + 修复轮 diff 核对，实为 **F1–F6（6 条）**，无 F7–F9。
+  - ➕ **追加（方案 (2)）**：`task-811-review-rerun.md` —— 对**同一范围**（`fed4767^..15c1ff0`）的**独立盲审重跑**（快照 + 不告知首轮结论）。共 11 条（P1×2/P2×9）：独立复现首轮 3 条（均已修）、确认 1 条已知债务、**新报 5 条至今仍成立**的问题（已登记 `§8#61–#65`）。两条 P1 中，`choices[0]`（重跑 F1 = 首轮 F2）已在 `a48f108` 修掉；UI 无失败恢复（重跑 F2）登记为 `§8#62`。
 
 - [x] **A3 补记 F4 的修复与最终结论** —— 已在 `task-811-rereview.md` §2 + 附录 A 闭合：**F1–F6 全部 ADDRESSED、F4 已真正闭合**（指向 `18eaa5c`）。
   - 首轮审查 6 条：F1/F5/F6（Minor，已修）、**F3 Important**（等待期按钮行未禁用，已修）、**F2**（`choices[0]` 非对象导致降级链断，已修）、**F4 Minor**（`_on_load` 里 `_build_gm()` 的「未配置 LLM」提示被下一行 `status_label.text` 覆盖）。
@@ -112,6 +114,7 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 | §8#49 | `SaveStore.save` 无 temp+rename，写盘中断会毁旧档 | 存档格式 v2 |
 | §8#55 | 人工 GUI 验收缺口 | 见 B1 |
 | §8#58 | 计划 02 新增：UI 等待期无超时/取消（`await submit_async` 不恢复则输入与按钮停在禁用态） | 计划 03 动 UI 时，或「设置界面」小计划 |
+| §8#61–#65 | 计划 02 **重跑盲审**新增：降级原因未透出（spec §9 偏差）/ UI 无失败恢复 / provider 泄漏 `HTTPRequest` 节点 / 测试可判别性批次（repair·准恒真·无负向断言）/ 契约文档与类型守卫漂移 | 计划 03，或下一次加固批次（多数是廉价修） |
 
 ---
 

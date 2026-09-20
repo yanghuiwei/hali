@@ -315,6 +315,16 @@ taskkill //PID <PID> //F
 59. **（计划 02 新增，已接受）** `src/ui/main.gd` 的 `_on_command_submitted` 结束时以 `PanelFormatter.status_line(...)` 整体刷新状态行，故「未配置 LLM」提示在**首条指令后**消失（创建路径与读档路径都是如此）。计划侧已明确接受（`task-11-report.md`），登记备查、无需修改。
 60. **（计划 02 新增，文档漂移，已修）** 计划文档 `docs/superpowers/plans/2026-09-19-...-02-llm-narrative.md` 的 `_on_load` 步骤片段仍在写旧顺序（`rng=…; engine=TurnEngine.new(world, _build_gm(), rng)`），按该片段重实施会**复现 F4**。已在 2026-09-20 同步为「先写 status_line、再建 GM」并加注 `18eaa5c`。
 
+### 计划 02 重跑盲审新增（2026-09-20，对 `fed4767^..15c1ff0` 的独立盲审）
+
+> 完整记录（含原文、三方对照、现网逐条核验）：`docs/sdd/plan-02-llm-narrative/task-811-review-rerun.md`。重跑共 11 条：P1×2 / P2×9；其中 3 条与首轮重合（已修）、1 条（降级路径直改 world）已在 §8#3/#35。以下为本轮**新登记且至今仍成立**的部分。
+
+61. **（重跑盲审新增，Minor，spec §9 偏差）降级原因未透出 + `last_error` 是 write-only**：`llm_game_master.gd:_fallback` 在 `fallback != null` 分支只把 `FALLBACK_NOTE` 追加到叙事，**不带原因**、也不写 `r2.warnings`；`last_error` 全仓只有声明（`:9`）与赋值（`:48`），**无读取者**。spec §9 要求「降级 … 追加系统提示 … **并记 `op_errors`**」。后果：玩家与调用方拿不到降级原因（HTTP 状态码/解析错误），无法区分「网络抖动」与「模型老不吐 JSON」。便宜修法：`r2.warnings.append("LLM 降级：%s" % reason)`（UI 已会打印 `op_errors`）。
+62. **（重跑盲审新增，Minor，后果重）UI 提交路径无失败恢复**：`main.gd:_on_command_submitted` 在 `editable=false` + `_set_buttons_enabled(false)` 之后 `await engine.submit_async(text)`，恢复语句只在正常尾部；`await` 链中任何运行期错误（GDScript 无 `try/catch`）都会让协程提前中止 → 输入与**整排按钮永久禁用，只能重启**。当前 `main` 上 `choices[0]` 类路径已被 `a48f108` 封住，故需要一个尚未封住的运行期错误（如畸形状态让 `PanelFormatter` 报错，见 §8#45）才会触发：概率低、后果重。建议把「提交—恢复」收进**唯一出口**（helper/状态机）；⚠️ **不要**只在 `_on_load` 里补 `editable = true`（按钮同批被禁，读档入口不可达，补那句治不了本）。与 §8#58 同源，本条更锐。
+63. **（重跑盲审新增，Minor）provider 泄漏 `HTTPRequest` 节点 + `timeout` 只生效一次**：`OpenAiCompatProvider.complete()` 懒建 `_http` 并 `add_child(_host)`，从不 `remove_child`/`queue_free`；而每次「开始人生」/「读档」都 `new` 一个 provider（`main.gd:_build_gm`）→ **每切换一次生命周期泄漏 1 个 Node**。另外 `_http.timeout` 只在建节点时按首个请求设一次，后续 `timeout_ms` 变更不生效。建议：复用单例 `HTTPRequest`，或在重建 provider 前释放旧节点。
+64. **（重跑盲审新增，Minor，测试可判别性批次）** `tests/llm_test.gd`：①「解析失败 → `build_repair` 再试」**不可判别**（mock 不看请求内容，把 `build_repair` 换成 `build` 仍绿）→ 应断言 `requests[1].system_prompt` 含修复提示；②`res3.narration.length() > 0` **准恒真**（`fallback != null` 时必然非空）→ 应改断言含「本地规则结算」；③`api_key` 脱敏只有正向断言（「头里有 key」），**无**任何「错误串不含 key」的负向断言。可与 §8#8/#40/#43 的测试加固批次合并。
+65. **（重跑盲审新增，Minor）契约文档与类型守卫漂移**：①`src/gm/game_master.gd` 的 `act` 未注明「可协程」（设计 §5 文件表要求）；②实现是 `TurnEngine._resolve`，spec §6.3 写的是 `_post_submit`（读 spec 会找不到符号）；③`submit()` 用 `gm is LlmGameMaster` 这种**具体类型**判断拒绝协程 GM——换任何「协程 `act` 的非 `LlmGameMaster`」就会把协程对象送进 `_resolve` 而崩，且拒绝分支 `narration` 为空（UI 无提示）。建议：spec/注释就地同步 + 改鸭子类型判定（或至少补 blocked 文案）。
+
 ---
 
 ## 9. 环境与卫生
