@@ -86,6 +86,11 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 - [ ] **B1 人工 GUI 验收（HANDOFF §6 第 1 项 / §8#55，**只能人来跑**）**
   - `./Godot_v4.7.2-stable_win64_console.exe --path .`，按计划 01 Step 6 的 8 项清单逐项确认：创建界面 7 个下拉 / 哑炮角色 / 练魔药收益递减 / 打工加钱 / 魔法·关系·势力面板 / 存档·读档 / 重启后创建界面直接读档 / 第 15 回合自检挂起与「确认自检」。
   - 计划 02 追加：等待 LLM 期间 `command_edit` 与整排按钮置灰、结束恢复；未配置时状态行显示提示（创建路径与**读档路径**都要看，后者正是 F4）。
+  - ⏸️ **人类裁定（2026-09-20）：暂不逐项跑，先推进计划 03**。已做过一次非正式点击（开窗 → 建角 → 4 回合 → 存档），控制器**从存档反推**出部分结论：
+    - ✅ 哑炮角色确实无魔法无魔杖（`no_magic=true`/`magic_tier=0`/`known_spells=[]`）；4 回合均推进且 `world.tick()` 生效（`world_vars` 已漂移、`world.log` 有 rumor/mundane）；存档 `user://saves/slot1.json` 生成成功。实测角色：哑炮 / auror_family / 格兰芬多 / 11 岁 / brutal_realism / custom 时代（1991）/ `potions 7`。
+    - ❌ **仍无任何痕迹可查**：叙事到底来自 LLM 还是本地替身、四个面板、读档、第 15 回合自检与「确认自检」、等待期置灰与恢复、断网降级、密钥脱敏的实际表现。
+  - 💡 **想让人工验收变成可控**（未做，待裁定）：给 `main.gd` 加一个**可选镜像** —— `HALI_DEBUG_LOG=1` 时把面板每行也 `print` 到 stdout（落进 `user://logs/godot.log`），默认不设则行为完全不变。之后由人类开窗点击、控制器读日志即可完成 B1/B2。
+  - ⚠️ **日志现状**（已查清）：引擎 stdout → `user://logs/*.log`（本次会话 0 报错）；游戏内日志 → 存档 `world.log`；**叙事/面板/玩家输入既不 `print` 也不入档**，故现在无法从外部观测回合内容。
 
 - [ ] **B2 真机 LLM 联调（HANDOFF §0「下一步」）** —— 🔶 **2026-09-20 部分完成**（报告 `docs/sdd/plan-02-llm-narrative/b2-live-integration.md`，已脱敏）
   - 写 `user://llm_settings.json`（Windows：`%APPDATA%\Godot\app_userdata\<项目名>\`）或设 `HALI_LLM_API_KEY`；跑一回合，确认：拿到真实叙事、`ops` 生效、等待期窗口不卡死、断网/超时自动降级为 `ScriptedGameMaster` 且有提示。
@@ -128,6 +133,9 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
 | §8#65 | 计划 02 重跑盲审：契约文档与类型守卫漂移（`act` 未注「可协程」/ `_resolve` vs spec `_post_submit` / `gm is` 具体类型 + blocked 空文案） | **计划 03**（已裁定） |
 | ~~**§8#66**~~ | ~~B2 实测发现的阻塞 bug：`llm_settings.json` 的 `temperature`/`max_tokens`/`timeout_ms` 完全不生效~~ | ✅ **已修（`3240af6`，2026-09-20）** |
 | ~~§8#67~~ | ~~B2 实测：错误串诊断性不足~~ | ✅ **已修（`3240af6`）**；残留：默认值仍 1024（已在 README 写明思考型模型需显式配大） |
+| §8#68 | 复审 M-a：`LlmSettings.provider` 无读取端（只有一种实现） | 计划 03 做 provider 路由时顺手 |
+| §8#69 | **新发现（B1 点击）：哑炮却有学院**（`bloodline=squib` → `house_id=gryffindor`）——`character_creation.gd:175` 无条件 `assign_house()` 后才在 `:205` 设 `no_magic`；正典里哑炮不进霍格沃茨 | 魔法/学院相关任务，或计划 03（已裁定随 03） |
+| §8#70 | 新发现（UX）：创建界面姓名框默认「无名者」可直接提交、且**无性别输入**（恒为「未定」） | 计划 03，或「设置界面」小计划 |
 
 ---
 
