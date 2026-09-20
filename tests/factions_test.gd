@@ -249,4 +249,184 @@ func run() -> int:
 	a.eq(str(pw.flags.get("illegal_affiliation", "")), "death_eaters", "非法所属被记录进 flags")
 	a.is_true(" | ".join(errs).contains("非法"), "非法所属给出警告")
 
+	# ---- 演化：确定性、结构拉力、政体缓存（Task 4，brief 原文） ----
+	var e1 := make_world("modern")
+	var e2 := make_world("modern")
+	WorldFactions.initialize(e1)
+	WorldFactions.initialize(e2)
+	for i in 3:
+		WorldFactions.evolve(e1)
+		WorldFactions.evolve(e2)
+	for fid in e1.registry.ids("factions"):
+		a.near(WorldFactions.power_of(e1, str(fid)), WorldFactions.power_of(e2, str(fid)), 0.0000001,
+			"%s 实力演化可复现（同 seed）" % str(fid))
+	a.eq(str(e1.flags.get(WorldFactions.GOVERNMENT_FLAG, "")), WorldFactions.government_type(e1),
+		"演化后政体缓存与本回合推导一致")
+	a.is_true(e1.registry.has("governments", str(e1.flags[WorldFactions.GOVERNMENT_FLAG])),
+		"政体缓存 id 在内容表里存在")
+
+	# 结构拉力：战争/腐败推高黑暗势力与抵抗组织，压低魔法部目标值
+	var hawk := make_world("modern")
+	hawk.world_vars["war_pressure"] = 0.9
+	hawk.world_vars["corruption"] = 0.8
+	var dove := make_world("modern")
+	dove.world_vars["war_pressure"] = 0.05
+	dove.world_vars["corruption"] = 0.05
+	a.is_true(WorldFactions.structure_pull(hawk, "death_eaters") > WorldFactions.structure_pull(dove, "death_eaters"),
+		"战争与腐败推高黑暗势力")
+	a.is_true(WorldFactions.structure_pull(hawk, "order_of_phoenix") > WorldFactions.structure_pull(dove, "order_of_phoenix"),
+		"战争推高抵抗组织")
+	a.is_true(WorldFactions.structure_pull(hawk, "ministry") < WorldFactions.structure_pull(dove, "ministry"),
+		"腐败压低魔法部")
+
+	# 敌对压制（brief 原用例）：强的一方压低弱的一方，但不会归零
+	var press := make_world("modern")
+	WorldFactions.initialize(press)
+	WorldFactions.ensure_state(press, "ministry")["power"] = 0.95
+	WorldFactions.ensure_state(press, "death_eaters")["power"] = 0.60
+	var before_weak := WorldFactions.power_of(press, "death_eaters")
+	WorldFactions.evolve(press)
+	a.is_true(WorldFactions.power_of(press, "death_eaters") < before_weak, "敌对强者压制弱者")
+	a.is_true(WorldFactions.power_of(press, "death_eaters") >= WorldFactions.SUPPRESS_FLOOR - 0.0001,
+		"压制有下限，不会归零")
+
+	# 可判别的压制用例：brief 原用例里「向目标回归」本身就会把败者拉低 0.0196 + 噪音 -0.0113 = -0.0309，
+	# 即使刪掉压制也仍会低于起点 → 无判别力。这里改成「回归把败者拉高、压制把它压回起点以下」的格局
+	# （war/corruption 拉高黑暗势力的目标值，败者起点高于 SUPPRESS_FLOOR），使「压制未接线」时该断言必红。
+	var press2 := make_world("modern")
+	WorldFactions.initialize(press2)
+	press2.world_vars["war_pressure"] = 1.0
+	press2.world_vars["corruption"] = 1.0
+	WorldFactions.ensure_state(press2, "ministry")["power"] = 0.95
+	WorldFactions.ensure_state(press2, "death_eaters")["power"] = 0.06
+	var press2_before := WorldFactions.power_of(press2, "death_eaters")
+	WorldFactions.evolve(press2)
+	a.is_true(WorldFactions.power_of(press2, "death_eaters") < press2_before,
+		"可判别：回归本会把败者拉高，压制把它压回起点以下")
+	a.near(WorldFactions.power_of(press2, "death_eaters"), WorldFactions.SUPPRESS_FLOOR, 0.0001,
+		"压制把败者按到下限，不会归零")
+
+	# 直接调用压制函数（无回归/无噪音）：用**只有两个派系、互为 rivals** 的最小夹具隔离单对，幅度必须恰好
+	# 等于 SUPPRESS_RATE × 实力差。（在 17 派系的真实内容表上会同时处理多对，net 跌幅不等于单对幅度。）
+	var pair_reg := Registry.from_tables({
+		"eras": [{"id": "modern", "label": "现代"}],
+		"factions": [
+			{"id": "alpha", "label": "甲", "kind": "ministry", "legal_status": "legal", "secrecy": "public",
+				"base_power": 0.75, "institutions": [], "rivals": ["beta"], "allies": [],
+				"domains": ["law"], "aliases": ["甲"], "era_overrides": {}},
+			{"id": "beta", "label": "乙", "kind": "dark", "legal_status": "outlaw", "secrecy": "secret",
+				"base_power": 0.05, "institutions": [], "rivals": ["alpha"], "allies": [],
+				"domains": ["warfare"], "aliases": ["乙"], "era_overrides": {}},
+		],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+	})
+	var pair_w := WorldState.create("modern", PlayerState.new_default(), 1, pair_reg)
+	WorldFactions.ensure_state(pair_w, "alpha")["power"] = 0.95
+	WorldFactions.ensure_state(pair_w, "beta")["power"] = 0.60
+	WorldFactions.apply_rival_pressure(pair_w)
+	a.near(0.60 - WorldFactions.power_of(pair_w, "beta"), WorldFactions.SUPPRESS_RATE * 0.35, 0.0001,
+		"单对压制幅度 = SUPPRESS_RATE × 实力差（0.03 × 0.35）")
+	a.near(WorldFactions.power_of(pair_w, "alpha"), 0.95 + WorldFactions.SUPPRESS_RATE * 0.35 * 0.5, 0.0001,
+		"胜者获得一半收益（+0.00525）")
+
+	# ---- Task 2 审查 Minor 1：dark 派系未声明机构时按 0 计（不得借用全局归并持有值） ----
+	var dark_w := make_world("modern")
+	WorldFactions.initialize(dark_w)
+	WorldFactions.ensure_state(dark_w, "death_eaters")["control"] = {}
+	WorldFactions.ensure_state(dark_w, "ministry")["control"]["law_enforcement"] = 0.75
+	WorldFactions.ensure_state(dark_w, "wizengamot")["control"]["wizengamot"] = 0.58
+	a.is_false(WorldFactions.government_type(dark_w) == "death_eater_dictatorship",
+		"黑暗势力未声明任何机构 → 不得判独裁（缺失键按 0 计）")
+	a.eq(WorldFactions.government_type(dark_w), "ministry_bureaucracy", "该格局回落为官僚制")
+
+	# ---- Task 2 审查 Minor 2：null clock / null registry 的硬化必须可断言 ----
+	var naked := WorldState.new()
+	WorldFactions.initialize(naked)
+	a.is_true(naked.clock == null, "前置：裸世界的 clock 为 null")
+	a.eq(naked.factions.size(), 0, "裸世界（无 registry/clock）不被写入派系状态")
+	var half := WorldState.new()
+	half.registry = Registry.load_default()
+	half.era_id = "modern"
+	WorldFactions.initialize(half)
+	a.eq(half.factions.size(), 0, "registry 齐但 clock 为 null：仍不补齐（不读 clock.turn）")
+	var half_state := WorldFactions.ensure_state(half, "ministry")
+	a.near(float(half_state.get("power", -1.0)), 0.75, 0.0001, "clock 为 null 时 ensure_state 仍能建出状态")
+	a.eq(int(half_state.get("last_change_turn", -1)), 0, "clock 为 null 时 last_change_turn 兜底为 0")
+
+	# ---- Task 2 审查 Minor 3：institutions/rivals/allies 必须补数组类型守卫 ----
+	var bad_inst_type_entry := base_entry.duplicate(true)
+	bad_inst_type_entry["institutions"] = "law_enforcement"
+	var bad_inst_type := Registry.from_tables({
+		"eras": [{"id": "modern", "label": "现代"}],
+		"factions": [bad_inst_type_entry],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+	})
+	a.is_true(" | ".join(WorldFactions.validate_content(bad_inst_type)).contains("institutions 必须是数组"),
+		"字符串型 institutions 被 validate_content 抓到（不崩）")
+
+	var bad_rivals_type_entry := base_entry.duplicate(true)
+	bad_rivals_type_entry["rivals"] = {"x": 1}
+	var bad_rivals_type := Registry.from_tables({
+		"eras": [{"id": "modern", "label": "现代"}],
+		"factions": [bad_rivals_type_entry],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+	})
+	a.is_true(" | ".join(WorldFactions.validate_content(bad_rivals_type)).contains("rivals 必须是数组"),
+		"字典型 rivals 被 validate_content 抓到（不崩）")
+
+	var bad_allies_type_entry := base_entry.duplicate(true)
+	bad_allies_type_entry["allies"] = 42
+	var bad_allies_type := Registry.from_tables({
+		"eras": [{"id": "modern", "label": "现代"}],
+		"factions": [bad_allies_type_entry],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+	})
+	a.is_true(" | ".join(WorldFactions.validate_content(bad_allies_type)).contains("allies 必须是数组"),
+		"数值型 allies 被 validate_content 抓到（不崩）")
+
+	var missing_fields_entry := base_entry.duplicate(true)
+	missing_fields_entry.erase("institutions")
+	missing_fields_entry.erase("rivals")
+	var missing_fields := Registry.from_tables({
+		"eras": [{"id": "modern", "label": "现代"}],
+		"factions": [missing_fields_entry],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+	})
+	var missing_joined := " | ".join(WorldFactions.validate_content(missing_fields))
+	a.is_true(missing_joined.contains("institutions 缺失"), "缺失 institutions 被 validate_content 抓到")
+	a.is_true(missing_joined.contains("rivals 缺失"), "缺失 rivals 被 validate_content 抓到")
+
+	# ---- Task 2 审查 Minor 4：era_overrides 引用不存在的时代（分支早已实现，此处补红例） ----
+	var bogus_era_entry := base_entry.duplicate(true)
+	bogus_era_entry["era_overrides"] = {"bogus_era": {"base_power": 0.5}}
+	var bogus_era := Registry.from_tables({
+		"eras": [{"id": "modern", "label": "现代"}],
+		"factions": [bogus_era_entry],
+		"governments": [{"id": "g", "label": "政体", "summary": "说明"}],
+	})
+	a.is_true(" | ".join(WorldFactions.validate_content(bogus_era)).contains("引用不存在的时代"),
+		"era_overrides 引用不存在的时代被 validate_content 抓到")
+
+	# ---- Task 3 审查 Minor 2：直接改换所属（不先 leave）的语义钉住（不改生产代码） ----
+	var switcher := make_world("modern")
+	WorldFactions.initialize(switcher)
+	a.is_true(WorldFactions.visible_faction_ids(switcher).has("gringotts"), "前置：古灵阁是公开派系")
+	StateOps.apply(switcher, [{"op": "join_faction", "faction_id": "ministry"}])
+	StateOps.apply(switcher, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": 30}])
+	a.eq(switcher.player.faction_id, "ministry", "前置：先属于魔法部")
+	var switch_errs := StateOps.apply(switcher, [{"op": "join_faction", "faction_id": "gringotts"}])
+	a.eq(switch_errs.size(), 0, "直接改换无错误（不需要先 leave）")
+	a.eq(switcher.player.faction_id, "gringotts", "直接改换覆盖所属")
+	a.eq(switcher.player.standing_of("ministry"), 30, "改换不移除原派系立场")
+
+	# ---- Task 3 审查 Minor 3：delta / 2 向零截断（既定语义，留给后续统一） ----
+	var trunc := make_world("modern")
+	WorldFactions.initialize(trunc)
+	StateOps.apply(trunc, [{"op": "join_faction", "faction_id": "ministry"}])
+	var trunc_errs := StateOps.apply(trunc, [{"op": "faction_standing_delta", "faction_id": "ministry", "delta": -5}])
+	a.eq(trunc_errs.size(), 0, "负向立场调整无错误")
+	a.eq(trunc.player.standing_of("ministry"), -5, "玩家立场为 -5（原值）")
+	a.eq(int(WorldFactions.state_of(trunc, "ministry").get("stance_to_player", 0)), -2,
+		"派系态度为 -2：delta/2 向零截断（既定语义）")
+
 	return a.report("factions")

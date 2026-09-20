@@ -38,13 +38,23 @@ static func validate_content(registry: Registry) -> PackedStringArray:
 	for fid in registry.ids("factions"):
 		var id := str(fid)
 		var e := registry.entry("factions", id)
-		for inst in (e.get("institutions", []) as Array):
-			if not INSTITUTIONS.has(str(inst)):
-				errors.append("factions/%s: 机构非法（%s）" % [id, str(inst)])
+		if not e.has("institutions"):
+			errors.append("factions/%s: institutions 缺失" % id)
+		elif typeof(e["institutions"]) != TYPE_ARRAY:
+			errors.append("factions/%s: institutions 必须是数组" % id)
+		else:
+			for inst in (e["institutions"] as Array):
+				if not INSTITUTIONS.has(str(inst)):
+					errors.append("factions/%s: 机构非法（%s）" % [id, str(inst)])
 		for field in ["rivals", "allies"]:
-			for other in (e.get(field, []) as Array):
-				if not registry.has("factions", str(other)):
-					errors.append("factions/%s: %s 引用不存在的派系（%s）" % [id, field, str(other)])
+			if not e.has(field):
+				errors.append("factions/%s: %s 缺失" % [id, field])
+			elif typeof(e[field]) != TYPE_ARRAY:
+				errors.append("factions/%s: %s 必须是数组" % [id, field])
+			else:
+				for other in (e[field] as Array):
+					if not registry.has("factions", str(other)):
+						errors.append("factions/%s: %s 引用不存在的派系（%s）" % [id, field, str(other)])
 		if not e.has("era_overrides"):
 			errors.append("factions/%s: era_overrides 缺失" % id)
 		elif typeof(e["era_overrides"]) != TYPE_DICTIONARY:
@@ -187,17 +197,94 @@ static func institution_control(world: WorldState) -> Dictionary:
 				out[str(inst)] = {"value": value, "holder": id}
 	return out
 
+# ---------- 月度演化（第十二/四十六/四十七/四十九章） ----------
+
+const EVOLVE_REGRESSION := 0.04   # 每月向「目标实力」回归的比例
+const EVOLVE_NOISE := 0.02        # ±0.02 扰动（单侧幅值）
+const SUPPRESS_RATE := 0.03       # 敌对压制：每月按实力差比例削弱败者
+const SUPPRESS_FLOOR := 0.05      # 弱者实力的绝对下限（不会被压到 0）
+
+# 结构性拉力：世界变量如何推动某类派系（正典第十二/十七/四十九章的定性关系）
+static func structure_pull(world: WorldState, faction_id: String) -> float:
+	var kind := str(entry_of(world, faction_id).get("kind", ""))
+	var v := world.world_vars
+	match kind:
+		"ministry":
+			return float(v.get("ministry_stability", 0.5)) * 0.10 - float(v.get("corruption", 0.3)) * 0.20
+		"institution":
+			return float(v.get("ministry_stability", 0.5)) * 0.05
+		"pureblood":
+			return float(v.get("pureblood_influence", 0.3)) * 0.15
+		"dark":
+			return float(v.get("war_pressure", 0.2)) * 0.30 + float(v.get("corruption", 0.3)) * 0.10
+		"resistance":
+			return float(v.get("war_pressure", 0.2)) * 0.25
+		"commerce", "media":
+			return (float(v.get("economy_index", 0.6)) - 0.5) * 0.20
+		"foreign":
+			return float(v.get("muggle_relations", 0.5)) * 0.10
+		"school":
+			return float(v.get("secrecy_integrity", 0.8)) * 0.10
+		_:
+			return 0.0
+
+# 敌对压制：对每一对 rivals（按 id 排序只算一次），强者压低弱者、自己小幅获益
+static func apply_rival_pressure(world: WorldState) -> void:
+	for fid in world.registry.ids("factions"):
+		var id := str(fid)
+		for other in (entry_of(world, id).get("rivals", []) as Array):
+			var oid := str(other)
+			if oid <= id:
+				continue
+			var pa := power_of(world, id)
+			var pb := power_of(world, oid)
+			if is_equal_approx(pa, pb):
+				continue
+			var winner := id if pa > pb else oid
+			var loser := oid if pa > pb else id
+			var gap := absf(pa - pb)
+			var loser_state := ensure_state(world, loser)
+			if not loser_state.is_empty():
+				var floor := maxf(SUPPRESS_FLOOR, base_power(world, loser) * 0.25)
+				loser_state["power"] = clampf(float(loser_state["power"]) - SUPPRESS_RATE * gap, floor, 1.0)
+			var winner_state := ensure_state(world, winner)
+			if not winner_state.is_empty():
+				winner_state["power"] = clampf(float(winner_state["power"]) + SUPPRESS_RATE * gap * 0.5, 0.0, 1.0)
+
+# 单回合演化：就地更新 world.factions / world.flags，返回事件数组（结构与 tick 的 events 一致；本任务恒空）。
+# 随机数全部走命名流，保证同 seed + 同回合 ⇒ 同结果。
+static func evolve(world: WorldState) -> Array:
+	initialize(world)
+	var rng := RngService.new(world.game_seed + world.clock.turn * 31337)
+	for fid in world.registry.ids("factions"):
+		var id := str(fid)
+		var st := ensure_state(world, id)
+		if st.is_empty():
+			continue
+		var target := clampf(base_power(world, id) + structure_pull(world, id), 0.0, 1.0)
+		var current := clampf(float(st.get("power", target)), 0.0, 1.0)
+		var noise := rng.stream_float("faction_%s" % id) * (EVOLVE_NOISE * 2.0) - EVOLVE_NOISE
+		var next := clampf(current + (target - current) * EVOLVE_REGRESSION + noise, 0.0, 1.0)
+		if not is_equal_approx(next, current):
+			st["last_change_turn"] = world.clock.turn
+		st["power"] = next
+		var control: Dictionary = st.get("control", {})
+		for inst in control.keys():
+			control[inst] = clampf(float(control[inst]) + (next - float(control[inst])) * 0.5, 0.0, 1.0)
+	apply_rival_pressure(world)
+	world.flags[GOVERNMENT_FLAG] = government_type(world)
+	return []
+
 # ---------- 政体推导（第十一章 + 第十二章） ----------
 
 static func government_type(world: WorldState) -> String:
-	var ic := institution_control(world)
-	var law := float((ic["law_enforcement"] as Dictionary)["value"])
-	var wiz := float((ic["wizengamot"] as Dictionary)["value"])
 	# 1) 凤凰社抵抗：战争压力高 + 抵抗组织强于魔法部（第十一章第 4 条）
 	if float(world.world_vars.get("war_pressure", 0.0)) >= 0.6 \
 			and power_of(world, RESISTANCE_ID) > power_of(world, MINISTRY_ID):
 		return "order_resistance"
 	# 2) 食死徒独裁：黑暗势力掌握执法与司法（第十一章第 3 条）
+	# 缺失键按 0 计（Task 2 审查 Minor 1）：旧实现回退到「全局归并持有值」，会把「非黑暗派系控制执法司」
+	# 算成黑暗势力的控制权，与 institution_control() 的「未声明=不参与」语义矛盾。
 	var dark_sum := 0.0
 	var dark_count := 0
 	for fid in world.registry.ids("factions"):
@@ -206,7 +293,7 @@ static func government_type(world: WorldState) -> String:
 			continue
 		var control: Dictionary = state_of(world, id).get("control", {})
 		for inst in ["law_enforcement", "wizengamot"]:
-			dark_sum += clampf(float(control.get(inst, law if inst == "law_enforcement" else wiz)), 0.0, 1.0)
+			dark_sum += clampf(float(control.get(inst, 0.0)), 0.0, 1.0)
 			dark_count += 1
 	if dark_count > 0 and (dark_sum / float(dark_count)) >= 0.6:
 		return "death_eater_dictatorship"
