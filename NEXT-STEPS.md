@@ -68,9 +68,9 @@ main scene ready, godot=4.7.2-stable (official)   全部通过。
   - `README.md:13`「计划 02 在分支 `plan-02-llm-narrative` 上进行」、`:35`「### 计划 02 · LLM 叙事引擎（进行中）」、`:37`「后续计划：02 LLM 叙事引擎（进行中）；03…」。
   - 要做：改为「计划 02 已完成并合入 `main`」，后续计划列表改为从 **03 派系与政治经济** 起。
 
-- [ ] **A7 Task 12 工件说明**
+- [x] **A7 Task 12 工件说明** —— 采方案 2（成本最低），已在 A1 的 `progress.md` 台账中注明「Task 12 由控制器直接执行、无独立 brief/report/reviewer 工件」（`0367eb7`）。
   - `docs/sdd/plan-02-llm-narrative/` 无 `task-12-brief.md` / `task-12-report.md`（Task 12 是纯文档收尾，由控制器直接执行 `1f82483`）。
-  - 要做：三选一 —— 补一页极简 brief+report；或在 A1 台账里注明「Task 12 由控制器执行、无独立工件」；或保持现状但在 `progress.md` 顶部写清。（建议第二种，成本最低。）
+  - 要做：三选一 —— 补一页极简 brief+report；或在 A1 台账里注明「Task 12 由控制器执行、无独立工件」；或保持现状但在 `progress.md` 顶部写清。（**建议第二种，成本最低**）
 
 ---
 

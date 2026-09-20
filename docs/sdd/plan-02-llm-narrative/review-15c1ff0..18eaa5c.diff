@@ -1,0 +1,637 @@
+== Tasks 8-11 修复轮 + F4 闭合（15c1ff0..18eaa5c） ==
+18eaa5c fix(ui): 读档路径先设状态行再建 GM，保住未配置提示（F4）
+a48f108 fix(ui/gm): 等待期禁用按钮行 + provider 解析护栏/密钥脱敏 + warnings 覆盖 —— Tasks 8–11 审查
+
+== 文件统计 ==
+ .../review-fed4767^..15c1ff0.diff                  | 393 +++++++++++++++++++++
+ .../2026-09-19-hp-magic-era-02-llm-narrative.md    |  33 +-
+ src/gm/providers/openai_compat_provider.gd         |   9 +-
+ src/ui/main.gd                                     |  18 +-
+ tests/llm_test.gd                                  |  12 +-
+ 5 files changed, 456 insertions(+), 9 deletions(-)
+
+== diff ==
+diff --git a/docs/sdd/plan-02-llm-narrative/review-fed4767^..15c1ff0.diff b/docs/sdd/plan-02-llm-narrative/review-fed4767^..15c1ff0.diff
+new file mode 100644
+index 0000000..a2b3f40
+--- /dev/null
++++ b/docs/sdd/plan-02-llm-narrative/review-fed4767^..15c1ff0.diff
+@@ -0,0 +1,393 @@
++== Tasks 8-11 ==
++15c1ff0 feat(ui): 回合异步接线与 LLM 配置提示
++c87959e feat(gm): OpenAI 兼容 HTTP provider
++878e9e3 feat(core): TurnEngine.submit_async 与共用守卫/结算
++fed4767 feat(gm): LlmGameMaster（重试 + 降级 + 净化）
++
++== diff ==
++diff --git a/src/core/turn_engine.gd b/src/core/turn_engine.gd
++index a577064..ba4d6ae 100644
++--- a/src/core/turn_engine.gd
+++++ b/src/core/turn_engine.gd
++@@ -16,26 +16,28 @@ func acknowledge_audit() -> void:
++ 	world.flags.erase("awaiting_audit_ack")
++ 
++ # 一个回合 = 一个月：玩家行动 → 世界结算 → 必要时强制自检。
++-func submit(action_text: String) -> Dictionary:
++-	var out := {
++-		"narration": "", "deltas_applied": [], "op_errors": PackedStringArray(),
++-		"events": [], "audit": "", "blocked": false,
++-	}
+++func _blank_result() -> Dictionary:
+++	return {"narration": "", "deltas_applied": [], "op_errors": PackedStringArray(),
+++		"events": [], "audit": "", "blocked": false}
++ 
+++# 死亡 / 自检挂起守卫；true 表示可继续。
+++func _pre_submit(out: Dictionary) -> bool:
++ 	# 死亡真实且不可逆（第五十三章）
++ 	if not world.player.alive:
++ 		out["blocked"] = true
++ 		out["narration"] = "你已经死了。死亡默认真实且不可逆。请切换到继承人或读取存档。"
++-		return out
++-
+++		return false
++ 	# 第七十二章：自检未确认前禁止续写剧情
++ 	if bool(world.flags.get("awaiting_audit_ack", false)):
++ 		out["blocked"] = true
++ 		out["narration"] = "上一轮自检尚未确认。请先阅读【剧情快照】与【人设OOC自检报告】，然后确认自检。"
++-		return out
+++		return false
+++	return true
++ 
++-	var result := gm.act(world, action_text)
+++func _resolve(out: Dictionary, result: GameMaster.GmResult) -> Dictionary:
++ 	var errors := StateOps.apply(world, result.deltas)
+++	for warning in result.warnings:
+++		errors.append(str(warning))
++ 	out["narration"] = result.narration
++ 	out["deltas_applied"] = result.deltas
++ 	out["op_errors"] = errors
++@@ -50,3 +52,22 @@ func submit(action_text: String) -> Dictionary:
++ 		world.flags["awaiting_audit_ack"] = true
++ 
++ 	return out
+++
+++# 同步：仅供 ScriptedGameMaster / 既有测试。
+++func submit(action_text: String) -> Dictionary:
+++	var out := _blank_result()
+++	if not _pre_submit(out):
+++		return out
+++	if gm is LlmGameMaster:
+++		push_error("submit() 不能驱动 LlmGameMaster；请用 submit_async()")
+++		out["blocked"] = true
+++		return out
+++	return _resolve(out, gm.act(world, action_text))
+++
+++# 异步：正式路径。
+++func submit_async(action_text: String) -> Dictionary:
+++	var out := _blank_result()
+++	if not _pre_submit(out):
+++		return out
+++	var result = await gm.act(world, action_text)
+++	return _resolve(out, result)
++diff --git a/src/gm/game_master.gd b/src/gm/game_master.gd
++index 16651c2..13ee788 100644
++--- a/src/gm/game_master.gd
+++++ b/src/gm/game_master.gd
++@@ -5,6 +5,7 @@ class GmResult:
++ 	var narration: String = ""
++ 	var deltas: Array = []
++ 	var tags: PackedStringArray = PackedStringArray()
+++	var warnings: PackedStringArray = PackedStringArray()
++ 	var audit_required: bool = false
++ 
++ # 接口：计划 01 用 ScriptedGameMaster，计划 02 用 LlmGameMaster 替换。
++diff --git a/src/gm/llm_game_master.gd b/src/gm/llm_game_master.gd
++new file mode 100644
++index 0000000..199d5b5
++--- /dev/null
+++++ b/src/gm/llm_game_master.gd
++@@ -0,0 +1,55 @@
+++class_name LlmGameMaster
+++extends GameMaster
+++
+++const MAX_ATTEMPTS := 2
+++const FALLBACK_NOTE := "（叙事引擎暂不可用，已用本地规则结算）"
+++
+++var provider: LlmProvider = null
+++var fallback: GameMaster = null
+++var last_error: String = ""
+++
+++func _init(provider_: LlmProvider = null, fallback_: GameMaster = null) -> void:
+++	provider = provider_
+++	fallback = fallback_
+++
+++func act(world: WorldState, action_text: String) -> GmResult:
+++	if provider == null:
+++		return _fallback(world, action_text, "provider 未配置")
+++	var request := PromptBuilder.build(world, action_text)
+++	var response: LlmProvider.LlmResponse = null
+++	var parsed: GmResponseParser.Result = null
+++	for attempt in MAX_ATTEMPTS:
+++		response = await provider.complete(request)
+++		if response.ok:
+++			parsed = GmResponseParser.parse(response.text)
+++			if parsed.ok:
+++				break
+++			request = PromptBuilder.build_repair(world, action_text, parsed.error)
+++		else:
+++			parsed = null
+++	var reason := "未知错误"
+++	if response == null:
+++		reason = "无响应"
+++	elif not response.ok:
+++		reason = response.error
+++	elif parsed != null and not parsed.ok:
+++		reason = parsed.error
+++	if response == null or not response.ok or parsed == null or not parsed.ok:
+++		return _fallback(world, action_text, reason)
+++	var guard := OpGuard.sanitize_detailed(world, parsed.ops)
+++	var r := GmResult.new()
+++	r.narration = parsed.narration
+++	r.deltas = guard.ops
+++	r.tags = parsed.tags
+++	r.warnings = guard.warnings
+++	return r
+++
+++func _fallback(world: WorldState, action_text: String, reason: String) -> GmResult:
+++	last_error = reason
+++	if fallback == null:
+++		var r := GmResult.new()
+++		r.narration = "%s（原因：%s）" % [FALLBACK_NOTE, reason]
+++		return r
+++	var r2 := fallback.act(world, action_text)
+++	r2.narration = "%s %s" % [r2.narration, FALLBACK_NOTE]
+++	return r2
++diff --git a/src/gm/llm_game_master.gd.uid b/src/gm/llm_game_master.gd.uid
++new file mode 100644
++index 0000000..3fe5aba
++--- /dev/null
+++++ b/src/gm/llm_game_master.gd.uid
++@@ -0,0 +1 @@
+++uid://btoplfhew06me
++diff --git a/src/gm/providers/openai_compat_provider.gd b/src/gm/providers/openai_compat_provider.gd
++new file mode 100644
++index 0000000..87b7e5b
++--- /dev/null
+++++ b/src/gm/providers/openai_compat_provider.gd
++@@ -0,0 +1,87 @@
+++class_name OpenAiCompatProvider
+++extends LlmProvider
+++
+++var base_url := ""
+++var model := ""
+++var api_key := ""
+++var _host: Node = null
+++var _http: HTTPRequest = null
+++
+++func _init(host: Node = null, base_url_: String = "", model_: String = "", api_key_: String = "") -> void:
+++	_host = host
+++	base_url = base_url_
+++	model = model_
+++	api_key = api_key_
+++
+++static func from_settings(host: Node, settings: LlmSettings) -> OpenAiCompatProvider:
+++	return OpenAiCompatProvider.new(host, settings.base_url, settings.model, settings.api_key)
+++
+++func _chat_url() -> String:
+++	var base := base_url.rstrip("/")
+++	if base.ends_with("/chat/completions"):
+++		return base
+++	return base + "/chat/completions"
+++
+++func _build_headers() -> PackedStringArray:
+++	return PackedStringArray(["Content-Type: application/json", "Authorization: Bearer %s" % api_key])
+++
+++func _build_body(request: LlmProvider.LlmRequest) -> String:
+++	var body := {
+++		"model": model,
+++		"messages": [
+++			{"role": "system", "content": request.system_prompt},
+++			{"role": "user", "content": request.user_prompt},
+++		],
+++		"temperature": request.temperature,
+++		"max_tokens": request.max_tokens,
+++	}
+++	if request.json_mode:
+++		body["response_format"] = {"type": "json_object"}
+++	return JSON.stringify(body)
+++
+++static func _parse_http(status: int, body: String) -> LlmProvider.LlmResponse:
+++	var r := LlmProvider.LlmResponse.new()
+++	r.http_status = status
+++	if status < 200 or status >= 300:
+++		r.error = "HTTP %d（%s）" % [status, body.substr(0, 200)]
+++		return r
+++	var parsed = JSON.parse_string(body)
+++	if typeof(parsed) != TYPE_DICTIONARY:
+++		r.error = "响应不是合法 JSON"
+++		return r
+++	var choices = (parsed as Dictionary).get("choices", [])
+++	if typeof(choices) != TYPE_ARRAY or (choices as Array).is_empty():
+++		r.error = "响应缺少 choices"
+++		return r
+++	var message = ((choices as Array)[0] as Dictionary).get("message", {})
+++	if typeof(message) != TYPE_DICTIONARY:
+++		r.error = "响应缺少 message"
+++		return r
+++	r.text = str((message as Dictionary).get("content", ""))
+++	r.ok = not r.text.is_empty()
+++	if not r.ok:
+++		r.error = "响应内容为空"
+++	return r
+++
+++func complete(request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
+++	if base_url.is_empty() or model.is_empty() or api_key.is_empty():
+++		var miss := LlmProvider.LlmResponse.new()
+++		miss.error = "provider 未配置"
+++		return miss
+++	if _http == null:
+++		_http = HTTPRequest.new()
+++		_http.timeout = maxf(1.0, float(request.timeout_ms) / 1000.0)
+++		if _host != null:
+++			_host.add_child(_http)
+++	var started := Time.get_ticks_msec()
+++	var err := _http.request(_chat_url(), _build_headers(), HTTPClient.METHOD_POST, _build_body(request))
+++	if err != OK:
+++		var e := LlmProvider.LlmResponse.new()
+++		e.error = "请求发起失败（%d）" % err
+++		return e
+++	var result: Array = await _http.request_completed
+++	var status := int(result[1])
+++	var body := (result[3] as PackedByteArray).get_string_from_utf8()
+++	var resp := _parse_http(status, body)
+++	resp.latency_ms = Time.get_ticks_msec() - started
+++	return resp
++diff --git a/src/gm/providers/openai_compat_provider.gd.uid b/src/gm/providers/openai_compat_provider.gd.uid
++new file mode 100644
++index 0000000..fa9134c
++--- /dev/null
+++++ b/src/gm/providers/openai_compat_provider.gd.uid
++@@ -0,0 +1 @@
+++uid://byn62iw82n2uk
++diff --git a/src/ui/main.gd b/src/ui/main.gd
++index 043d0fd..c541eca 100644
++--- a/src/ui/main.gd
+++++ b/src/ui/main.gd
++@@ -186,7 +186,7 @@ func _on_start_pressed() -> void:
++ 		_show_creation_error("创建失败：\n%s" % "\n".join(result.errors))
++ 		return
++ 	world = WorldState.create(choices["era_id"], result.player, rng.seed_value, registry)
++-	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
+++	engine = TurnEngine.new(world, _build_gm(), rng)
++ 	creation_box.visible = false
++ 	play_box.visible = true
++ 	_append("【原著优先级别已启用】本世界以《哈利·波特》原著七部小说为正典。")
++@@ -203,6 +203,13 @@ func _personality_words() -> Array:
++ 			words.append(word)
++ 	return words
++ 
+++func _build_gm() -> GameMaster:
+++	var settings := LlmSettings.load_from()
+++	if settings.is_configured():
+++		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng))
+++	status_label.text = "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
+++	return ScriptedGameMaster.new(rng)
+++
++ func _append(text: String) -> void:
++ 	log_view.append_text(text + "\n")
++ 
++@@ -224,8 +231,10 @@ func _on_command_submitted(text: String) -> void:
++ 		_append("（自检已确认。世界继续向前。）")
++ 		command_edit.text = ""
++ 		return
++-	var result := engine.submit(text)
+++	command_edit.editable = false
++ 	_append(">>> %s" % text)
+++	_append("（世界正在回应…）")
+++	var result: Dictionary = await engine.submit_async(text)
++ 	_append(str(result["narration"]))
++ 	var events: Array = result["events"]
++ 	if not events.is_empty():
++@@ -236,6 +245,7 @@ func _on_command_submitted(text: String) -> void:
++ 		_append(str(result["audit"]))
++ 		_append("（自检完毕。等待你的指令——输入“确认自检”继续。）")
++ 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
+++	command_edit.editable = true
++ 	command_edit.text = ""
++ 
++ func _on_status() -> void:
++@@ -271,7 +281,7 @@ func _on_load() -> void:
++ 		return
++ 	world = result["world"]
++ 	rng = RngService.new(world.game_seed)
++-	engine = TurnEngine.new(world, ScriptedGameMaster.new(rng), rng)
+++	engine = TurnEngine.new(world, _build_gm(), rng)
++ 	creation_box.visible = false
++ 	play_box.visible = true
++ 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
++diff --git a/tests/llm_test.gd b/tests/llm_test.gd
++index bbd411c..a83505f 100644
++--- a/tests/llm_test.gd
+++++ b/tests/llm_test.gd
++@@ -106,4 +106,80 @@ func run() -> int:
++ 	a.eq(weird.ops[0]["knuts"], 0, "畸形 knuts 视为 0，不崩")
++ 	a.eq(weird.ops[1]["trust"], 0, "畸形 trust 视为 0，不崩")
++ 
+++	# ---- LlmGameMaster ----
+++	var mworld := Registry.load_default()
+++	var mp := PlayerState.new_default()
+++	mp.name_text = "李雷"
+++	mp.location_id = "hogwarts"
+++	var lw := WorldState.create("modern", mp, 3, mworld)
+++	var provider := MockLlmProvider.new()
+++	provider.queue = [
+++		"不是 JSON",
+++		'{"narration":"你在城堡里练了一晚魔药。","ops":[{"op":"gain_skill","skill_id":"potions","amount":99}],"tags":["train"]}',
+++	]
+++	var scripted := ScriptedGameMaster.new(RngService.new(3))
+++	var gm := LlmGameMaster.new(provider, scripted)
+++	var res: GameMaster.GmResult = await gm.act(lw, "我要练习魔药学")
+++	a.eq(res.narration, "你在城堡里练了一晚魔药。", "第二次尝试拿到叙事")
+++	a.eq(res.deltas[0]["op"], "train_skill", "ops 经 OpGuard 净化")
+++	a.eq(res.tags, PackedStringArray(["train"]), "tags 透传")
+++	# 全部失败 → 降级 Scripted
+++	var bad := MockLlmProvider.new()
+++	bad.queue = ["x", "y"]
+++	bad.errors = ["net", "net"]
+++	var gm2 := LlmGameMaster.new(bad, ScriptedGameMaster.new(RngService.new(3)))
+++	var res2: GameMaster.GmResult = await gm2.act(lw, "我要去对角巷打工赚钱")
+++	a.is_true(res2.narration.contains("本地规则结算"), "降级提示出现")
+++	# 无 provider → 降级
+++	var gm3 := LlmGameMaster.new(null, ScriptedGameMaster.new(RngService.new(3)))
+++	var res3: GameMaster.GmResult = await gm3.act(lw, "我要去上课")
+++	a.is_true(res3.narration.length() > 0, "无 provider 也有叙事")
+++
+++	# ---- TurnEngine.submit_async 端到端（mock GM，不联网） ----
+++	var ereg := Registry.load_default()
+++	var ep := PlayerState.new_default()
+++	ep.name_text = "韩梅梅"
+++	ep.location_id = "hogwarts"
+++	var ew := WorldState.create("modern", ep, 5, ereg)
+++	var rng := RngService.new(5)
+++	var eprovider := MockLlmProvider.new()
+++	eprovider.queue = [
+++		'{"narration":"你练成了。","ops":[{"op":"gain_skill","skill_id":"potions","amount":99}],"tags":["train"]}',
+++		'{"narration":"又练了一月。","ops":[],"tags":["train"]}',
+++	]
+++	var egm := LlmGameMaster.new(eprovider, ScriptedGameMaster.new(rng))
+++	var engine := TurnEngine.new(ew, egm, rng)
+++	var before_turn := ew.clock.turn
+++	var out: Dictionary = await engine.submit_async("我要练习魔药学")
+++	a.eq(str(out["narration"]), "你练成了。", "异步提交返回叙事")
+++	a.eq(ew.clock.turn, before_turn + 1, "推进一回合")
+++	a.is_true(ew.player.skill("potions") > 0, "ops 经 StateOps 生效")
+++	# 死亡玩家 blocked 且不推进
+++	ew.player.alive = false
+++	var t2 := ew.clock.turn
+++	var out2: Dictionary = await engine.submit_async("我要起床")
+++	a.is_true(bool(out2["blocked"]), "死者 blocked")
+++	a.eq(ew.clock.turn, t2, "blocked 不推进回合")
+++
+++	# ---- OpenAiCompatProvider 纯函数 ----
+++	var p := OpenAiCompatProvider.new(null, "https://api.example.com/v1", "test-model", "sk-secret")
+++	a.eq(p._chat_url(), "https://api.example.com/v1/chat/completions", "URL 拼接")
+++	var lreq := LlmProvider.LlmRequest.new()
+++	lreq.system_prompt = "sys"
+++	lreq.user_prompt = "usr"
+++	var body = JSON.parse_string(p._build_body(lreq))
+++	a.eq(str(body["model"]), "test-model", "body 含 model")
+++	a.eq(str(body["messages"][0]["role"]), "system", "body 含 system 消息")
+++	a.eq(str(body["response_format"]["type"]), "json_object", "json_mode 生效")
+++	var headers := p._build_headers()
+++	a.is_true(" | ".join(headers).contains("Bearer sk-secret"), "Authorization 头")
+++	var resp := OpenAiCompatProvider._parse_http(200, '{"choices":[{"message":{"content":"hi"}}]}')
+++	a.is_true(resp.ok, "2xx 解析成功")
+++	a.eq(resp.text, "hi", "取出 content")
+++	var err_resp := OpenAiCompatProvider._parse_http(500, "server error")
+++	a.is_false(err_resp.ok, "非 2xx 失败")
+++	a.is_true(err_resp.error.contains("500"), "错误含状态码")
+++	var bad_body := OpenAiCompatProvider._parse_http(200, "not json")
+++	a.is_false(bad_body.ok, "非 JSON 失败")
+++
++ 	return a.report("llm")
+diff --git a/docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md b/docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md
+index 38338bc..db30de7 100644
+--- a/docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md
++++ b/docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md
+@@ -1064,7 +1064,7 @@ git commit -m "feat(gm): LlmGameMaster（重试 + 降级 + 净化）"
+ 	var eprovider := MockLlmProvider.new()
+ 	eprovider.queue = [
+ 		'{"narration":"你练成了。","ops":[{"op":"gain_skill","skill_id":"potions","amount":99}],"tags":["train"]}',
+-		'{"narration":"又练了一月。","ops":[],"tags":["train"]}',
++		'{"narration":"又练了一月。","ops":[{"op":"add_money","knuts":999999}],"tags":["work"]}',
+ 	]
+ 	var egm := LlmGameMaster.new(eprovider, ScriptedGameMaster.new(rng))
+ 	var engine := TurnEngine.new(ew, egm, rng)
+@@ -1073,6 +1073,14 @@ git commit -m "feat(gm): LlmGameMaster（重试 + 降级 + 净化）"
+ 	a.eq(str(out["narration"]), "你练成了。", "异步提交返回叙事")
+ 	a.eq(ew.clock.turn, before_turn + 1, "推进一回合")
+ 	a.is_true(ew.player.skill("potions") > 0, "ops 经 StateOps 生效")
++	# F1：OpGuard warning 必须进 op_errors
++	var out_warn: Dictionary = await engine.submit_async("我去赚一笔")
++	a.is_true((out_warn["op_errors"] as PackedStringArray).size() > 0, "OpGuard warning 进入 op_errors")
++	# F5：同步 submit() 不能驱动 LlmGameMaster
++	var t_sync := ew.clock.turn
++	var out_sync: Dictionary = engine.submit("我要上课")
++	a.is_true(bool(out_sync["blocked"]), "submit() 拒绝异步 GM")
++	a.eq(ew.clock.turn, t_sync, "被拒的同步提交不推进回合")
+ 	# 死亡玩家 blocked 且不推进
+ 	ew.player.alive = false
+ 	var t2 := ew.clock.turn
+@@ -1261,7 +1269,11 @@ static func _parse_http(status: int, body: String) -> LlmProvider.LlmResponse:
+ 	if typeof(choices) != TYPE_ARRAY or (choices as Array).is_empty():
+ 		r.error = "响应缺少 choices"
+ 		return r
+-	var message = ((choices as Array)[0] as Dictionary).get("message", {})
++	var first = (choices as Array)[0]
++	if typeof(first) != TYPE_DICTIONARY:
++		r.error = "响应 choices[0] 不是对象"
++		return r
++	var message = (first as Dictionary).get("message", {})
+ 	if typeof(message) != TYPE_DICTIONARY:
+ 		r.error = "响应缺少 message"
+ 		return r
+@@ -1291,6 +1303,9 @@ func complete(request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
+ 	var status := int(result[1])
+ 	var body := (result[3] as PackedByteArray).get_string_from_utf8()
+ 	var resp := _parse_http(status, body)
++	# 脱敏：错误串可能回显服务端 body，绝不能带出 api_key
++	if not resp.ok and not api_key.is_empty():
++		resp.error = resp.error.replace(api_key, "***")
+ 	resp.latency_ms = Time.get_ticks_msec() - started
+ 	return resp
+ ```
+@@ -1325,13 +1340,13 @@ git commit -m "feat(gm): OpenAI 兼容 HTTP provider"
+ 
+ 修改 `src/ui/main.gd`：
+ 
+-1. 新增 helper：
++1. 新增 helper（先把 `button_row` 提升为成员：在成员区加 `var button_row: HBoxContainer = null`，并把 `_build_ui` 里的 `var button_row := HBoxContainer.new()` 改为 `button_row = HBoxContainer.new()`）：
+ ```gdscript
+ func _build_gm() -> GameMaster:
+ 	var settings := LlmSettings.load_from()
+ 	if settings.is_configured():
+ 		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng))
+-	status_label.text = "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
++	status_label.text += "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
+ 	return ScriptedGameMaster.new(rng)
+ ```
+ 
+@@ -1362,6 +1377,7 @@ func _on_command_submitted(text: String) -> void:
+ 		command_edit.text = ""
+ 		return
+ 	command_edit.editable = false
++	_set_buttons_enabled(false)
+ 	_append(">>> %s" % text)
+ 	_append("（世界正在回应…）")
+ 	var result: Dictionary = await engine.submit_async(text)
+@@ -1375,8 +1391,17 @@ func _on_command_submitted(text: String) -> void:
+ 		_append(str(result["audit"]))
+ 		_append("（自检完毕。等待你的指令——输入“确认自检”继续。）")
+ 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
++	_set_buttons_enabled(true)
+ 	command_edit.editable = true
+ 	command_edit.text = ""
++
++# 等待 LLM 期间禁用整排按钮，防止“读档”等操作在 in-flight 回合中替换 world/engine。
++func _set_buttons_enabled(enabled: bool) -> void:
++	if button_row == null:
++		return
++	for child in button_row.get_children():
++		if child is Button:
++			(child as Button).disabled = not enabled
+ ```
+ 
+ - [ ] **Step 3: 运行冒烟**
+diff --git a/src/gm/providers/openai_compat_provider.gd b/src/gm/providers/openai_compat_provider.gd
+index 87b7e5b..32a6e4f 100644
+--- a/src/gm/providers/openai_compat_provider.gd
++++ b/src/gm/providers/openai_compat_provider.gd
+@@ -53,7 +53,11 @@ static func _parse_http(status: int, body: String) -> LlmProvider.LlmResponse:
+ 	if typeof(choices) != TYPE_ARRAY or (choices as Array).is_empty():
+ 		r.error = "响应缺少 choices"
+ 		return r
+-	var message = ((choices as Array)[0] as Dictionary).get("message", {})
++	var first = (choices as Array)[0]
++	if typeof(first) != TYPE_DICTIONARY:
++		r.error = "响应 choices[0] 不是对象"
++		return r
++	var message = (first as Dictionary).get("message", {})
+ 	if typeof(message) != TYPE_DICTIONARY:
+ 		r.error = "响应缺少 message"
+ 		return r
+@@ -83,5 +87,8 @@ func complete(request: LlmProvider.LlmRequest) -> LlmProvider.LlmResponse:
+ 	var status := int(result[1])
+ 	var body := (result[3] as PackedByteArray).get_string_from_utf8()
+ 	var resp := _parse_http(status, body)
++	# 脱敏：错误串可能回显服务端 body，绝不能带出 api_key
++	if not resp.ok and not api_key.is_empty():
++		resp.error = resp.error.replace(api_key, "***")
+ 	resp.latency_ms = Time.get_ticks_msec() - started
+ 	return resp
+diff --git a/src/ui/main.gd b/src/ui/main.gd
+index c541eca..055e33b 100644
+--- a/src/ui/main.gd
++++ b/src/ui/main.gd
+@@ -20,6 +20,7 @@ var goal_edit: LineEdit = null
+ var age_spin: SpinBox = null
+ var personality_edit: LineEdit = null
+ var creation_error: Label = null
++var button_row: HBoxContainer = null
+ 
+ func _ready() -> void:
+ 	registry = Registry.load_default()
+@@ -57,7 +58,7 @@ func _build_ui() -> void:
+ 	command_edit.text_submitted.connect(_on_command_submitted)
+ 	play_box.add_child(command_edit)
+ 
+-	var button_row := HBoxContainer.new()
++	button_row = HBoxContainer.new()
+ 	play_box.add_child(button_row)
+ 	for pair in [["状态", "_on_status"], ["魔法", "_on_magic"], ["关系", "_on_relation"], ["势力", "_on_power"],
+ 			["存档", "_on_save"], ["读档", "_on_load"], ["自检", "_on_audit"]]:
+@@ -207,7 +208,7 @@ func _build_gm() -> GameMaster:
+ 	var settings := LlmSettings.load_from()
+ 	if settings.is_configured():
+ 		return LlmGameMaster.new(OpenAiCompatProvider.from_settings(self, settings), ScriptedGameMaster.new(rng))
+-	status_label.text = "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
++	status_label.text += "（未配置 LLM，使用本地叙事替身；配置见 user://llm_settings.json）"
+ 	return ScriptedGameMaster.new(rng)
+ 
+ func _append(text: String) -> void:
+@@ -232,6 +233,7 @@ func _on_command_submitted(text: String) -> void:
+ 		command_edit.text = ""
+ 		return
+ 	command_edit.editable = false
++	_set_buttons_enabled(false)
+ 	_append(">>> %s" % text)
+ 	_append("（世界正在回应…）")
+ 	var result: Dictionary = await engine.submit_async(text)
+@@ -245,9 +247,18 @@ func _on_command_submitted(text: String) -> void:
+ 		_append(str(result["audit"]))
+ 		_append("（自检完毕。等待你的指令——输入“确认自检”继续。）")
+ 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
++	_set_buttons_enabled(true)
+ 	command_edit.editable = true
+ 	command_edit.text = ""
+ 
++# 等待 LLM 期间禁用整排按钮，防止“读档”等操作在 in-flight 回合中替换 world/engine。
++func _set_buttons_enabled(enabled: bool) -> void:
++	if button_row == null:
++		return
++	for child in button_row.get_children():
++		if child is Button:
++			(child as Button).disabled = not enabled
++
+ func _on_status() -> void:
+ 	if world != null:
+ 		_append(PanelFormatter.player_panel(world))
+@@ -281,10 +292,11 @@ func _on_load() -> void:
+ 		return
+ 	world = result["world"]
+ 	rng = RngService.new(world.game_seed)
+-	engine = TurnEngine.new(world, _build_gm(), rng)
+ 	creation_box.visible = false
+ 	play_box.visible = true
+ 	status_label.text = PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn
++	# 先设状态行，再建 GM：_build_gm 在未配置时会向状态行追加提示（F4）
++	engine = TurnEngine.new(world, _build_gm(), rng)
+ 	if creation_error != null:
+ 		creation_error.text = ""
+ 	_append("读档成功：%s" % str(result["path"]))
+diff --git a/tests/llm_test.gd b/tests/llm_test.gd
+index a83505f..f2806ff 100644
+--- a/tests/llm_test.gd
++++ b/tests/llm_test.gd
+@@ -145,7 +145,7 @@ func run() -> int:
+ 	var eprovider := MockLlmProvider.new()
+ 	eprovider.queue = [
+ 		'{"narration":"你练成了。","ops":[{"op":"gain_skill","skill_id":"potions","amount":99}],"tags":["train"]}',
+-		'{"narration":"又练了一月。","ops":[],"tags":["train"]}',
++		'{"narration":"又练了一月。","ops":[{"op":"add_money","knuts":999999}],"tags":["work"]}',
+ 	]
+ 	var egm := LlmGameMaster.new(eprovider, ScriptedGameMaster.new(rng))
+ 	var engine := TurnEngine.new(ew, egm, rng)
+@@ -154,6 +154,14 @@ func run() -> int:
+ 	a.eq(str(out["narration"]), "你练成了。", "异步提交返回叙事")
+ 	a.eq(ew.clock.turn, before_turn + 1, "推进一回合")
+ 	a.is_true(ew.player.skill("potions") > 0, "ops 经 StateOps 生效")
++	# F1：OpGuard warning 必须进 op_errors
++	var out_warn: Dictionary = await engine.submit_async("我去赚一笔")
++	a.is_true((out_warn["op_errors"] as PackedStringArray).size() > 0, "OpGuard warning 进入 op_errors")
++	# F5：同步 submit() 不能驱动 LlmGameMaster
++	var t_sync := ew.clock.turn
++	var out_sync: Dictionary = engine.submit("我要上课")
++	a.is_true(bool(out_sync["blocked"]), "submit() 拒绝异步 GM")
++	a.eq(ew.clock.turn, t_sync, "被拒的同步提交不推进回合")
+ 	# 死亡玩家 blocked 且不推进
+ 	ew.player.alive = false
+ 	var t2 := ew.clock.turn
+@@ -181,5 +189,7 @@ func run() -> int:
+ 	a.is_true(err_resp.error.contains("500"), "错误含状态码")
+ 	var bad_body := OpenAiCompatProvider._parse_http(200, "not json")
+ 	a.is_false(bad_body.ok, "非 JSON 失败")
++	var bad_choice := OpenAiCompatProvider._parse_http(200, '{"choices":[123]}')
++	a.is_false(bad_choice.ok, "choices[0] 非对象失败，不崩")
+ 
+ 	return a.report("llm")

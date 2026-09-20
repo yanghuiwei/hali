@@ -10,11 +10,11 @@
 - **换机器 / 交接 / 续做：先读 [`HANDOFF.md`](HANDOFF.md)**（分支、Godot 引擎获取、当前进度、待裁定项、踩过的坑）
 - 执行过程台账：[`docs/sdd/plan-01-core-foundation/progress.md`](docs/sdd/plan-01-core-foundation/progress.md) · [`docs/sdd/plan-02-llm-narrative/progress.md`](docs/sdd/plan-02-llm-narrative/progress.md)
 
-> 计划 01 已合入 `main`。计划 02 在分支 **`plan-02-llm-narrative`** 上进行（从 `main` 拉出）。
+> 计划 01 与计划 02 均已合入 `main`；**后续计划从 `main` 拉新分支**（见 [`NEXT-STEPS.md`](NEXT-STEPS.md) 队列 B）。
 
 ## 当前进度
 
-**计划 01 · 核心模拟地基 已完成**。交付物：读正典内容表 → 创建角色 → 按月推进世界 → 提交行动得到结果 → 状态面板 → 存档读档，核心逻辑全部可在无头模式自动化测试，并可通过 `src/ui/main.tscn` 窗口程序实际游玩。
+**计划 01 · 核心模拟地基 已完成**（11/11 任务）。交付物：读正典内容表 → 创建角色 → 按月推进世界 → 提交行动得到结果 → 状态面板 → 存档读档，核心逻辑全部可在无头模式自动化测试，并可通过 `src/ui/main.tscn` 窗口程序实际游玩。**计划 02 · LLM 叙事引擎 已完成**（12/12 任务，见下）。
 
 | 任务 | 内容 | 状态 |
 | --- | --- | --- |
@@ -30,9 +30,11 @@
 | 10 | 存档与读档 | ✅ 完成 |
 | 11 | 主界面与运行说明 | ✅ 完成 |
 
-后续计划：02 LLM 叙事引擎（进行中）；03 派系与政治经济；04 神奇生物生态与区域危险度；05 NPC 自主系统与信息可信度；06 多世代传承与世界记忆。
+后续计划：03 派系与政治经济；04 神奇生物生态与区域危险度；05 NPC 自主系统与信息可信度；06 多世代传承与世界记忆；另有独立小计划：设置界面、流式输出、长期记忆。
 
-### 计划 02 · LLM 叙事引擎（进行中）
+### 计划 02 · LLM 叙事引擎（已完成，已合入 `main`）
+
+12/12 任务完成；实现计划 [`docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md`](docs/superpowers/plans/2026-09-19-hp-magic-era-02-llm-narrative.md)，设计 spec [`docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md`](docs/superpowers/specs/2026-09-19-hp-magic-era-02-llm-narrative-design.md)，台账 [`docs/sdd/plan-02-llm-narrative/progress.md`](docs/sdd/plan-02-llm-narrative/progress.md)。
 
 用 provider 无关、可离线测试的 `LlmGameMaster` 替换离线替身 `ScriptedGameMaster`：LLM 只产出叙事与 `ops`，一切世界变更仍由 `StateOps` 校验/钳制/审计（`OpGuard` 净化数值）。回合接口异步化（`TurnEngine.submit_async` + UI `await`），provider 未配置/超时/解析失败时降级回 `ScriptedGameMaster`。默认实现是 OpenAI 兼容 HTTP provider；`MockLlmProvider` 供离线测试。
 

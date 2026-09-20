@@ -1,7 +1,7 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-19（**计划 01 与计划 02「LLM 叙事引擎」均已完成并合入 `main`**）。交付点 = 分支 `main` 顶端（以 `git log` 为准）。
+> 最后更新：2026-09-20（**计划 01 与计划 02「LLM 叙事引擎」均已完成并合入 `main`**；本次修订 §1/§2/§9 的过期分支与测试数信息）。交付点 = 分支 `main` 顶端（以 `git log` 为准）。
 
 ---
 
@@ -22,18 +22,20 @@
 | 项 | 值 |
 | --- | --- |
 | 远端 | `https://github.com/yanghuiwei/hali.git`（`origin`） |
-| 执行分支 | **`main`**（计划 01 与计划 02 均已合入；后续计划从 `main` 拉新分支） |
-| `main` | 已包含**计划 01 全部**（Task 1–11 + 收尾加固），顶端 `026efe3`。注：远端 PR #2 曾误合并 Task 5 的旧 tip（`d4186c5`），已用 `026efe3` 合并修正（tree 与 `b196d26` 一致、无冲突）。 |
-| 当前 HEAD | `plan-01-core-foundation` == `main` == `026efe3` |
+| 执行分支 | **`main`**（计划 01 与计划 02 均已合入；**后续计划从 `main` 拉新分支**） |
+| `main` | 已包含**计划 01 全部**（Task 1–11 + 收尾加固，分支顶端 `026efe3`）与**计划 02 全部**（Tasks 1–12，收口 `1f82483`，合入记录 `d885cf9`）。 |
+| 当前 HEAD | `main`（顶端以 `git log --oneline -1` 为准；写本文件时 = `f2b4abf` 的 NEXT-STEPS 提交） |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
 cd hali
-git checkout main        # 计划 01 已并入 main（要接着开发的也建议从这里拉分支）
-git log --oneline -3     # 顶部应是 026efe3（合并修正）/ b196d26 / 7d24783
+git checkout main        # 计划 01 + 计划 02 均已并入 main（接着开发的也从这里拉分支）
+git log --oneline -3     # 顶部应是本次 docs 提交（其历史里含 d885cf9 / 1f82483 / a48f108 / 15c1ff0 / f2b4abf）
 ```
 
-计划 01 收尾时把 `plan-01-core-foundation` 合回了 `main`：远端 PR #2 实际合并的是 Task 5 的旧 tip `d4186c5`（不含 Task 6–11），因此本地以 `026efe3` 把旧 merge 与完整分支合并修正，`origin/main` 与 `b196d26` 的 tree 完全一致。
+**计划 01 的历史**（仅供追溯，不代表当前 HEAD）：收尾时把 `plan-01-core-foundation` 合回了 `main`。远端 PR #2 实际合并的是 Task 5 的旧 tip `d4186c5`（不含 Task 6–11），因此本地以 `026efe3` 把旧 merge 与完整分支合并修正，`origin/main` 与 `b196d26` 的 tree 完全一致。
+
+**计划 02 的历史**：开发分支 `plan-02-llm-narrative`（`38589b4..15c1ff0` 为 8 个任务提交，`a48f108`/`18eaa5c` 为审查修复），收口提交 `1f82483`，`d885cf9` 记录「计划 02 已合入 `main`」。
 
 ---
 
@@ -75,16 +77,16 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 [probe] 断言=1 失败=1                    ← 同上，probe 套件不在 SUITES 里
 [harness] 断言=8 失败=0
 [registry] 断言=26 失败=0
-[money] 断言=15 失败=0
-[magic_level] 断言=22 失败=0
+[money] 断言=18 失败=0
+[magic_level] 断言=48 失败=0
 [model] 断言=49 失败=0
 [clock] 断言=47 失败=0
 [world_tick] 断言=104 失败=0
 [creation] 断言=176 失败=0
 [spell] 断言=229 失败=0
 [gm] 断言=63 失败=0
-[panel] 断言=65 失败=0
-[selfcheck] 断言=26 失败=0
+[panel] 断言=71 失败=0
+[selfcheck] 断言=32 失败=0
 [save] 断言=97 失败=0
 [async_probe] 断言=2 失败=0
 [prompt] 断言=13 失败=0
@@ -97,6 +99,9 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 main scene ready, godot=4.7.2-stable (official)
 全部通过。
 ```
+
+> 套件 `SUITES` 共 **16** 项（+1 个不计入的 `[probe]` 探针），断言合计 **1048**。若你看到的数字比上表小（如 `money=15`、`magic_level=22`、`panel=65`、`selfcheck=26`）或看不到 `[async_probe]` / `[prompt]` / `[llm]`，说明文档过旧，**不是回归**：差额来自加固批次 `e094a52` 与计划 02。
+> 运行全程会有几条**刻意制造的 stderr 噪音**（`SCRIPT ERROR` / `Parse JSON failed`）——来自 `save` 的坏档负例与解析层负例，其所在套件失败数均为 0，不影响退出码（见 §8#48）。
 
 窗口程序已可用：`./Godot_v4.7.2-stable_win64_console.exe --path .`（主场景 `src/ui/main.tscn`）。
 
@@ -309,11 +314,11 @@ taskkill //PID <PID> //F
 
 ## 9. 环境与卫生
 
-- 分支：`plan-01-core-foundation`；工作区在交付时应保持干净（`git status --short` 空）。
+- 分支：`main`（交付点）；计划 01/02 均已合入，后续计划从 `main` 拉新分支。工作区在交付时应保持干净（`git status --short` 空）。
 - 不要提交：`*.exe`（180MB 引擎）、`.godot/`（导入缓存）、`.superpowers/`（工具工作区）、`*.tmp`、`*.bak`、`export/`、`build/`。
 - 无外部服务依赖：不起服务器、不调 LLM、不联网（审查/研究工具除外）。
 - 换机器后的自检清单：
-  1. `git log --oneline -1` 是个 `docs(handoff)` 提交，且其历史里包含 `026efe3` / `b196d26` / `7d24783` / `e094a52` / `70ad341` / `eccc871`
+  1. `git log --oneline -1` 是个 `docs(...)` 提交，且其历史里包含 `d885cf9` / `1f82483` / `a48f108` / `15c1ff0` / `fed4767` / `38589b4`（计划 02）与 `026efe3` / `b196d26` / `7d24783` / `e094a52` / `70ad341` / `eccc871`（计划 01）
   2. 两个 Godot exe 就位，`bash tools/test.sh` → `ALL TESTS PASSED` / `全部通过。` / 退出码 0
   3. `git status --short` 为空（`.godot/` 与 `*.uid` 不应出现新增改动；若 `.uid` 全被改写说明引擎版本不一致，换回 4.7.2）
   4. 读 `docs/sdd/plan-01-core-foundation/progress.md` 末尾，确认与本文第 5、8 节一致
