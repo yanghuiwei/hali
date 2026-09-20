@@ -89,7 +89,7 @@ main scene ready, godot=4.7.2-stable (official)
   - ⏸️ **人类裁定（2026-09-20）：暂不逐项跑，先推进计划 03**。已做过一次非正式点击（开窗 → 建角 → 4 回合 → 存档），控制器**从存档反推**出部分结论：
     - ✅ 哑炮角色确实无魔法无魔杖（`no_magic=true`/`magic_tier=0`/`known_spells=[]`）；4 回合均推进且 `world.tick()` 生效（`world_vars` 已漂移、`world.log` 有 rumor/mundane）；存档 `user://saves/slot1.json` 生成成功。实测角色：哑炮 / auror_family / 格兰芬多 / 11 岁 / brutal_realism / custom 时代（1991）/ `potions 7`。
     - ❌ **仍无任何痕迹可查**：叙事到底来自 LLM 还是本地替身、四个面板、读档、第 15 回合自检与「确认自检」、等待期置灰与恢复、断网降级、密钥脱敏的实际表现。
-  - 💡➡️✅ **已实现（2026-09-20，本提交）：`HALI_DEBUG_LOG=1` 调试镜像**——人工验收不再靠存档反推。
+  - 💡➡️✅ **已实现（`be9cddc`，2026-09-20）：`HALI_DEBUG_LOG=1` 调试镜像**——人工验收不再靠存档反推。
     - 用法：`HALI_DEBUG_LOG=1 ./Godot_v4.7.2-stable_win64_console.exe --path .` → 界面文本每行带 `[HALI]` 前缀进 stdout（Godot 落进 `user://logs/*.log`），人工点窗口、控制器读日志即可完成 B1。
     - 覆盖：叙事/面板（`_append`）、状态行（含 F4 的「未配置 LLM」提示，创建与读档两条路径）、玩家输入、创建界面 7 个下拉的选项数与当前值、姓名/性别/年龄/目标/性格、`[输入框] editable=…` 与 `[按钮] 整排 可用/禁用`（等待期置灰与恢复）、存档/读档/自检结果、创建界面错误。
     - **默认行为逐字未变**：不设该变量时一行都不输出，由 `tools/test.sh` 的 `3/4` 反向断言（出现 `[HALI]` 即失败）。
