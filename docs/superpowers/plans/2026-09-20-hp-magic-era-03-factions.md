@@ -2063,34 +2063,44 @@ func _on_command_submitted(text: String) -> void:
 	_append("（世界正在回应…）")
 	# §8#58/#62：把等待变成「有上限的等待」。GDScript 的 await 链一旦在内部抛错，调用方永远不会
 	# 被唤醒（无 try/catch），旧实现会把输入框与整排按钮永久留在禁用态。看门狗保证恢复出口一定会走到。
-	_turn_state = {"done": false, "result": {}}
-	_run_turn(text)
+	# ⚠️ 用**本轮私有的**字典（不是共享成员）：超时后旧协程可能迟到恢复，若共用成员字典，
+	# 它会把 done=true 写到**新一轮**的字典上 → 要么渲染上一回合的叙事（错位），要么渲染空字典
+	# 触发 `result["narration"]` 运行期错误 → 恢复两行被跳过 → **输入永久禁用（§8#62 回归）**。
+	# Task 10 审查 Important 1（plan-mandated）的收口。
+	var round_state := {"done": false, "result": {}}
+	_turn_state = round_state          # 仅作调试镜像，判定一律用 round_state
+	_run_turn(text, round_state)
 	var deadline := Time.get_ticks_msec() + int(maxf(turn_timeout_sec, 0.1) * 1000.0)
-	while not bool(_turn_state.get("done", false)) and Time.get_ticks_msec() < deadline:
+	while not bool(round_state.get("done", false)) and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
-	if not bool(_turn_state.get("done", false)):
-		_append("（本回合超过 %.0f 秒仍未返回，已恢复输入。请求可能仍在后台；若反复发生，请检查 LLM 配置或改用本地替身。）" % turn_timeout_sec)
-	else:
-		_render_turn_result(_turn_state["result"])
-	_set_status(PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn)
+	# 恢复出口**先于**渲染与状态行：GDScript 无 try/catch，渲染层任何运行期错误都会吞掉后面的语句（§8#62）
 	_set_buttons_enabled(true)
 	_set_input_enabled(true)
 	command_edit.text = ""
+	if not bool(round_state.get("done", false)):
+		_append("（本回合超过 %.0f 秒仍未返回，已恢复输入。请求可能仍在后台；若反复发生，请检查 LLM 配置或改用本地替身。）" % turn_timeout_sec)
+	else:
+		_render_turn_result(round_state.get("result", {}))
+	_set_status(PanelFormatter.status_line(world) + " ｜ 回合 %d" % world.clock.turn)
 
 # 单独的协程：它的失败不会阻止 _on_command_submitted 的看门狗循环（§8#62）
-func _run_turn(text: String) -> void:
-	_turn_state["result"] = await engine.submit_async(text)
-	_turn_state["done"] = true
+func _run_turn(text: String, state: Dictionary) -> void:
+	if engine == null:
+		return          # 加固：engine 为 null 时不进 await（否则要等满 turn_timeout_sec 才恢复）
+	state["result"] = await engine.submit_async(text)
+	state["done"] = true
 
 func _render_turn_result(result: Dictionary) -> void:
-	_append(str(result["narration"]))
-	var events: Array = result["events"]
+	# 一律用 `.get(...)` 兜底：畸形/空结果不得在这里抛错（它已在恢复出口之后，但没必要冒险）
+	_append(str(result.get("narration", "")))
+	var events: Array = result.get("events", [])
 	if not events.is_empty():
 		_append(PanelFormatter.events_block(events))
-	for err in (result["op_errors"] as PackedStringArray):
+	for err in (result.get("op_errors", PackedStringArray()) as PackedStringArray):
 		_append("（系统提示：%s）" % str(err))
-	if str(result["audit"]) != "":
-		_append(str(result["audit"]))
+	var audit_text := str(result.get("audit", ""))
+	if audit_text != "":
+		_append(audit_text)
 		_append("（自检完毕。等待你的指令——输入“确认自检”继续。）")
 ```
 
