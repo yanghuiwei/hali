@@ -105,7 +105,7 @@ scarcity_mult = clampf(raw_scarcity, MIN_SCARCITY, MAX_SCARCITY)
   - `Economy.CATEGORIES: Array[String]`（10 个：`wand/potion/material/broom/book/food/service/creature/artifact/illegal`，**顺序即面板展示顺序**）
   - `Economy.KINDS: Array[String]` := `["goods", "service"]`
   - 上表 §价格定版 的全部常量。
-  - 商品条目字段契约：`id, label, category, kind, canon_price_knuts, canon_line, base_price_knuts, industry_id, illegal, supply_critical, unit`
+  - 商品条目字段契约：`id, label, category, kind, canon_price_knuts, canon_price_hi_knuts, canon_line, base_price_knuts, industry_id, illegal, supply_critical, unit`
   - 产业条目字段契约：`id, label, canon_line, produces, base_output, monopoly`
 
 - [ ] **Step 1: 写失败测试**
@@ -177,11 +177,55 @@ scarcity_mult = clampf(raw_scarcity, MIN_SCARCITY, MAX_SCARCITY)
 	var bad_band := Registry.from_tables({
 		"eras": [{"id": "a", "label": "甲"}],
 		"goods": [{"id": "z", "label": "价格离谱", "category": "wand", "kind": "goods",
-			"canon_price_knuts": 3451, "canon_line": 223, "base_price_knuts": 999999,
-			"industry_id": "i", "unit": "根"}],
+			"canon_price_knuts": 3451, "canon_price_hi_knuts": 4930, "canon_line": 223,
+			"base_price_knuts": 999999, "industry_id": "i", "unit": "根"}],
 		"industries": [{"id": "i", "label": "产业", "produces": ["z"], "base_output": 0.7}],
 	})
-	a.is_false(bad_band.validate().is_empty(), "base_price 超出正典合理带被抓到")
+	a.is_true(" | ".join(bad_band.validate()).contains("超出正典合理带"),
+		"base_price 超出正典合理带被抓到")
+
+	# base 在 canon 区间内、但危机峰价突破 canon_hi —— 也必须被抓到（这才是 C3 的本体）
+	var bad_peak := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "z2", "label": "危机越界", "category": "wand", "kind": "goods",
+			"canon_price_knuts": 3451, "canon_price_hi_knuts": 4930, "canon_line": 223,
+			"base_price_knuts": 4900, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["z2"], "base_output": 0.7}],
+	})
+	a.is_true(" | ".join(bad_peak.validate()).contains("危机峰价突破正典上沿"),
+		"危机峰价突破 canon_hi 被抓到")
+
+	# 锚点商品缺 canon_line / canon_price_hi 也要被抓到
+	var bad_line := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "w", "label": "缺行号", "category": "wand", "kind": "goods",
+			"canon_price_knuts": 3451, "canon_price_hi_knuts": 4930, "canon_line": 0,
+			"base_price_knuts": 3451, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["w"], "base_output": 0.7}],
+	})
+	a.is_true(" | ".join(bad_line.validate()).contains("canon_line"),
+		"锚点商品缺 canon_line 被抓到")
+
+	var bad_hi := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "w2", "label": "缺上沿", "category": "wand", "kind": "goods",
+			"canon_price_knuts": 3451, "canon_price_hi_knuts": 0, "canon_line": 223,
+			"base_price_knuts": 3451, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["w2"], "base_output": 0.7}],
+	})
+	a.is_true(" | ".join(bad_hi.validate()).contains("canon_price_hi_knuts"),
+		"锚点商品缺 canon_price_hi 被抓到")
+
+	# 顶级疗伤药剂（共享 canon 区间、base 取上段）必须**不被**误判 —— 这是补 canon_price_hi 字段的原因
+	var premium_ok := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "p", "label": "顶级", "category": "potion", "kind": "goods",
+			"canon_price_knuts": 2465, "canon_price_hi_knuts": 9860, "canon_line": 223,
+			"base_price_knuts": 6162, "industry_id": "i", "unit": "瓶"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["p"], "base_output": 0.75}],
+	})
+	a.is_false(" | ".join(premium_ok.validate()).contains("goods/p"),
+		"共享 canon 区间取上段的条目不被误判（p）")
 ```
 
 > ⚠️ 上面的 `Registry.from_tables(...)` / `validate()` / `is_false` 用法**必须照抄 `tests/registry_test.gd` 里 03a 已用的同款 API**（Task 1 开工前先读该文件确认签名，不要凭记忆写）。
@@ -225,43 +269,48 @@ bash tools/test.sh 2>&1 | grep -A5 "registry"
 
 `data/goods.json`：**35 条**，逐条字段见下面这张表（`base_price_knuts` 已实算，直接抄；`canon_price_knuts=0` 表示推演值）。
 
-| id | label | category | kind | industry_id | base_price_knuts | canon_price_knuts | canon_line | illegal | supply_critical | unit |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| wand_standard | 普通魔杖 | wand | goods | wandmaking | 3451 | 3451 | 223 | false | true | 根 |
-| potion_healing | 优质疗伤药剂 | potion | goods | potion_brewing | 2465 | 2465 | 223 | false | true | 瓶 |
-| potion_healing_premium | 顶级疗伤药剂 | potion | goods | potion_brewing | 6162 | 2465 | 223 | false | true | 瓶 |
-| broom_nimbus | 光轮扫帚 | broom | goods | broommaking | 49300 | 49300 | 223 | false | false | 把 |
-| wand_elder | 接骨木魔杖 | wand | goods | wandmaking | 22185 | 0 | 0 | false | false | 根 |
-| potion_common | 常用药剂 | potion | goods | potion_brewing | 986 | 0 | 0 | false | false | 瓶 |
-| mat_herb | 草药 | material | goods | creature_breeding | 2 | 0 | 0 | false | false | 份 |
-| mat_dragon_blood | 龙血 | material | goods | creature_breeding | 5916 | 0 | 0 | false | true | 品脱 |
-| mat_phoenix_tear | 凤凰眼泪 | material | goods | creature_breeding | 11832 | 0 | 0 | false | true | 滴 |
-| mat_unicorn_hair | 独角兽尾毛 | material | goods | creature_breeding | 3944 | 0 | 0 | false | true | 束 |
-| mat_wand_wood | 魔杖木材 | material | goods | wandmaking | 986 | 0 | 0 | false | false | 块 |
-| mat_wand_core | 魔杖杖芯 | material | goods | wandmaking | 1479 | 0 | 0 | false | false | 条 |
-| mat_ore | 魔法矿石 | material | goods | archaeology | 493 | 0 | 0 | false | false | 块 |
-| broom_standard | 普通扫帚 | broom | goods | broommaking | 5916 | 0 | 0 | false | false | 把 |
-| book_standard | 标准咒语书 | book | goods | publishing | 493 | 0 | 0 | false | false | 本 |
-| book_rare | 古籍 | book | goods | publishing | 9860 | 0 | 0 | false | false | 本 |
-| food_butterbeer | 黄油啤酒 | food | goods | publishing | 2 | 0 | 0 | false | false | 杯 |
-| food_pumpkin_pastry | 南瓜馅饼 | food | goods | publishing | 1 | 0 | 0 | false | false | 个 |
-| creature_owl | 猫头鹰 | creature | goods | creature_breeding | 3944 | 0 | 0 | false | false | 只 |
-| creature_pygmy_puff | 侏儒蒲绒绒 | creature | goods | creature_breeding | 986 | 0 | 0 | false | false | 只 |
-| artifact_ring | 附魔戒指 | artifact | goods | curse_breaking | 5916 | 0 | 0 | false | false | 枚 |
-| artifact_detector | 探测仪 | artifact | goods | curse_breaking | 3451 | 0 | 0 | false | false | 台 |
-| illegal_creature | 禁售神奇生物 | illegal | goods | creature_breeding | 14790 | 0 | 0 | true | false | 只 |
-| illegal_relic | 黑市文物 | illegal | goods | archaeology | 9860 | 0 | 0 | true | false | 件 |
-| illegal_potion | 违禁药剂 | illegal | goods | potion_brewing | 4930 | 0 | 0 | true | false | 瓶 |
-| svc_rent | 房租（月） | service | service | （空串） | 4437 | 0 | 0 | false | false | 月 |
-| svc_tuition | 学费（学期） | service | service | （空串） | 8874 | 0 | 0 | false | false | 学期 |
-| svc_train_ticket | 火车票 | service | service | （空串） | 493 | 0 | 0 | false | false | 张 |
-| svc_healing | 治疗费 | service | service | （空串） | 986 | 0 | 0 | false | false | 次 |
-| svc_curse_break | 解咒服务 | service | service | （空串） | 4437 | 0 | 0 | false | false | 次 |
-| svc_owl_post | 猫头鹰邮政 | service | service | （空串） | 17 | 0 | 0 | false | false | 封 |
-| svc_apparition_license | 幻影移形考试费 | service | service | （空串） | 5423 | 0 | 0 | false | false | 次 |
-| svc_quidditch_ticket | 魁地奇球票 | service | service | quidditch | 986 | 0 | 0 | false | false | 张 |
-| svc_gringotts_fee | 古灵阁手续费 | service | service | finance | 493 | 0 | 0 | false | false | 次 |
-| svc_bank_vault | 金库年费 | service | service | finance | 986 | 0 | 0 | false | false | 年 |
+> ⚠️ **`canon_price_hi_knuts` 是 2026-09-21 Task 1 施工时补的字段**（spec §7.1 同步更新）：
+> 原设计用 `canon_lo × MAX_SCARCITY / MIN_SCARCITY` 反推上界，会把 `potion_healing_premium`
+> （与 `potion_healing` 共享 canon 区间、base 取上段）误判为越界。上界改为**直接存正典区间上沿**。
+> 只有 4 条带 canon 价位的条目有非零值，其余一律 `0`。
+
+| id | label | category | kind | industry_id | base_price_knuts | canon_price_knuts | canon_price_hi_knuts | canon_line | illegal | supply_critical | unit |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| wand_standard | 普通魔杖 | wand | goods | wandmaking | 3451 | 3451 | 4930 | 223 | false | true | 根 |
+| potion_healing | 优质疗伤药剂 | potion | goods | potion_brewing | 2465 | 2465 | 9860 | 223 | false | true | 瓶 |
+| potion_healing_premium | 顶级疗伤药剂 | potion | goods | potion_brewing | 6162 | 2465 | 9860 | 223 | false | true | 瓶 |
+| broom_nimbus | 光轮扫帚 | broom | goods | broommaking | 49300 | 49300 | 147900 | 223 | false | false | 把 |
+| wand_elder | 接骨木魔杖 | wand | goods | wandmaking | 22185 | 0 | 0 | 0 | false | false | 根 |
+| potion_common | 常用药剂 | potion | goods | potion_brewing | 986 | 0 | 0 | 0 | false | false | 瓶 |
+| mat_herb | 草药 | material | goods | creature_breeding | 2 | 0 | 0 | 0 | false | false | 份 |
+| mat_dragon_blood | 龙血 | material | goods | creature_breeding | 5916 | 0 | 0 | 0 | false | true | 品脱 |
+| mat_phoenix_tear | 凤凰眼泪 | material | goods | creature_breeding | 11832 | 0 | 0 | 0 | false | true | 滴 |
+| mat_unicorn_hair | 独角兽尾毛 | material | goods | creature_breeding | 3944 | 0 | 0 | 0 | false | true | 束 |
+| mat_wand_wood | 魔杖木材 | material | goods | wandmaking | 986 | 0 | 0 | 0 | false | false | 块 |
+| mat_wand_core | 魔杖杖芯 | material | goods | wandmaking | 1479 | 0 | 0 | 0 | false | false | 条 |
+| mat_ore | 魔法矿石 | material | goods | archaeology | 493 | 0 | 0 | 0 | false | false | 块 |
+| broom_standard | 普通扫帚 | broom | goods | broommaking | 5916 | 0 | 0 | 0 | false | false | 把 |
+| book_standard | 标准咒语书 | book | goods | publishing | 493 | 0 | 0 | 0 | false | false | 本 |
+| book_rare | 古籍 | book | goods | publishing | 9860 | 0 | 0 | 0 | false | false | 本 |
+| food_butterbeer | 黄油啤酒 | food | goods | publishing | 2 | 0 | 0 | 0 | false | false | 杯 |
+| food_pumpkin_pastry | 南瓜馅饼 | food | goods | publishing | 1 | 0 | 0 | 0 | false | false | 个 |
+| creature_owl | 猫头鹰 | creature | goods | creature_breeding | 3944 | 0 | 0 | 0 | false | false | 只 |
+| creature_pygmy_puff | 侏儒蒲绒绒 | creature | goods | creature_breeding | 986 | 0 | 0 | 0 | false | false | 只 |
+| artifact_ring | 附魔戒指 | artifact | goods | curse_breaking | 5916 | 0 | 0 | 0 | false | false | 枚 |
+| artifact_detector | 探测仪 | artifact | goods | curse_breaking | 3451 | 0 | 0 | 0 | false | false | 台 |
+| illegal_creature | 禁售神奇生物 | illegal | goods | creature_breeding | 14790 | 0 | 0 | 0 | true | false | 只 |
+| illegal_relic | 黑市文物 | illegal | goods | archaeology | 9860 | 0 | 0 | 0 | true | false | 件 |
+| illegal_potion | 违禁药剂 | illegal | goods | potion_brewing | 4930 | 0 | 0 | 0 | true | false | 瓶 |
+| svc_rent | 房租（月） | service | service | （空串） | 4437 | 0 | 0 | 0 | false | false | 月 |
+| svc_tuition | 学费（学期） | service | service | （空串） | 8874 | 0 | 0 | 0 | false | false | 学期 |
+| svc_train_ticket | 火车票 | service | service | （空串） | 493 | 0 | 0 | 0 | false | false | 张 |
+| svc_healing | 治疗费 | service | service | （空串） | 986 | 0 | 0 | 0 | false | false | 次 |
+| svc_curse_break | 解咒服务 | service | service | （空串） | 4437 | 0 | 0 | 0 | false | false | 次 |
+| svc_owl_post | 猫头鹰邮政 | service | service | （空串） | 17 | 0 | 0 | 0 | false | false | 封 |
+| svc_apparition_license | 幻影移形考试费 | service | service | （空串） | 5423 | 0 | 0 | 0 | false | false | 次 |
+| svc_quidditch_ticket | 魁地奇球票 | service | service | quidditch | 986 | 0 | 0 | 0 | false | false | 张 |
+| svc_gringotts_fee | 古灵阁手续费 | service | service | finance | 493 | 0 | 0 | 0 | false | false | 次 |
+| svc_bank_vault | 金库年费 | service | service | finance | 986 | 0 | 0 | 0 | false | false | 年 |
 
 > **服务类没有 `inputs`**（`kind == "service"` ⇒ 不参与断供、不参与 `supply`）；`industry_id` 为空串对服务合法。
 > **`potion_healing_premium` 的 `canon_price_knuts` 也是 2465**（正典只给了「优质疗伤药剂 5–20 加隆」一个区间，顶级档是该区间的上段，故 canon 锚点同为下沿）。
@@ -306,8 +355,12 @@ const SMUGGLING_PROFIT_MULT_CRISIS := 1.5
 
 - `goods`：`category ∈ Economy.CATEGORIES`、`kind ∈ Economy.KINDS`、`base_price_knuts > 0`、
   `canon_price_knuts >= 0`、`unit` 非空、`kind == "goods"` 时 `industry_id` 必须存在于 `industries`、
-  `canon_price_knuts > 0` 时 `canon_line > 0` 且 `base_price_knuts` 落在
-  `[canon_price_knuts, roundi(canon_price_knuts × MAX_SCARCITY / MIN_SCARCITY)]` 带内（C3/C6）。
+  `canon_price_knuts > 0` 时 `canon_line > 0`、`canon_price_hi_knuts > 0`，
+  且**两条一起查**：① `base_price_knuts ∈ [canon_price_knuts, canon_price_hi_knuts]`；
+  ② `roundi(base_price_knuts × MAX_SCARCITY) <= canon_price_hi_knuts`（C3）。
+  ⚠️ **上界必须来自 `canon_price_hi_knuts` 字段本身**，不得用 `canon_lo × MAX_SCARCITY / MIN_SCARCITY` 反推
+  —— 该推导式假设「一条商品 = 一个 canon 窗口且 base 就在下沿」，被 `potion_healing_premium` 打破
+  （2026-09-21 Task 1 施工实况；详见 spec §7.1）。
 - `industries`：`base_output ∈ [0,1]`、`produces` 每条必须存在于 `goods`、`monopoly` 是 bool。
 
 > ⚠️ **不要在 Task 1 就引用 `Economy.CATEGORIES` 常量若 `registry.gd` 会因此产生循环 preload**

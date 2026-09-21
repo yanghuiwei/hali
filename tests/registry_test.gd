@@ -168,4 +168,172 @@ func run() -> int:
 	a.is_true(" | ".join(WorldFactions.validate_content(bad_reveal)).contains("引用不存在的派系"),
 		"validate_content 必须拦下 reveals_faction 的坏引用")
 
+	# ---- 计划 03b：商品与产业内容表 ----
+	var goods := reg.ids("goods")
+	a.eq(goods.size(), 35, "商品表 35 条")
+	var cats := ["wand", "potion", "material", "broom", "book", "food",
+		"service", "creature", "artifact", "illegal"]
+	var goods_kinds := ["goods", "service"]
+	var n_service := 0
+	var n_anchor := 0
+	for gid in goods:
+		var ge := reg.entry("goods", str(gid))
+		a.is_true(cats.has(str(ge.get("category", ""))), "%s: category 合法" % gid)
+		a.is_true(goods_kinds.has(str(ge.get("kind", ""))), "%s: kind 合法" % gid)
+		a.is_true(int(ge.get("base_price_knuts", 0)) > 0, "%s: base_price > 0" % gid)
+		a.is_true(int(ge.get("canon_price_knuts", 0)) >= 0, "%s: canon_price >= 0" % gid)
+		a.is_true(not str(ge.get("unit", "")).is_empty(), "%s: 有 unit" % gid)
+		var iid := str(ge.get("industry_id", ""))
+		if str(ge.get("kind", "")) == "service":
+			n_service += 1
+		else:
+			a.is_true(reg.has("industries", iid), "%s: industry_id %s 存在" % [gid, iid])
+		if int(ge.get("canon_price_knuts", 0)) > 0:
+			n_anchor += 1
+			a.eq(int(ge.get("canon_line", 0)), 223, "%s: 锚点商品 canon_line=223" % gid)
+	a.eq(n_service, 10, "服务类 10 条")
+	a.eq(n_anchor, 4, "正典锚点商品 4 条")
+
+	# 正典锚点必须与正典原文数值一致（钉死，防改价时忘了正典）
+	a.eq(int(reg.entry("goods", "wand_standard")["canon_price_knuts"]), 3451, "普通魔杖 canon 7 加隆")
+	a.eq(int(reg.entry("goods", "potion_healing")["canon_price_knuts"]), 2465, "优质疗伤 canon 5 加隆")
+	a.eq(int(reg.entry("goods", "broom_nimbus")["canon_price_knuts"]), 49300, "光轮 canon 100 加隆")
+
+	var inds := reg.ids("industries")
+	a.eq(inds.size(), 9, "产业表 9 条")
+	for iid2 in ["potion_brewing", "wandmaking", "broommaking", "publishing", "quidditch",
+			"creature_breeding", "archaeology", "curse_breaking", "finance"]:
+		a.is_true(reg.has("industries", str(iid2)), "产业 %s 存在" % str(iid2))
+	for iid3 in inds:
+		var ie := reg.entry("industries", str(iid3))
+		a.between(float(ie.get("base_output", -1.0)), 0.0, 1.0, "%s: base_output 在 0..1" % iid3)
+		for p in (ie.get("produces", []) as Array):
+			a.is_true(reg.has("goods", str(p)), "%s: produces %s 存在" % [iid3, str(p)])
+
+	# registry 的表内枚举与 Economy 常量必须一致（防两处定义漂移；与 03a 的机构枚举同款做法）
+	a.eq(cats, Economy.CATEGORIES, "商品 category 枚举两处一致")
+	a.eq(goods_kinds, Economy.KINDS, "商品 kind 枚举两处一致")
+
+	# 校验器必须抓到坏商品内容
+	var bad_goods := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "x", "label": "坏商品", "category": "bogus", "kind": "goods",
+			"base_price_knuts": 10, "industry_id": "", "unit": "个"}],
+		"industries": [{"id": "i", "label": "产业", "produces": [], "base_output": 0.5}],
+	})
+	a.is_true(" | ".join(bad_goods.validate()).contains("category 非法"), "坏 category 被抓到")
+
+	# kind 非法也要被抓到
+	var bad_kind := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "x", "label": "坏商品", "category": "wand", "kind": "bogus",
+			"base_price_knuts": 10, "industry_id": "i", "unit": "个"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["x"], "base_output": 0.5}],
+	})
+	a.is_true(" | ".join(bad_kind.validate()).contains("kind 非法"), "坏 kind 被抓到")
+
+	# 引用不存在的 industry 也要被抓到
+	var bad_ref := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "y", "label": "孤儿商品", "category": "wand", "kind": "goods",
+			"base_price_knuts": 10, "industry_id": "nonexistent", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": [], "base_output": 0.5}],
+	})
+	a.is_true(" | ".join(bad_ref.validate()).contains("industry_id 不存在"), "坏 industry_id 引用被抓到")
+
+	# 服务类允许 industry_id 为空（不参与断供）
+	var svc_ok := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "s", "label": "服务", "category": "service", "kind": "service",
+			"base_price_knuts": 17, "industry_id": "", "unit": "次"}],
+		"industries": [{"id": "i", "label": "产业", "produces": [], "base_output": 0.5}],
+	})
+	a.is_false(" | ".join(svc_ok.validate()).contains("service/s"),
+		"服务类空 industry_id 合法（s）")
+
+	# base_price 落到正典合理带之外要被抓到（C6：常态价必须落在 canon 区间内）
+	var bad_band := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "z", "label": "价格离谱", "category": "wand", "kind": "goods",
+			"canon_price_knuts": 3451, "canon_price_hi_knuts": 4930, "canon_line": 223,
+			"base_price_knuts": 999999, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["z"], "base_output": 0.7}],
+	})
+	a.is_true(" | ".join(bad_band.validate()).contains("超出正典合理带"),
+		"base_price 超出正典合理带被抓到")
+
+	# base 在 canon 区间内、但危机峰价突破 canon_hi —— 也必须被抓到（这才是 C3 的本体）
+	var bad_peak := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "z2", "label": "危机越界", "category": "wand", "kind": "goods",
+			"canon_price_knuts": 3451, "canon_price_hi_knuts": 4930, "canon_line": 223,
+			"base_price_knuts": 4560, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["z2"], "base_output": 0.7}],
+	})
+	a.is_true(" | ".join(bad_peak.validate()).contains("危机峰价突破正典上沿"),
+		"危机峰价突破 canon_hi 被抓到")
+
+	# 锚点商品缺 canon_line 也要被抓到
+	var bad_line := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "w", "label": "缺行号", "category": "wand", "kind": "goods",
+			"canon_price_knuts": 3451, "canon_price_hi_knuts": 4930, "canon_line": 0,
+			"base_price_knuts": 3451, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["w"], "base_output": 0.7}],
+	})
+	a.is_true(" | ".join(bad_line.validate()).contains("canon_line"),
+		"锚点商品缺 canon_line 被抓到")
+
+	# 锚点商品缺 canon_price_hi_knuts 也要被抓到（补这个字段是为了让 C3 有真上界）
+	var bad_hi := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "w2", "label": "缺上沿", "category": "wand", "kind": "goods",
+			"canon_price_knuts": 3451, "canon_price_hi_knuts": 0, "canon_line": 223,
+			"base_price_knuts": 3451, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["w2"], "base_output": 0.7}],
+	})
+	a.is_true(" | ".join(bad_hi.validate()).contains("canon_price_hi_knuts"),
+		"锚点商品缺 canon_price_hi 被抓到")
+
+	# 顶级疗伤药剂（共享 canon 区间、base 取上段）必须**不被**误判 —— 这正是补 canon_price_hi 字段的原因
+	var premium_ok := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "p", "label": "顶级", "category": "potion", "kind": "goods",
+			"canon_price_knuts": 2465, "canon_price_hi_knuts": 9860, "canon_line": 223,
+			"base_price_knuts": 6162, "industry_id": "i", "unit": "瓶"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["p"], "base_output": 0.75}],
+	})
+	a.is_false(" | ".join(premium_ok.validate()).contains("goods/p"),
+		"共享 canon 区间取上段的条目不被误判（p）")
+
+	# 锚点商品的 canon_price_hi 必须严格不小于 canon_price_lo（写反了会让 C3 形同虚设）
+	for gid4 in goods:
+		var ge4 := reg.entry("goods", str(gid4))
+		if int(ge4.get("canon_price_knuts", 0)) > 0:
+			a.is_true(int(ge4.get("canon_price_hi_knuts", 0)) >= int(ge4["canon_price_knuts"]),
+				"%s: canon_hi >= canon_lo" % gid4)
+			a.is_true(roundi(float(ge4["base_price_knuts"]) * Economy.MAX_SCARCITY)
+				<= int(ge4["canon_price_hi_knuts"]),
+				"%s: 危机峰价守 canon_hi" % gid4)
+
+	# 产业 produces 引用不存在的商品要被抓到
+	var bad_produce := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "g1", "label": "商品", "category": "wand", "kind": "goods",
+			"base_price_knuts": 10, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["不存在"], "base_output": 0.5}],
+	})
+	a.is_true(" | ".join(bad_produce.validate()).contains("produces 引用不存在的商品"),
+		"产业 produces 坏引用被抓到")
+
+	# 产业 base_output 越界要被抓到
+	var bad_output := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"goods": [{"id": "g1", "label": "商品", "category": "wand", "kind": "goods",
+			"base_price_knuts": 10, "industry_id": "i", "unit": "根"}],
+		"industries": [{"id": "i", "label": "产业", "produces": ["g1"], "base_output": 1.7}],
+	})
+	a.is_true(" | ".join(bad_output.validate()).contains("base_output 超值域"),
+		"产业 base_output 越界被抓到")
+
 	return a.report("registry")

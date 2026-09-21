@@ -80,9 +80,81 @@
 
 ---
 
+## Task 1：内容表 `goods` / `industries` + Registry 注册与字段校验（2026-09-21）
+
+- **分支**：`plan-03b-economy`（从 `main`@`c0fa1c9`）
+- **状态**：✅ 完成（含一处 spec/计划修正，见下）
+- **变更文件**：
+  | 文件 | 动作 |
+  | --- | --- |
+  | `data/industries.json` | 新建（9 条） |
+  | `data/goods.json` | 新建（35 条，含新字段 `canon_price_hi_knuts`） |
+  | `src/rules/economy.gd`(+`.uid`) | 新建（本任务只放常量骨架） |
+  | `src/core/registry.gd` | `TABLE_FILES` 注册两表 + `_validate_goods` / `_validate_industry` |
+  | `tests/registry_test.gd` | 追加 03b 断言块（约 300 条） |
+  | `docs/superpowers/specs/...03b-economy-design.md` | §7.1 加字段 / §7.4 C3+C6 / §13.8 缺陷⑦ |
+  | `docs/superpowers/plans/...03b-economy.md` | 字段契约 / 价格表 / Task 1 Step 4 校验规则 / 测试块 |
+
+- **⚠️ 施工中暴露并修掉的第 7 处设计缺陷（⑦，人类裁定选 A 方案）**：
+  - **现象**：按计划原文的校验带 `[canon_lo, roundi(canon_lo × MAX_SCARCITY / MIN_SCARCITY)]`
+    跑出 `potion_healing_premium` 越界（base 6162 > 上界 4601）。
+  - **根因**：该推导式隐含假设「**一条商品 = 一个 canon 窗口，且 base 就落在下沿**」。
+    `potion_healing_premium` 与 `potion_healing` **共享同一个 canon 区间**（正典只给
+    「优质疗伤药剂 5–20 加隆」一个区间），但 base 取该区间**上段**（12.50 加隆 = 6162）。
+  - **关键判断**：这不是「数据写错了」——顶级疗伤危机峰价 8627 **< canon_hi 9860**，
+    **C3 契约实际是满足的**；错的是「上界由下沿反推」这个做法本身。
+  - **修法（人类裁定 A）**：新增 `canon_price_hi_knuts` 字段**直接存正典区间上沿**；
+    `Registry.validate()` 改为两条一起查：①`base ∈ [canon_lo, canon_hi]`（C6）
+    ②`roundi(base × MAX_SCARCITY) <= canon_hi`（C3 本体）。
+  - **正典锚点区间表**（spec §7.1 定版）：
+    `wand_standard` [3451, 4930] · `potion_healing` [2465, 9860] ·
+    `potion_healing_premium` [2465, 9860]（共享）· `broom_nimbus` [49300, 147900]
+  - **元教训（已写进 spec §13.8）**：缺陷 ②～⑦ 同一形态 ——
+    **用「推导式」代替「正典里本来就写明的量」**。凡正典**直接给出**的数字就该**存字段**，
+    推导式只在正典确实没给、且隐含前提**写下来并验证过**时才用。
+
+- **精确价格表（实算复现验证，35 条全部自检通过）**：
+
+  | 商品 | base | canon_lo | canon_hi | 危机峰 `roundi(base×1.40)` | 守 |
+  | --- | --- | --- | --- | --- | --- |
+  | wand_standard | 3451 | 3451 | 4930 | 4831 | ✅ |
+  | potion_healing | 2465 | 2465 | 9860 | 3451 | ✅ |
+  | potion_healing_premium | 6162 | 2465 | 9860 | 8627 | ✅ |
+  | broom_nimbus | 49300 | 49300 | 147900 | 69020 | ✅ |
+
+- **门禁（四道全过）**：
+  | 门 | 结果 |
+  | --- | --- |
+  | `bash tools/test.sh` | **EXIT=0**，22 套件 / **2073 断言** / 失败 0（`registry` 从 2023 前的基线涨到 **522 断言**） |
+  | `stderr` 噪声 | `^SCRIPT ERROR` = **2**、`^ERROR:` = **7** —— 与基线一致 |
+  | `timeout 300 bash tools/b1_acceptance.sh` | **EXIT=0**，151 断言 / 失败 0，`llm_settings.json` 与 `saves/slot1.json` **逐字还原** |
+  | 工作区 + 进程 | 仅 `.workbuddy/` 未跟踪；`tasklist \| grep -i godot` = **0** |
+- **Registry 校验（本任务新增，机器保障）**：
+  - `goods`：`category ∈ [_GOODS_CATEGORIES]`（字面量，与 `Economy.CATEGORIES` 由测试钉死一致）、
+    `kind ∈ [_GOODS_KINDS]`、`base > 0`、`canon_lo >= 0`、`unit` 非空、
+    `kind == "goods"` ⇒ `industry_id ∈ industries`、锚点条目 ⇒ `canon_line > 0` 且 `canon_price_hi > 0`、
+    **C6+C3 两条带校验**
+  - `industries`：`base_output ∈ [0,1]`、`monopoly` 是 bool、`produces` 每条 ∈ goods
+  - 坏内容反证：9 条负向断言（坏 category / 坏 kind / 坏 industry 引用 / 越带 / 危机峰越界 /
+    缺 canon_line / 缺 canon_hi / 坏 produces / 越界 base_output）**全部被拦**；
+    外加 1 条**正向**断言「共享区间的 premium 档不被误判」
+- **循环依赖风险已排除**：`registry.gd` 用**字面量**白名单（不 preload `Economy`），
+  与 03a 对 `_KINDS` / `_INSTITUTIONS` 的既有做法一致；
+  两处枚举一致性由 `a.eq(cats, Economy.CATEGORIES, ...)` / `a.eq(goods_kinds, Economy.KINDS, ...)` 钉死
+- **挂账（不阻塞）**：
+  - `broom_nimbus` 的 canon 上沿 147900（= 300 加隆）是**「数十至数百加隆」的具体化**，
+    正典原文是模糊量词 —— spec §7.1 已写明「将来收紧先改表再改 json」
+  - `_SCARCITY_MAX = 1.40` 在 `registry.gd` 与 `Economy.MAX_SCARCITY` **各写一份字面量**
+    （同上，registry 不能反向依赖 Economy）；目前**没有测试钉死这两个数一致**，
+    留待 Task 2 在 `economy_test.gd` 加一条（已在计划 Task 2 范围内）
+
+- **下一步**：Task 2（`Economy` 算价核心 + `WorldState.economy` + 存档白名单 + 危机常量单源）
+
+---
+
 ## 后续任务
 
-- [ ] Task 1: 内容表 `goods` / `industries` + Registry 注册与字段校验
+- [x] Task 1: 内容表 `goods` / `industries` + Registry 注册与字段校验
 - [ ] Task 2: `Economy` 算价核心 + `WorldState.economy` + 存档白名单 + 危机常量单源
 - [ ] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
 - [ ] Task 4: 4 个新 op + OpGuard

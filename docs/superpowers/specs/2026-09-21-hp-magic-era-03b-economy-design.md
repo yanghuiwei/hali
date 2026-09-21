@@ -141,6 +141,7 @@ WorldState.tick()  （唯一的世界时间推进入口）
   "category": "wand",
   "kind": "goods",
   "canon_price_knuts": 3451,
+  "canon_price_hi_knuts": 4930,
   "canon_line": 223,
   "base_price_knuts": 3451,
   "industry_id": "wandmaking",
@@ -148,7 +149,7 @@ WorldState.tick()  （唯一的世界时间推进入口）
   "illegal": false,
   "supply_critical": false,
   "unit": "根",
-  "notes": "正典 223 行「一根普通魔杖：7‑10加隆」，测试取价格下限 7 加隆 = 3451 纳特（task-4-review 裁定）"
+  "notes": "正典 223 行「一根普通魔杖：7‑10加隆」，canon 区间 = [7, 10] 加隆 = [3451, 4930] 纳特"
 }
 ```
 
@@ -158,17 +159,39 @@ WorldState.tick()  （唯一的世界时间推进入口）
   无正典价位的条目 `canon_price_knuts = 0` 且 `canon_line = 0`（表示「价格为推演值」）。
   **语义（2026-09-21 实算后收窄）**：它是一个**价位区间的下沿**（如普通魔杖的 7 加隆），
   不是该商品的精确价。它**只用于对齐正典**，不直接参与算价。
+- `canon_price_hi_knuts`：**该正典区间的上沿**（普通魔杖 10 加隆 = 4930）。仅当 `canon_price_knuts > 0` 时有意义，
+  非锚点条目写 `0`。**它只有一个用途：给 `Registry.validate()` 提供 C3 的真正上界。**
+  ⚠️ 为什么必须单独存一个字段（2026-09-21 实算逼出的修正）：
+  原先用 `roundi(canon_price_knuts × MAX_SCARCITY / MIN_SCARCITY)` 当上界推导，隐含假设「**一条商品 = 一个 canon 窗口，且 base 就在下沿**」。
+  `potion_healing_premium`（顶级疗伤药剂）打破了这个假设 —— 它与 `potion_healing` **共享同一个 canon 区间**（正典只给了
+  「优质疗伤药剂 5–20 加隆」一个区间），但 base 取该区间**上段**（12.50 加隆 = 6162）。用推导式算出上界 4601，
+  会把一个 **C3 实际满足**（危机峰 8627 < canon_hi 9860）的条目误判为越界。
+  ⇒ 上界必须来自**正典写明的区间上沿本身**，而不是从下沿反推。
 - `base_price_knuts`：**实际算价基准 = 常态零售价**（`index=0.5` / `modern` / `local=1.0` 时的价，见 §7.4 C1）。
   ⚠️ **原 spec 要求「有正典锚点的条目必须 `== canon_price_knuts`」，该硬校验已作废**（实算证明二者不是同一个量）；
   `Registry.validate()` 改为：`base_price_knuts > 0`，且**若 `canon_price_knuts > 0` 则 `base_price_knuts` 必须落在
-  `[canon_price_knuts, canon_price_knuts × MAX_SCARCITY / MIN_SCARCITY]` 的合理带内**（防止改价时把常态价改到正典之外）。
+  `[canon_price_knuts, canon_price_hi_knuts]` 内、且 `roundi(base_price_knuts × MAX_SCARCITY) <= canon_price_hi_knuts`**
+  （即**「常态价在正典区间内」+「危机峰价不突破正典上沿」**两条一起查，这才是 C3 的机器保障）。
 - `industry_id`：**必须**引用 `industries.json` 存在的 id（服务类可空串）。
 - `inputs`：**必须**引用本表存在的 id（可为空数组）。
 - `illegal`：走私品（`true` ⇒ 交易时走 E7 的走私记账）。
 - `supply_critical`：短缺时会**断供**的条目（正典第十六章的四类后果之一）。
 - `unit`：中文量词（「根」「瓶」「把」「份」），面板与叙事会拼成「3 根普通魔杖」。
 
-**校准要求（必须遵守）**：`canon_price_knuts` 必须能对上正典第十八章 5 个锚点 —— 普通魔杖 7–10 加隆、优质疗伤药剂 5–20 加隆、光轮扫帚数十至数百加隆、普通家庭年收入约数百加隆、隐形衣**不进表**（正典明说「无法用加隆衡量」⇒ 进表会把「不可定价」变成「可定价」，违背正典）。
+**校准要求（必须遵守）**：`canon_price_knuts` / `canon_price_hi_knuts` 必须能对上正典第十八章 5 个锚点 —— 普通魔杖 7–10 加隆、优质疗伤药剂 5–20 加隆、光轮扫帚数十至数百加隆、普通家庭年收入约数百加隆、隐形衣**不进表**（正典明说「无法用加隆衡量」⇒ 进表会把「不可定价」变成「可定价」，违背正典）。
+
+**正典锚点区间表（定版，4 条带 canon 价位）**：
+
+| 商品 id | canon 区间（加隆） | `canon_price_knuts` | `canon_price_hi_knuts` | `canon_line` |
+| --- | --- | --- | --- | --- |
+| `wand_standard` | 7 – 10 | 3451 | **4930** | 223 |
+| `potion_healing` | 5 – 20 | 2465 | **9860** | 223 |
+| `potion_healing_premium` | 5 – 20（同上，取上段） | 2465 | **9860** | 223 |
+| `broom_nimbus` | 数十 – 数百 | 49300 | **147900** | 223 |
+
+> ⚠️ `broom_nimbus` 的「数十至数百加隆」在正典里是模糊量词，本表取 **100–300 加隆**作为可校验的具体化区间
+> （下沿取实算定的 100 加隆，上沿按 3 倍取 300 加隆 —— 与「数百」的语义一致，且给 C3 留出合理余量）。
+> 若将来要收紧，**先改这张表再改 `goods.json`**。
 
 ### 7.2 `data/industries.json`（数组）
 
@@ -272,16 +295,22 @@ price = round( base_price_knuts × era_mult × scarcity_mult × local_mult )
      （因 `index=0.5` 时 `scarcity_mult=1.0`、`era_mult=1.0`、`local_mult=1.0`）。
      ⇒ 这也让 `goods.json` 的 `base_price_knuts` 有了**可读的语义**：它就是「常态零售价」。
    - **C2（硬）**：价格对 `economy_index` **单调不增**（景气降 ⇒ 价不降，不许反号）。实算已验证 1001 点全单调。
-   - **C3（硬）**：**危机侧上限** = 正典区间上沿。最低景气且未断供时价 `<= canon_hi`。
+   - **C3（硬）**：**危机侧上限** = 正典区间上沿 `canon_price_hi_knuts`。最低景气且未断供时价 `<= canon_price_hi_knuts`。
      实算：普通魔杖危机最大值 **4831 <= 4930 ✔**。
+     ⚠️ **上界来源（2026-09-21 修正）**：`canon_price_hi_knuts` **必须直接来自正典写明的区间上沿**，
+     不得用 `canon_price_knuts × MAX_SCARCITY / MIN_SCARCITY` 反推（该推导式隐含「一条商品 = 一个窗口且 base 就在下沿」，
+     被 `potion_healing_premium` 打破；详见 §7.1 `canon_price_hi_knuts` 条目）。
    - **C4（软，记录不阻断）**：繁荣侧允许低于正典下沿（「便宜」不违反「7–10 加隆」的叙述语境——
      正典说的是**常见成交范围**，不是「任何状态不得低于 7」）。幅度受 `MIN_SCARCITY` 限制，且**测试里必须打印实际落点**。
      实算：普通魔杖繁荣侧最低 3106 纳特（6.30 加隆），低于下沿 345。
    - **C5（硬）**：`supply` **不进价格公式**，只决定**可得性**（断供 / 限购）。
      理由：`supply_mult` 在危机侧会**推高**价格（产出低 ⇒ 1.5-），与 `scarcity_mult` 叠加后总乘数达 **1.479x**，
      超出魔杖区间 1.4286x 的容忍 ⇒ 必然越界；且它表达的语义（产出少 ⇒ 贵）与 `economy_index` **重复**。
-   - **C6（硬）**：`canon_price_knuts` 的语义 = **该商品所属正典区间的下沿**；
-     `base_price_knuts` = 常态零售价。二者**不再强制相等**（原 spec §7.1 的「必须 `==`」硬校验**作废**）。
+   - **C6（硬）**：`canon_price_knuts` / `canon_price_hi_knuts` 的语义 = **该商品所属正典区间的下沿 / 上沿**；
+     `base_price_knuts` = 常态零售价。`base` 与 `canon_lo` **不再强制相等**（原 spec §7.1 的「必须 `==`」硬校验**作废**）。
+     `Registry.validate()` 的机器保障 = **两条一起查**：
+     ① `base ∈ [canon_lo, canon_hi]`（常态价落在正典区间内）；
+     ② `roundi(base × MAX_SCARCITY) <= canon_hi`（危机峰价不突破正典上沿，这就是 C3）。
 3. **`supply`（不进价格，只决定可得性）**：
    `effective_output = clamp(base_output × (0.5 + economy_index × 0.5), 0, 1)`（保留，供 `available()`/面板用）。
    `supply_critical == true` 且 `economy_index <= SUPPLY_CUTOFF` ⇒ **断供**（`price_of()` 返回 `0`，`available()` 返回 `false`）。
@@ -433,10 +462,10 @@ func formatted() -> String                 # 负值 → 走 debt_formatted() 的
 5. **危机阈值 0.35 是首版拍数**（沿用 `factions.gd:369` 的既有危机判据，保持一致）。实跑后可能要调。
 6. **与 03a 的耦合点只读**（§5.1）：若实现时发现必须改 `factions.gd`，**先改 spec 文本**（03a 铁律）。
 7. **`trade_money` 的「路费」用 category 常量**（不是真实距离）：本计划没有地点距离数据。若 03b 要做真实距离，需要给 `data/locations.json` 加坐标 —— **本计划不做**，用常量近似（风险：玩家可能找到「无限套利」路径，靠 `OpGuard` 的金额上限与「同回合不可重复同类交易」约束）。
-8. **本 spec 的数值经「先实算后写表」全流程重算，共发现并修掉 6 处设计缺陷**（教训同 03a §13.2「0.45 在任何合法状态都不可达」）。
+8. **本 spec 的数值经「先实算后写表」全流程重算，共发现并修掉 7 处设计缺陷**（教训同 03a §13.2「0.45 在任何合法状态都不可达」）。
    实算脚本：`C:\Users\yhweix\AppData\Local\Temp\hali_03b_{pricecalc,diag,verdict,v2,v3,v4,v5,gen}.py`
    （一次性工具，不入库；结论已全部写进 §7.4）。
-   | # | 缺陷 | 实算证据 | 修法 |
+   | # | 缺陷 | 证据 | 修法 |
    | --- | --- | --- | --- |
    | ① | 债务用例 `-1002` 初稿写成「16**西可**」 | `parts=(-2,0,-16)` ⇒ 第三位是 **16纳特** | 改成「负债 2加隆 16纳特」，§7.5 加实算警告 |
    | ② | `canon_price` 被直接当 `base_price` | 上等魔杖 11.54 > 10、顶级疗伤 22.68 > 20（5 个锚点里 2 个越界） | `canon` 与 `base` 解耦，`base` = 常态零售价（C1） |
@@ -444,9 +473,14 @@ func formatted() -> String                 # 负值 → 走 debt_formatted() 的
    | ④ | **危机线与断供线同为 0.35** | 留下 `index ∈ (0.35, 0.43]` 的「已越界但仍供货」死区 | 解耦为 `CRISIS_THRESHOLD=0.35` / `SUPPLY_CUTOFF=0.15` |
    | ⑤ | 原验收契约（初稿）隐含「全域价必须落在正典区间内」 | **数学上不可能**：区间宽 1.4286x，而乘数摆动必 >1.5x | 改为 C1–C6（危机侧守上沿、繁荣侧允许下探并记录） |
    | ⑥ | 「上等魔杖」复用普通魔杖的 `[7,10]` 窗口 | 该窗口常态可用带仅 `[3451, 3521]`（= 上沿/1.40），容不下第二档 | **删掉「上等魔杖」**，正典只给了「普通魔杖」一个窗口 |
+   | ⑦ | **C3 上界用 `canon_lo × MAX/MIN` 反推**（2026-09-21 Task 1 施工时暴露） | `potion_healing_premium` 与 `potion_healing` **共享 canon 区间**、base 取上段（6162），被公式推出上界 4601 误判越界；实际危机峰 8627 < canon_hi 9860，**C3 是满足的** | 新增 `canon_price_hi_knuts` 字段（**直接存正典区间上沿**），校验改为 ①`base ∈ [lo, hi]` ②`roundi(base × MAX_SCARCITY) <= hi` 两条一起查 |
    - 最终产物：**35 条商品 + 9 条产业**，`industry_id`/`produces` 引用全部实算校验通过，5 个正典锚点全域守门通过。
    - **流程要求（保留）**：将来任何改动 `data/*.json` 价格的动作，**必须先把 `base_price_knuts` 与 §7.4 公式实算一遍**
      （Python 一次性脚本即可），确认 C1–C6 全部通过，再写进表。**不要先写表再验算。**
+   - **⑦ 的元教训**：缺陷 ②～⑦ 有一个共同形态 —— **用一个「推导式」代替「正典里本来就写明的量」**。
+     凡是正典**直接给出**的数字（区间上沿、价位本身），就该**存字段**，不要让它从别的数字算出来；
+     推导式只在正典确实没给、且假设前提被验证过时才用。且推导式的隐含前提**必须在注释里写出来**
+     （⑦ 隐含「一条商品 = 一个 canon 窗口且 base 就在下沿」，正是这句话没人写下来才漏掉 premium 档）。
 
 ## 14. 后续计划边界
 

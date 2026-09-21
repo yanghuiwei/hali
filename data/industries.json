@@ -1,0 +1,20 @@
+[
+  {"id":"potion_brewing","label":"魔药酿造","canon_line":211,"base_output":0.75,"monopoly":false,
+   "produces":["potion_healing","potion_healing_premium","potion_common","illegal_potion"]},
+  {"id":"wandmaking","label":"魔杖制造","canon_line":211,"base_output":0.70,"monopoly":true,
+   "produces":["wand_standard","wand_elder","mat_wand_wood","mat_wand_core"]},
+  {"id":"broommaking","label":"扫帚制造","canon_line":211,"base_output":0.65,"monopoly":false,
+   "produces":["broom_nimbus","broom_standard"]},
+  {"id":"publishing","label":"出版","canon_line":211,"base_output":0.85,"monopoly":false,
+   "produces":["book_standard","book_rare","food_butterbeer","food_pumpkin_pastry"]},
+  {"id":"quidditch","label":"魁地奇","canon_line":211,"base_output":0.80,"monopoly":false,
+   "produces":["svc_quidditch_ticket"]},
+  {"id":"creature_breeding","label":"神奇生物养殖","canon_line":211,"base_output":0.60,"monopoly":false,
+   "produces":["mat_herb","mat_dragon_blood","mat_phoenix_tear","mat_unicorn_hair","creature_owl","creature_pygmy_puff","illegal_creature"]},
+  {"id":"archaeology","label":"魔法考古","canon_line":211,"base_output":0.45,"monopoly":false,
+   "produces":["mat_ore","illegal_relic"]},
+  {"id":"curse_breaking","label":"解咒","canon_line":211,"base_output":0.55,"monopoly":false,
+   "produces":["artifact_ring","artifact_detector"]},
+  {"id":"finance","label":"金融","canon_line":211,"base_output":0.90,"monopoly":true,
+   "produces":["svc_gringotts_fee","svc_bank_vault"]}
+]

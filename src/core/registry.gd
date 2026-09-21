@@ -20,6 +20,8 @@ const TABLE_FILES: Dictionary = {
 	"wand_flexibilities": "wand_flexibilities.json",
 	"wand_lengths": "wand_lengths.json",
 	"spells": "spells.json",
+	"goods": "goods.json",
+	"industries": "industries.json",
 }
 
 var duplicate_ids: PackedStringArray = PackedStringArray()
@@ -100,6 +102,20 @@ const _SECRECY := ["public", "semi", "secret"]
 const _INSTITUTIONS := ["law_enforcement", "auror_office", "wizengamot", "mysteries",
 	"hogwarts", "gringotts", "daily_prophet", "international"]
 
+# 计划 03b：经济内容表白名单。
+# ⚠️ 必须与 Economy.CATEGORIES / Economy.KINDS 同步 —— registry 在 Economy 的上游，
+#    反向 preload 会造成类循环，故此处写字面量，由 tests/registry_test.gd 的
+#    「商品 category 枚举两处一致 / kind 枚举两处一致」断言钉死两处不漂移。
+const _GOODS_CATEGORIES := ["wand", "potion", "material", "broom", "book",
+	"food", "service", "creature", "artifact", "illegal"]
+const _GOODS_KINDS := ["goods", "service"]
+# C3：危机峰价的封顶倍数。危机侧最大乘数 = MAX_SCARCITY，
+# 校验器据此核「roundi(base × MAX_SCARCITY) 不得突破 canon_price_hi_knuts」。
+# 上界**直接存 `canon_price_hi_knuts` 字段**（正典写明的区间上沿），
+# 不得用 canon_lo × MAX/MIN 反推 —— 那条式子隐含「一条商品 = 一个 canon 窗口且 base 就在下沿」，
+# 对 potion_healing_premium（共享区间、base 取上段）会误判（spec §7.1 / §13 风险 8 缺陷⑦）。
+const _SCARCITY_MAX := 1.40
+
 func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedStringArray:
 	var errors := PackedStringArray()
 	var where := "%s/%s" % [table_name, key]
@@ -138,4 +154,70 @@ func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedSt
 			errors.append("%s: 缺少 text" % where)
 		if str(e.get("condition", "")).is_empty():
 			errors.append("%s: 缺少 condition" % where)
+	if table_name == "goods":
+		errors.append_array(_validate_goods(where, e))
+	if table_name == "industries":
+		errors.append_array(_validate_industry(where, e))
+	return errors
+
+# 计划 03b：商品字段与引用校验（C3/C6 的价格合理带在此落地）。
+func _validate_goods(where: String, e: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var category := str(e.get("category", ""))
+	if not _GOODS_CATEGORIES.has(category):
+		errors.append("%s: category 非法（%s）" % [where, category])
+	var kind := str(e.get("kind", ""))
+	if not _GOODS_KINDS.has(kind):
+		errors.append("%s: kind 非法（%s）" % [where, kind])
+	var base := int(e.get("base_price_knuts", 0))
+	if base <= 0:
+		errors.append("%s: base_price_knuts 必须为正（%d）" % [where, base])
+	var canon := int(e.get("canon_price_knuts", 0))
+	if canon < 0:
+		errors.append("%s: canon_price_knuts 不得为负（%d）" % [where, canon])
+	if str(e.get("unit", "")).is_empty():
+		errors.append("%s: 缺少 unit" % where)
+	if kind == "goods":
+		var iid := str(e.get("industry_id", ""))
+		if not has("industries", iid):
+			errors.append("%s: industry_id 不存在（%s）" % [where, iid])
+	if canon > 0:
+		if int(e.get("canon_line", 0)) <= 0:
+			errors.append("%s: 锚点商品缺少 canon_line" % where)
+		var hi := int(e.get("canon_price_hi_knuts", 0))
+		if hi <= 0:
+			errors.append("%s: 锚点商品缺少 canon_price_hi_knuts（正典区间上沿）" % where)
+		else:
+			# ① 常态价必须落在正典区间内（C6）
+			if base < canon or base > hi:
+				errors.append("%s: base_price_knuts 超出正典合理带 [%d, %d]（实际 %d）"
+					% [where, canon, hi, base])
+			# ② 危机峰价不得突破正典上沿（C3 —— 这才是契约本体）
+			var peak := roundi(float(base) * _SCARCITY_MAX)
+			if peak > hi:
+				errors.append("%s: 危机峰价突破正典上沿（%d × %.2f = %d > %d）"
+					% [where, base, _SCARCITY_MAX, peak, hi])
+	return errors
+
+# 计划 03b：产业字段与 produces 引用校验。
+func _validate_industry(where: String, e: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if not e.has("base_output"):
+		errors.append("%s: 缺少 base_output" % where)
+	else:
+		var out := float(e["base_output"])
+		if out < 0.0 or out > 1.0:
+			errors.append("%s: base_output 超值域（%s）" % [where, str(e["base_output"])])
+	if not e.has("monopoly"):
+		errors.append("%s: 缺少 monopoly" % where)
+	elif typeof(e["monopoly"]) != TYPE_BOOL:
+		errors.append("%s: monopoly 必须是布尔" % where)
+	if not e.has("produces"):
+		errors.append("%s: 缺少 produces" % where)
+	elif typeof(e["produces"]) != TYPE_ARRAY:
+		errors.append("%s: produces 必须是数组" % where)
+	else:
+		for p in (e["produces"] as Array):
+			if not has("goods", str(p)):
+				errors.append("%s: produces 引用不存在的商品（%s）" % [where, str(p)])
 	return errors
