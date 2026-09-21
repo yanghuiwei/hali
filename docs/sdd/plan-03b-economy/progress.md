@@ -395,10 +395,69 @@
 - K1（`Money` 负值形态）与 K5（`scarcity_mult` 口径 A）仍为**默认接受、可回退**
 - 缺陷⑫ 的读法 B 是**用户裁定**，若后续想开「未成年打工」通道需重开 spec 章节
 
+---
+
+## Task 6：`tick()` 接线（`evolve()` + `monthly_settlement()` + 危机边沿）
+
+**状态：完成**（2026-09-21）
+
+### 交付内容
+
+| 文件 | 变更 |
+| --- | --- |
+| `src/rules/economy.gd` | 新增 `evolve(world) -> Array`、`_crisis_event()`；常量 `CRISIS_EVENT_KIND` / `FOREIGN_RATE_SWING` / `FOREIGN_RATE_MIN` / `FOREIGN_RATE_MAX` |
+| `src/model/world_state.gd` | `tick()` 在 ④ `WorldFactions.evolve()` 之后插入 ⑤ `Economy.evolve()` + ⑥ `Economy.monthly_settlement()`；原 ⑤⑥⑦ 顺延为 ⑦⑧⑨ |
+| `tests/economy_test.gd` | +40 断言（`_check_evolve`：快照一致性 / 危机边沿 / 汇率确定性 / 结算接线 / 既有阶段未扰动） |
+| `docs/superpowers/specs/...03b-economy-design.md` | 新增 §5.2 顺序契约 + §11 第 6 条接线验收 + §13 缺陷 ⑬ + 计数 13→**14** |
+| `docs/superpowers/plans/...03b-economy.md` | Task 6 步骤 3 的顺序论断修正（含缺陷⑬ 说明） |
+
+### 与 plan 的两处实况偏差
+
+| # | plan 写法 | 实况 | 处置 |
+| --- | --- | --- | --- |
+| 1 | `static func evolve(world) -> void` | `tick()` 的 `events` 是**局部数组**，`void` 签名无法把危机事件交出去 | 改 **`-> Array`**（与既有 `WorldFactions.evolve()` 同款约定）；`tick()` 用 `for … in` 并入 `events` + `log` |
+| 2 | 测试示例用 `w_c.events.size()`、`_make_world(1950, 0.5)`、`_make_world_seeded(...)`、`w.vars[...]` | `events` 不是字段；无 `_make_world*` 辅助；字段名是 `world_vars` 不是 `vars` | 按实况改用 **`tick()` 返回值** + 既有 `make_world()` / `_pin()` |
+
+### 缺陷⑬（本任务新发现，**最有价值的一条**）
+
+**顺序契约的理由写错了，且据此写的断言是空转的。**
+
+- **原说法**（spec §5/§8 + plan）：「`evolve` 必须在 `settlement` 之前，**否则结算用的是上月价**」。
+- **实测**：`price_of()` 是**活算**（每次从 `world_vars` 重算），**从不读快照**；`monthly_settlement` 走 `price_of` ⇒ **顺序对结果无影响**。
+- **反向控制**：我把两阶段顺序**对调**，`economy` 套件 **1037 断言仍然全绿** ⇒ 那条顺序断言是**装饰品**。
+- **修正**：顺序仍不可换，但**真正的理由是另一个** —— `_snapshot_prices` 产出的快照是**面板（Task 7）/ `PromptBuilder`（Task 8）**读的「本月价目表」（`snapshot_price()` 快照优先、缺失才回落活算）。`evolve` 在前，保证「**面板看到的价**」与「**结算用的价**」**同源同月**。
+- **断言改为**：「快照逐条 == 当回合 `price_of`」（35 条商品全比对）。
+
+### 反向控制验证（本任务新引入的做法，3 组）
+
+| # | 故意破坏 | 期望 | 实测 |
+| --- | --- | --- | --- |
+| RC1 | 对调 `evolve` / `settlement` 顺序 | 旧断言应红 | ❌ **全绿** ⇒ 证明原断言空转（这就是缺陷⑬ 的发现方式） |
+| RC2 | 注释掉 `_snapshot_prices` | 快照一致性断言应红 | ✅ **5 条红**，含核心契约「快照逐条 == price_of」（`期望 <0>，实际 <35>`） |
+| RC3 | 把 `if now and not was` 改成 `if now`（边沿→电平） | 「危机中不重复写事件」应红 | ✅ **恰好 1 条红**，且正是该条 |
+
+⇒ **新契约（快照一致性 + 危机边沿）都经反向控制确认「有牙齿」**，不是空转断言。
+**做法已沉淀**：写「顺序/边沿/幂等」这类不可见不变量时，**必须反向控制一次**（故意改错、看是否恰好那几条变红）。
+
+### 门禁（四道全过）
+
+| 门 | 结果 |
+| --- | --- |
+| `bash tools/test.sh` | **EXIT=0**，23 套件 / **3471 断言**（3431 → +40）/ 失败 1（`probe` 故意失败）；`economy` **1041** |
+| `stderr` 噪声 | `^SCRIPT ERROR` = **2**、`^ERROR:` = **7** —— 与基线逐字一致 |
+| `timeout 300 bash tools/b1_acceptance.sh` | **EXIT=0**，151 断言 / 失败 0，配置逐字还原 |
+| 工作区 + 进程 | 5 文件修改、`.workbuddy/` 未跟踪；godot 进程 **0** |
+
+### 挂账（不阻塞）
+
+- 时段 ⑤ 在 `tick()` 的插入位置已定，但**快照的消费者（面板/PromptBuilder）尚未接线**（Task 7/8）⇒ 缺陷⑬ 的「同源同月」契约目前只有测试在守，Task 7/8 落地后应补一条**跨模块**断言
+- `registry.gd` 的 `_SCARCITY_MAX = 1.40` 与 `Economy.MAX_SCARCITY` 仍无一致性断言（Task 11/12）
+- K1 / K5 仍为默认接受、可回退
+
 - [x] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
 - [x] Task 4: 4 个新 op（存/取/汇/贸）+ OpGuard 钳制 + 缺陷⑧（local_mult 口径 + 货值闸门）
 - [x] Task 5: 月度结算（工资 / 开销 / 利息）+ `jobs` 表 + 缺陷⑨⑩⑪⑫
-- [ ] Task 6: `tick()` 接线（`evolve` + `monthly_settlement` + 危机边沿）
+- [x] Task 6: `tick()` 接线（`evolve` + `monthly_settlement` + 危机边沿）+ 缺陷⑬
 - [ ] Task 7: 面板【财富】含存款 + 新增【经济】行
 - [ ] Task 8: `state_digest` 经济摘要（信息保护）
 - [ ] Task 9: 离线替身接线（关键词 → 经济 op）

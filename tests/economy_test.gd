@@ -221,6 +221,7 @@ func run() -> int:
 
 	_check_jobs_table(a)
 	_check_settlement(a)
+	_check_evolve(a)
 
 	return a.report("economy")
 
@@ -445,6 +446,168 @@ func _check_settlement(a: TestAssert) -> void:
 	var netc := Economy.monthly_settlement(wc)
 	a.is_true(int(netc.get("expense", 0)) > expected_expense,
 		"危机期月开销高于中性期（%d > %d）" % [int(netc.get("expense", 0)), expected_expense])
+
+
+# ============================================================================
+# Task 6：tick() 接线 —— evolve() + 危机边沿 + 汇率确定性
+# ============================================================================
+
+func _check_evolve(a: TestAssert) -> void:
+	# ⚠️ `tick()` 里的 `events` 是**局部数组**（不是字段），故只能通过返回值观察。
+	# plan 的示例写 `w_c.events.size()` —— 与实况不符，此处按实况用返回值。
+
+	# ---- ⑤ 物价快照刷新 ----
+	var w := make_world()
+	_pin(w, Economy.NEUTRAL_INDEX)
+	var snap_before := int((w.economy["prices"] as Dictionary)["wand_standard"])
+	# 把景气拉低 ⇒ 价必须变贵，且快照必须跟着刷新
+	_pin(w, 0.20)
+	var events0 := w.tick()
+	var snap_after := int((w.economy["prices"] as Dictionary)["wand_standard"])
+	a.is_true(snap_after != snap_before,
+		"tick 后价格快照被刷新（%d -> %d）" % [snap_before, snap_after])
+	a.eq(snap_after, Economy.price_of(w, "wand_standard"),
+		"快照值与 price_of 一致（快照不是陈旧值）")
+	a.is_true(events0 is Array, "tick() 返回 events 数组")
+
+	# ---- 危机边沿：false→true 写事件，且只写一次 ----
+	var wc := make_world()
+	_pin(wc, Economy.CRISIS_THRESHOLD - 0.05)
+	a.is_false(bool(wc.economy["crisis"]), "初始不在危机态")
+	var ev1 := wc.tick()
+	a.is_true(bool(wc.economy["crisis"]), "跌破阈值 ⇒ crisis 置位")
+	var crisis_events := 0
+	for e in ev1:
+		if str(e.get("kind", "")) == "economic_crisis":
+			crisis_events += 1
+	a.eq(crisis_events, 1, "进入危机恰好写 1 条 economic_crisis 事件")
+	a.is_true(float(wc.economy["gringotts_interest_rate"]) < Economy.INTEREST_RATE,
+		"危机降息（%.4f < %.4f）" % [float(wc.economy["gringotts_interest_rate"]), Economy.INTEREST_RATE])
+
+	# 已在危机中再 tick 不重复写事件
+	var ev2 := wc.tick()
+	var crisis_events2 := 0
+	for e2 in ev2:
+		if str(e2.get("kind", "")) == "economic_crisis":
+			crisis_events2 += 1
+	a.eq(crisis_events2, 0, "危机中不重复写事件（边沿不是电平）")
+	a.is_true(bool(wc.economy["crisis"]), "仍在危机态")
+
+	# ---- 退出危机：不写事件，利率回升 ----
+	_pin(wc, 0.90)
+	var ev3 := wc.tick()
+	a.is_false(bool(wc.economy["crisis"]), "景气回升 ⇒ 退出危机")
+	a.is_true(float(wc.economy["gringotts_interest_rate"]) >= Economy.INTEREST_RATE,
+		"退出危机后利率回升")
+	var crisis_events3 := 0
+	for e3 in ev3:
+		if str(e3.get("kind", "")) == "economic_crisis":
+			crisis_events3 += 1
+	a.eq(crisis_events3, 0, "退出危机不写事件")
+
+	# ---- 危机是边沿：反复跨越阈值，每次 false→true 都写一条 ----
+	var we := make_world()
+	_pin(we, 0.90)
+	we.tick()
+	_pin(we, 0.10)
+	var ev_entry2 := we.tick()
+	var n2 := 0
+	for e4 in ev_entry2:
+		if str(e4.get("kind", "")) == "economic_crisis":
+			n2 += 1
+	a.eq(n2, 1, "第二次进入危机仍写 1 条（每次边沿都写）")
+
+	# ---- foreign_rate 幅度与 clamp ----
+	var wr := make_world()
+	_pin(wr, Economy.NEUTRAL_INDEX)
+	for _i in range(12):
+		wr.tick()
+		var fr := float(wr.economy["foreign_rate"])
+		a.is_true(fr >= 0.85 and fr <= 1.15, "foreign_rate 第 %d 月落在 [0.85, 1.15]（%.4f）" % [_i + 1, fr])
+
+	# ---- foreign_rate 确定性（同 seed 双世界相等，spec §9 第 1 条）----
+	var wa := make_world(NEUTRAL_ERA, 12345)
+	var wb := make_world(NEUTRAL_ERA, 12345)
+	for _j in range(6):
+		wa.tick()
+		wb.tick()
+	a.eq(float(wa.economy["foreign_rate"]), float(wb.economy["foreign_rate"]),
+		"foreign_rate 同 seed 一致（命名流确定性）")
+	a.eq(wa.economy["prices"], wb.economy["prices"], "价格快照同 seed 一致")
+	a.eq(wa.player.money_knuts, wb.player.money_knuts, "月度结算同 seed 一致")
+
+	# 不同 seed 应分岔（反向判别：证明 foreign_rate 真的用了 seed）
+	var wd := make_world(NEUTRAL_ERA, 999)
+	for _k in range(6):
+		wd.tick()
+	a.is_true(float(wd.economy["foreign_rate"]) != float(wa.economy["foreign_rate"]),
+		"不同 seed 的 foreign_rate 分岔（证明 seed 真的进了流）")
+
+	# ---- 结算真的被 tick 调用（不是只在测试里手动调）----
+	var wt := make_world()
+	_pin(wt, Economy.NEUTRAL_INDEX)
+	wt.player.age_months = Economy.ADULT_MONTHS
+	wt.player.job = "店员"
+	var money_before := int(wt.player.money_knuts)
+	wt.tick()
+	a.eq(int(wt.economy["last_settlement_turn"]), int(wt.clock.turn),
+		"tick 推进了 last_settlement_turn（结算被接线了）")
+	a.eq(int(wt.economy["last_month_income"]), 4930, "tick 发放了工资")
+	a.is_true(int(wt.player.money_knuts) != money_before, "tick 后现金发生了变更")
+
+	# ---- 未成年在 tick 里也整月跳过（与 monthly_settlement 口径一致）----
+	var wk := make_world()
+	_pin(wk, Economy.NEUTRAL_INDEX)
+	wk.player.age_months = Economy.ADULT_MONTHS - 1
+	wk.player.job = "店员"
+	var money_k := int(wk.player.money_knuts)
+	wk.tick()
+	a.eq(int(wk.player.money_knuts), money_k, "tick 里未成年现金不变（缺陷⑫ 口径贯通）")
+
+	# ---- 顺序契约（缺陷⑬ 修正后的口径）----
+	# ⚠️ 原写法是「危机后开销 > 中性开销」—— 那是**空转断言**：`price_of` 是活算，
+	# 无论 evolve/settlement 谁先谁后都成立（我把顺序对调跑反向控制，全绿 ⇒ 证明空转）。
+	# 有牙齿的契约是「**快照与活算同源同月**」：面板（Task 7）与 PromptBuilder（Task 8）
+	# 读的是快照，若 evolve 漏刷或刷晚，面板价就会与本回合价脱节。
+	var ws := make_world()
+	_pin(ws, 0.20)
+	ws.tick()
+	var snap := (ws.economy["prices"] as Dictionary)
+	a.is_true(not snap.is_empty(), "evolve 刷新了快照（非空）")
+	var mismatch := 0
+	for gid in ws.registry.ids("goods"):
+		if int(snap.get(str(gid), -1)) != Economy.price_of(ws, str(gid)):
+			mismatch += 1
+	a.eq(mismatch, 0, "快照逐条等于当回合 price_of（快照 == 活算，缺陷⑬ 的核心契约）")
+
+	# 反向判别：景气变了，快照必须跟着变（证明快照不是「建世界时刷一次就再也不动」）
+	var snap_cheap := int((ws.economy["prices"] as Dictionary)["wand_standard"])
+	_pin(ws, 0.95)
+	ws.tick()
+	var snap_rich := int((ws.economy["prices"] as Dictionary)["wand_standard"])
+	a.is_true(snap_rich != snap_cheap, "景气回升后快照真的更新（%d -> %d）" % [snap_cheap, snap_rich])
+	a.is_true(snap_rich < snap_cheap, "景气回升 ⇒ 快照价变便宜")
+
+	# 结算读的是当月价（危机期开销真的变贵）—— 保留原有断言，但明确它
+	# **不能**用来验证顺序（活算的性质使它对顺序不敏感），只验证「开销随景气浮动」。
+	var wc2 := make_world()
+	_pin(wc2, 0.20)
+	wc2.player.age_months = Economy.ADULT_MONTHS
+	wc2.player.job = ""
+	wc2.tick()
+	var neutral_expense := 6477
+	a.is_true(int(wc2.economy["last_month_expense"]) > neutral_expense,
+		"危机期开销高于中性（%d > %d，证明开销走 price_of 而非写死 base）"
+			% [int(wc2.economy["last_month_expense"]), neutral_expense])
+
+	# ---- 既有阶段不受影响：⑦⑧⑨ 的相对顺序不许动 ----
+	var wl := make_world()
+	_pin(wl, Economy.NEUTRAL_INDEX)
+	var age_before := int(wl.player.age_months)
+	wl.tick()
+	a.eq(int(wl.player.age_months), age_before + 1, "年龄推进仍在（⑦⑧⑨ 未被扰动）")
+	a.is_true(wl.log.size() <= WorldState.RECENT_LOG_LIMIT,
+		"日志裁剪仍在最后生效（log <= %d，实际 %d）" % [WorldState.RECENT_LOG_LIMIT, wl.log.size()])
 
 
 # 测试内辅助：直接改内存里的表内容（不影响 res://data）

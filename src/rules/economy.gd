@@ -263,6 +263,76 @@ static func snapshot_price(world: WorldState, good_id: String) -> int:
 
 
 # ============================================================================
+# 经济演化（Task 6 / spec §8 阶段⑤）—— 每个月跑一次
+# ============================================================================
+
+## 危机事件的 kind（面板/日志/叙事按此识别，spec §7.4 第 7 条）。
+const CRISIS_EVENT_KIND := "economic_crisis"
+## 外币汇率月度波动幅度（±3%）与 clamp 区间（spec §8）。
+const FOREIGN_RATE_SWING := 0.03
+const FOREIGN_RATE_MIN := 0.85
+const FOREIGN_RATE_MAX := 1.15
+
+static func evolve(world: WorldState) -> Array:
+	## 月度经济演化：① 刷新物价快照 ② 汇率波动 ③ 危机**边沿**判定。
+	##
+	## **返回本月由经济产生的事件数组**（与 `WorldFactions.evolve()` 同款约定 ——
+	## `tick()` 的 `events` 是局部数组，`evolve` 无法直接写入，必须靠返回值交接）。
+	## 目前只有「进入危机」会产事件；未触发时返回空数组。
+	##
+	## ⚠️ **必须在 `monthly_settlement` 之前调用**（spec §8）：本函数刷新后的
+	## `economy.prices` 才是本月价，结算读的是这份快照。顺序反了 ⇒ 结算用上月价。
+	##
+	## 「边沿」而非「电平」：`false→true` 才写事件（进入危机），
+	## `true→false` 只回升利率**不写事件**。危机中反复 tick 不重复刷屏
+	## （与 03a 政治事件的 MAJOR_EVENT_GAP 精神一致）。
+	##
+	## 确定性：汇率走 `RngService` 命名流 `economy_foreign_rate`，种子含 `clock.turn`
+	## ⇒ 同 seed 双世界逐月一致（spec §9 第 1 条）。
+	if world == null or world.player == null or world.registry == null:
+		return []
+
+	# ① 物价快照刷新（面板/叙事/PromptBuilder 都只读这份快照）
+	_snapshot_prices(world)
+
+	# ② 汇率月度小幅波动（±3%，clamp 到 [0.85, 1.15]）
+	var rng := RngService.new(world.game_seed + world.clock.turn * 24593)
+	var drift := rng.stream_float("economy_foreign_rate") * (FOREIGN_RATE_SWING * 2.0) - FOREIGN_RATE_SWING
+	var rate := clampf(float(world.economy.get("foreign_rate", 1.0)) + drift,
+		FOREIGN_RATE_MIN, FOREIGN_RATE_MAX)
+	world.economy["foreign_rate"] = rate
+
+	# ③ 危机边沿判定
+	var now := is_crisis(world)
+	var was := bool(world.economy.get("crisis", false))
+	if now and not was:
+		# 进入危机：降息（黑市繁荣；走私利润倍数由 SMUGGLING_PROFIT_MULT_CRISIS 表达）
+		world.economy["crisis"] = true
+		world.economy["gringotts_interest_rate"] = INTEREST_RATE_CRISIS
+		return [_crisis_event(world)]
+	if (not now) and was:
+		# 退出危机：利率回升，**不写事件**
+		world.economy["crisis"] = false
+		world.economy["gringotts_interest_rate"] = INTEREST_RATE
+	# ④ `smuggling_heat` 只记不判（本任务不改它）
+	return []
+
+
+static func _crisis_event(world: WorldState) -> Dictionary:
+	## 危机事件载荷。走**既有**的事件通道（03a 的政治事件同款），
+	## 由 `tick()` 统一 append 到 `events` 与 `log`。
+	## 正典第四十六章把「金融危机」列为世界级事件之一 ⇒ 必须通知玩家（K3 裁定）。
+	return {
+		"kind": CRISIS_EVENT_KIND,
+		"category": "economy",
+		"text": "魔法界陷入经济危机：物价飞涨，古灵阁下调存款利率，黑市开始繁荣。",
+		"major": true,
+		"turn": world.clock.turn,
+		"year": world.clock.year,
+	}
+
+
+# ============================================================================
 # 月度结算（E4② / spec §7.6）—— 确定性，无随机
 # ============================================================================
 

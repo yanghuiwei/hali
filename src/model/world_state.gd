@@ -151,17 +151,29 @@ func tick() -> Array:
 		events.append(political_event)
 		log.append(political_event)
 
-	# 5) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
+	# 5) 计划 03b：经济演化（物价快照 / 汇率 / 危机边沿）
+	#    ⚠️ 必须在月度结算之前 —— evolve 刷新后的 economy.prices 才是本月价（spec §8）。
+	#    也必须在 ① world_vars 回归之后 —— 景气是本回合新算出来的。
+	for economic_event in Economy.evolve(self):
+		events.append(economic_event)
+		log.append(economic_event)
+
+	# 6) 计划 03b：月度结算（工资 / 开销 / 利息，确定性、无随机）
+	#    读的是 ⑤ 刚刷新的价格快照 ⇒ 危机期物价翻倍时开销真的变贵。
+	Economy.monthly_settlement(self)
+
+	# 7) 生活基线：日常必须大量存在（第六十八章），世界不会每个月都在打仗
 	var style_now := sim_style()
 	var mundane_ratio := clampf(float(style_now.get("mundane_ratio", 0.7)), 0.0, 1.0)
 	if month_rng.chance("mundane_day", 0.5 + mundane_ratio * 0.4):
 		log.append({"turn": clock.turn, "kind": "mundane",
 			"text": "%s，日子照常过。" % clock.formatted()})
 
-	# 6) 年龄推进（玩家与世界同时变老）
+	# 8) 年龄推进（玩家与世界同时变老）
 	player.age_months += 1
 
-	# 7) 日志裁剪，避免存档无限膨胀
+	# 9) 日志裁剪，避免存档无限膨胀
+	#    ⚠️ 必须仍排在**最后**（在新增的 ⑤⑥ 之后），否则裁不到新事件。
 	while log.size() > RECENT_LOG_LIMIT:
 		log.pop_front()
 
