@@ -314,4 +314,51 @@ func run() -> int:
 	a.is_false(str(rrepair.requests[0].system_prompt).contains("上一次输出无法解析"),
 		"第一次请求不得提前带修复提示")
 
+	# ---- 计划 03b Task 4：经济 op 的 OpGuard 守卫（金额钳制 + 未知经济 op 全拒）----
+	var ec_w := Registry.load_default()
+	var ec_p := PlayerState.new_default()
+	ec_p.location_id = "diagon_alley"
+	var ecw := WorldState.create("modern", ec_p, 11, ec_w)
+	WorldFactions.initialize(ecw)
+	var ecres := OpGuard.sanitize_detailed(ecw, [
+		{"op": "deposit_money", "knuts": OpGuard.MAX_BANK_MOVE + 1},
+		{"op": "withdraw_money", "knuts": OpGuard.MAX_BANK_MOVE + 1},
+		{"op": "exchange_money", "knuts": OpGuard.MAX_BANK_MOVE + 1, "direction": "buy"},
+		# ⚠️ 夹具用**低价商品**验「件数上限」：高价商品会先被货值闸门拦下，
+		#    那样测到的就是货值闸门而不是 `MAX_TRADE_QTY`（两条闸会互相遮蔽）。
+		#    全表只有 `svc_owl_post`(17) / `food_butterbeer`(2) / `food_pumpkin_pastry`(1)
+		#    的低价能让货值容许量 ≥ 100 ⇒ 件数上限成为瓶颈。
+		{"op": "trade_money", "good_id": "svc_owl_post", "qty": OpGuard.MAX_TRADE_QTY + 1, "mode": "buy"},
+	])
+	a.eq(int(ecres.ops[0]["knuts"]), OpGuard.MAX_BANK_MOVE, "deposit_money 金额钳到 MAX_BANK_MOVE")
+	a.eq(int(ecres.ops[1]["knuts"]), OpGuard.MAX_BANK_MOVE, "withdraw_money 金额钳到 MAX_BANK_MOVE")
+	a.eq(int(ecres.ops[2]["knuts"]), OpGuard.MAX_BANK_MOVE, "exchange_money 金额钳到 MAX_BANK_MOVE")
+	a.eq(int(ecres.ops[3]["qty"]), OpGuard.MAX_TRADE_QTY, "trade_money qty 钳到 MAX_TRADE_QTY")
+	# 货值闸门必须在 OpGuard **侧**也生效（不能只在 StateOps 侧，否则 LLM 路径先污染）
+	a.is_true(OpGuard.MAX_TRADE_VALUE > 0, "MAX_TRADE_VALUE 常量存在且为正")
+	var over_val := OpGuard.sanitize_detailed(ecw, [
+		{"op": "trade_money", "good_id": "broom_nimbus", "qty": 100, "mode": "buy"},
+	])
+	a.eq(int(over_val.ops[0]["qty"]), 0,
+		"货值超限的商品 qty 被钳到 0（broom_nimbus base 49300 × 100 远超 %d）" % OpGuard.MAX_TRADE_VALUE)
+	a.is_true(" | ".join(over_val.warnings).contains("货值"), "货值钳制留下明确 warning")
+	# 两条闸的**分界**必须可观测：中价商品在中间档（既非 100 也非 0）
+	var mid_val := OpGuard.sanitize_detailed(ecw, [
+		{"op": "trade_money", "good_id": "potion_common", "qty": 100, "mode": "buy"},
+	])
+	a.eq(int(mid_val.ops[0]["qty"]), int(OpGuard.MAX_TRADE_VALUE / 986),
+		"中价商品 qty 由货值闸门决定（potion_common base 986 ⇒ %d 件）" % int(OpGuard.MAX_TRADE_VALUE / 986))
+	# 未知经济 op 一律不进 ops（与 set_faction_power 的「透传给 StateOps 拒绝」不同 ——
+	# 经济侧连 StatesOps 都没有对应实现，必须在这里就拦掉）
+	var econ_unknown := OpGuard.sanitize_detailed(ecw, [
+		{"op": "set_economy_index", "value": 0.9},
+		{"op": "set_gringotts_balance", "knuts": 9},
+		{"op": "set_gringotts_interest_rate", "value": 99.0},
+		{"op": "set_prices", "prices": {}},
+		{"op": "set_smuggling_heat", "value": 0},
+		{"op": "set_foreign_rate", "value": 99.0},
+	])
+	a.eq(econ_unknown.ops.size(), 0, "6 个未知经济 op 全部被拦（LLM 只能动玩家侧）")
+	a.is_true(econ_unknown.warnings.size() >= 6, "每个被拦的经济 op 都留 warning")
+
 	return a.report("llm")

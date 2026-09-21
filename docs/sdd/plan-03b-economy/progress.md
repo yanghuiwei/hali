@@ -241,9 +241,88 @@
   没有负值形态的断言（spec Task 3 Step 4 预设的「要同步改」实际未发生）
 - **门禁**：`test.sh` **EXIT=0**（22 套件 / **2881 断言** / 0 失败；`money` 35/0）
 - **下一步**：Task 4（4 个新 op + OpGuard 钳制）
+
+---
+
+## Task 4：4 个经济 op（存 / 取 / 汇 / 贸）+ OpGuard 钳制（2026-09-21）
+
+- **状态**：✅ 完成（**开工前撞到一个口径空洞，见「缺陷⑧」，已按铁律先改 spec 文本**）
+- **变更文件**：
+  | 文件 | 变更 |
+  | --- | --- |
+  | `src/rules/economy.gd` | `local_mult_for` **改口径**（`world_vars.location_tag` → `locations.zone`）；新增 `local_tag_for` / `local_mult_at` / `price_factors_at` / `price_at`；`initialize` 加 `player == null` 早退；补 `foreign_held` 键 |
+  | `src/rules/state_ops.gd` | +171 行：`_apply_deposit/_apply_withdraw/_apply_exchange/_apply_trade` 四段 + `_record_trade_side_effects` + `_payload_int` |
+  | `src/gm/op_guard.gd` | +88 行：`MAX_BANK_MOVE` / `MAX_TRADE_QTY` / **`MAX_TRADE_VALUE`** / `_ECONOMY_FORBIDDEN`；`sanitize_op`（单条入口，带 `.ok`）；4 个经济 op 的钳制分支 |
+  | `tests/gm_test.gd` | 405 → **615** 行；+210 行、**+182 断言**（总 183） |
+  | `tests/llm_test.gd` | +47 行、+56 断言（总 116） |
+  | `tests/economy_test.gd` | `make_world` 默认地点 `london_muggle` → `diagon_alley`；local_mult 段整体重写（死路径断言 → zone 推导 + 缺省安全 + `price_at`） |
+  | `docs/.../03b-economy-design.md` | §7.4 第 4 条 / §7.5 四条 op / §11 测试策略 / §13 风险 7+8 |
+  | `docs/.../03b-economy.md`(plan) | Task 2 `local_mult_for` 修正 + Task 4 实况修正块 |
+
+### 缺陷⑧（本任务开工前发现，两个独立问题捆在一起）
+
+| # | 问题 | 证据 | 处置 |
+| --- | --- | --- | --- |
+| ⑧a | **`local_mult` 的来源不存在** | `local_mult_for` 读 `world_vars["location_tag"]`，`grep` 全仓库只有 `economy.gd` 自身、`economy_test` 的手动注入、plan 文本 —— **没有任何生产写入方** ⇒ 永远走缺省 1.0。更致命：`world_vars` 在玩家换地点时**不变** ⇒ E7「产地买、销地卖」**在实现上不可能** | 改按 `locations.json` 的 `zone` 推导（wild/forbidden→产地 0.85、wizarding/school→常规 1.0、muggle→偏远 1.2；未知→缺省 1.0） |
+| ⑧b | **`MAX_TRADE_QTY=100` 是件数不是金额，防不住套利** | 实算（产区 0.85 → 偏远 1.2，扣两次路费）：`broom_nimbus` 净利 **17 135 纳特/件**，`qty=100` ⇒ 单笔 **1 713 500 纳特 = 3 476 加隆 ≈ 11.6 倍「普通家庭年收入数百加隆」**（正典 223 行）。spec §13 风险 7 原文写「靠 OpGuard 的金额上限与同回合不可重复交易约束」——**该约束无效** | 新增**货值闸门** `MAX_TRADE_VALUE := 5000`（按 `base_price_knuts × qty`）；**放弃**「同回合不可重复交易」（缺回合级记账） |
+
+**货值闸门实算效果**（`qty_max = floor(5000 / base)`）：
+
+| 商品 | `base` | `qty` 上限 | 单笔净利 | 折合加隆 |
+| --- | ---: | ---: | ---: | ---: |
+| `svc_owl_post` | 17 | 100（件数上限先到） | 600 | 1.2 |
+| `potion_common` | 986 | 5 | ~1 525 | ~3.1 |
+| `wand_standard` | 3 451 | 1 | 1 148 | 2.3 |
+| `broom_nimbus` | 49 300 | **0 ⇒ 拒绝** | — | — |
+
+⇒ 高价耐用品天然不可搬运，跑量只发生在低价快消品。量级回到正典区间。
+
+### 实况修正（plan 文本与实况不符，三处）
+
+| # | plan 原文 | 实况 | 处置 |
+| --- | --- | --- | --- |
+| 1 | `OpGuard.sanitize_op({"op": ...})` **单条**入口 | 只有 `sanitize` / `sanitize_detailed`，**无** `sanitize_op` | 新增 `sanitize_op(world, raw) -> Result`（薄封装）；`Result` 加 `ok` 字段（`sanitize_detailed` 不填，默认 true 以不扰动既有调用方） |
+| 2 | `local_mult_for(_world, _good_id)` 未指明地点来源 | 见缺陷⑧a | 改按 `zone` 推导；签名加 `_good_id` 缺省值 |
+| 3 | 「同回合不可重复同类交易」 | 无回合级记账机制 | 放弃，由双闸（件数 + 货值）替代 |
+
+### 真实 bug（写测试过程中抓到，2 个）
+
+| # | 症状 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| **B1** | `save_test` 的 6 个畸形载荷共引发 **35 条 `SCRIPT ERROR: Invalid access to property or key 'location_id' on a base object of type 'Nil'`**（噪音门禁从 2 飙到 37） | `SaveCodec.decode` 在**类型校验失败之前**也会走一遍 `WorldState.from_dict`，此时 `player` 可能是 Nil ⇒ `Economy.initialize` → `_snapshot_prices` → `price_of` → `local_mult_for` 读 `player.location_id` 崩 | `initialize` 与 `local_mult_for` 各加 `player == null` 早退（**双层防御**：前者是语义正确，后者是类型安全） |
+| **B2** | `economy_test` 906 条断言**全红**（C1 整体偏 1.2 倍） | `make_world` 默认地点是 `london_muggle`（`zone == "muggle"`）⇒ 新口径下 `local_mult == 1.2` | 默认地点改 `diagon_alley`（`zone == "wizarding"`）；与「C1 的中性时代」是**同一种错误的第三次现身**——定义点必须落在所有因子都等于 1 的那一点 |
+
+### 我自己的测试 bug（3 个，如实记录）
+
+| # | 症状 | 原因 |
+| --- | --- | --- |
+| t1 | `llm_test`：`trade_money qty 钳到 MAX_TRADE_QTY` 期望 100 实得 5 / 10 | 夹具用了 `potion_common`(986) / `mat_ore`(493) —— **高价商品会先被货值闸门拦下**，测到的是货值闸门而不是件数上限（两条闸互相遮蔽）。改用 `svc_owl_post`(17)，全表只有它能同时满足「货值容许 ≥100」 |
+| t2 | `gm_test`：`sell 收到的加隆` 期望 49201 实得 49104 | 我把公式写成 `held × rate`，漏了 `sell` 也要**再打一次折**（`× (1 - 价差)`）—— 「买卖往返必亏」正是价差的作用 |
+| t3 | `gm_test`：走私 3 条全红 | 夹具用 `illegal_relic`(9860)，货值闸门把 qty 钳到 0 ⇒ 被拒。改用 `illegal_potion`(4930, `qty_max=1`)——全表三个 illegal 商品里唯一可交易的那个 |
+
+### `local_mult` 口径变更的**契约影响：零**
+
+- C1–C3 的扫描基准是 `local_mult == 1.0` 的常规地点（对角巷/霍格沃茨），`price_of` 在此处**逐字不变**
+- `economy` 套件 **906 → 917 断言全绿**（新增 11 条 zone 推导 + 缺省安全 + `price_at`）
+- 但**这是「改了就对」而不是「没改」的证据**：新增断言**含反向判别**——换地点后价格必须真的变（原实现在此处必然不变）
+
+### 门禁（四道全过）
+
+| 门 | 结果 |
+| --- | --- |
+| `bash tools/test.sh` | **EXIT=0**，22 套件 / **3301 断言** / 失败 1（`probe` 故意失败）；`gm` **183**、`llm` **116**、`economy` **917** |
+| `stderr` 噪声 | `^SCRIPT ERROR` = **2**、`^ERROR:` = **7** —— **与基线逐字一致**（修 B1 前是 37） |
+| `timeout 300 bash tools/b1_acceptance.sh` | **EXIT=0**，151 断言 / 失败 0，配置逐字还原 |
+| 工作区 + 进程 | 8 个已跟踪文件修改、`.workbuddy/` 未跟踪；godot 进程 **0** |
+
+### 挂账（不阻塞）
+
+- `registry.gd` 的 `_SCARCITY_MAX = 1.40` 与 `Economy.MAX_SCARCITY` 仍**无一致性断言**（同 Task 2 挂账，留 Task 11/12）
+- `Max_TRADE_VALUE` 是否需要在 b1 契约里被观测（Task 11 定）
+- K1（`Money` 负值形态）与 K5（`scarcity_mult` 口径 A）仍为**默认接受、可回退**
+
 - [x] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
-- [ ] Task 4: 4 个新 op（存/取/汇/贸）+ OpGuard 钳制
-- [ ] Task 4: 4 个新 op + OpGuard
+- [x] Task 4: 4 个新 op（存/取/汇/贸）+ OpGuard 钳制 + 缺陷⑧（local_mult 口径 + 货值闸门）
 - [ ] Task 5: 月度结算（工资 / 开销 / 利息）
 - [ ] Task 6: `tick()` 接线（`evolve` + `monthly_settlement` + 危机边沿）
 - [ ] Task 7: 面板【财富】含存款 + 新增【经济】行

@@ -8,6 +8,13 @@ extends RefCounted
 ## 按 ERA_MULT 表，中性档是 `y <= 1980`，实际命中 `first_wizarding_war`(1970)。
 const NEUTRAL_ERA := "first_wizarding_war"
 
+## C1 的中性地点（`local_mult == 1.0`）。`diagon_alley.zone == "wizarding"` → 档位「常规」。
+## ⚠️ 2026-09-21 缺陷⑧：`local_mult` 改按 `zone` 推导后，**不能再用 `london_muggle`** ——
+## 它是 `zone == "muggle"` ⇒ 档位「偏远」⇒ `local_mult == 1.2`，会让 C1 的
+## 「常态价 == base_price_knuts」整体偏 1.2 倍而全面变红。
+## 这与 C1 的「中性时代」是同一种错误：**定义点必须落在所有因子都等于 1 的那一点上**。
+const NEUTRAL_LOCATION := "diagon_alley"
+
 func make_world(era_id: String = NEUTRAL_ERA, seed_: int = 12345) -> WorldState:
 	var reg := Registry.load_default()
 	var p := PlayerState.new_default()
@@ -16,7 +23,7 @@ func make_world(era_id: String = NEUTRAL_ERA, seed_: int = 12345) -> WorldState:
 	p.birth_identity_id = "ordinary_wizard_family"
 	p.house_id = "gryffindor"
 	p.aptitude_id = "normal"
-	p.location_id = "london_muggle"
+	p.location_id = NEUTRAL_LOCATION
 	return WorldState.create(era_id, p, seed_, reg)
 
 # 把 economy_index 钉到指定值（tick 的回归漂移会改它，测试里需要确定性）
@@ -103,13 +110,46 @@ func run() -> int:
 		Economy.scarcity_mult_for(w, "potion_brewing"), 0.000001,
 		"繁荣侧垄断不加成（超额部分为 0）")
 
-	# ---- 缺 location 标签时 local_mult == 1.0（缺省必须安全）----
+	# ---- local_mult 按 location.zone 推导（缺陷⑧ 修正）+ 缺省安全 ----
 	_pin(w, 0.5)
 	a.eq(Economy.local_mult_for(w, "wand_standard"), Economy.LOCAL_MULT_DEFAULT,
-		"缺省 local_mult == 1.0")
-	w.world_vars["location_tag"] = "产地"
-	a.near(Economy.local_mult_for(w, "wand_standard"), 0.85, 0.000001, "产地系数生效")
-	w.world_vars.erase("location_tag")
+		"常规地点（wizarding）local_mult == 1.0")
+	# 换地点 ⇒ 价格真的跟着变（原实现在这里必然不变，因为 world_vars 与地点无关）
+	var p_here := Economy.price_of(w, "wand_standard")
+	a.eq(p_here, 3451, "常规地点常态价 == base（前置：C1 在此成立）")
+	w.player.location_id = "forbidden_forest"        # zone == "forbidden" → 档位「产地」
+	a.near(Economy.local_mult_for(w, "wand_standard"), 0.85, 0.000001,
+		"禁林（forbidden）走「产地」档 0.85")
+	a.is_true(Economy.price_of(w, "wand_standard") < p_here,
+		"换到产区后价格真的下降（不是死路径）")
+	w.player.location_id = "london_muggle"           # zone == "muggle" → 档位「偏远」
+	a.near(Economy.local_mult_for(w, "wand_standard"), 1.2, 0.000001,
+		"麻瓜世界（muggle）走「偏远」档 1.2")
+	a.is_true(Economy.price_of(w, "wand_standard") > p_here,
+		"换到偏远后价格真的上升")
+	# 缺省安全：地点 id 为空 / 未知 / zone 缺字段 ⇒ 一律平价（不得变成 0 倍价）
+	w.player.location_id = ""
+	a.eq(Economy.local_mult_for(w, "wand_standard"), Economy.LOCAL_MULT_DEFAULT,
+		"空 location_id 走缺省 1.0")
+	w.player.location_id = "不存在的地点"
+	a.eq(Economy.local_mult_for(w, "wand_standard"), Economy.LOCAL_MULT_DEFAULT,
+		"未知地点走缺省 1.0")
+	var zone_backup = w.registry.entry("locations", NEUTRAL_LOCATION).get("zone", null)
+	w.registry.entry("locations", NEUTRAL_LOCATION).erase("zone")
+	w.player.location_id = NEUTRAL_LOCATION
+	a.eq(Economy.local_mult_for(w, "wand_standard"), Economy.LOCAL_MULT_DEFAULT,
+		"地点缺 zone 字段走缺省 1.0（缺字段不得变成 0 倍价）")
+	w.registry.entry("locations", NEUTRAL_LOCATION)["zone"] = zone_backup
+	w.player.location_id = NEUTRAL_LOCATION
+	a.eq(Economy.local_mult_for(w, "wand_standard"), Economy.LOCAL_MULT_DEFAULT,
+		"恢复 zone 后回到 1.0（夹具自检）")
+	# 指定地点的价（trade_money 跨地算价用）：与改 player.location_id 结果一致
+	a.eq(Economy.price_at(w, "wand_standard", "forbidden_forest"),
+		roundi(3451 * 0.85), "price_at 产区价与换地点一致")
+	a.eq(Economy.price_at(w, "wand_standard", NEUTRAL_LOCATION), 3451,
+		"price_at 常规价 == base")
+	a.eq(Economy.price_at(w, "wand_standard", "不存在的地点"), 3451,
+		"price_at 未知地点走缺省 1.0")
 
 	# ---- 时代系数：同景气下不同时代价不同，且 modern 档 == 1.0 ----
 	var w_old := make_world("hogwarts_founding")

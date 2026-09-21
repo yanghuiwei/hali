@@ -318,7 +318,23 @@ price = round( base_price_knuts × era_mult × scarcity_mult × local_mult )
 3. **`supply`（不进价格，只决定可得性）**：
    `effective_output = clamp(base_output × (0.5 + economy_index × 0.5), 0, 1)`（保留，供 `available()`/面板用）。
    `supply_critical == true` 且 `economy_index <= SUPPLY_CUTOFF` ⇒ **断供**（`price_of()` 返回 `0`，`available()` 返回 `false`）。
-4. **`local_mult`**：地点系数。按地点的 `kind`/标签给（产地 0.85 / 常规 1.0 / 偏远 1.2 / 黑市 1.35）。地点标签缺省时用 1.0（**缺省必须安全**：未标记的地点一律平价，不得因缺字段变成 0 倍价）。
+4. **`local_mult`**：地点系数。**按 `locations.json` 的 `zone` 推导**（2026-09-21 修正，见下方口径说明）：
+   | `zone` | `local_mult` | 语义 |
+   | --- | --- | --- |
+   | `wild` / `forbidden` | `0.85` | 产区（禁林/密室/金库地下/阿兹卡班 —— 原料与违禁品的一手来源） |
+   | `wizarding` / `school` | `1.0` | 常规市场（对角巷/霍格莫德/魔法部/古灵阁/各校） |
+   | `muggle` | `1.2` | 偏远（麻瓜世界 —— 魔法商品是进口品，贵） |
+   | 未知 / `location_id` 为空 / 地点的 `zone` 缺字段 | `1.0` | **缺省必须安全**：未标记的地点一律平价，不得因缺字段变成 0 倍价 |
+   常量仍为 `LOCAL_MULT {"产地":0.85,"常规":1.0,"偏远":1.2,"黑市":1.35}`，`zone → 档位` 的映射写在 `Economy._LOCAL_ZONE_TAG`（`{"wild":"产地","forbidden":"产地","wizarding":"常规","school":"常规","muggle":"偏远"}`）。
+   - ⚠️ **为什么改口径**：原 spec 写「按地点的 `kind`/标签给」，但 `data/locations.json` 的 21 个地点**只有 `zone`，没有任何价区标签**；
+     且 `local_mult_for` 当时读的是 `world_vars["location_tag"]` —— 该键**全仓库没有任何地方写入**，
+     等于永远走缺省 1.0（`grep location_tag` 只命中 `economy.gd` 自身、`economy_test` 的手动注入与本 plan）。
+     更致命的是 `world_vars` 在玩家换地点时**不变**，所以「产地买、销地卖」这条 E7 的核心玩法**在实现上不可能**。
+     改按 `player.location_id → zone` 推导后，地点一改，价格立刻跟着变。
+   - ⚠️ **`黑市` 档（1.35）本任务暂不启用**（没有地点带该 tag）；它留给 03c 的翻倒巷黑市 / `visible_faction_ids` 揭示路径。
+     黑市商品的**可见性**保护另见 §10 第 1 条。
+   - **对 C1–C3 的影响：无**。验收契约的扫描基准是「`local_mult == 1.0` 的常规地点」，
+     `price_of()` 在常规地点（如 `diagon_alley` / `hogwarts`）算出的价与修正前**逐字相同**。
 5. **`monopoly`** 加成：该产业 `monopoly == true` 时，`scarcity_mult` 的**超额部分（>1.0 那一段）加倍**（垄断者转嫁成本）。即 `scarcity_mult = 1.0 + (raw - 1.0) × 2.0` 当 `raw > 1.0`。⚠️ **加倍后再过 `[MIN_SCARCITY, MAX_SCARCITY]` 封顶**（否则垄断行业会突破 C3）。
    **实算**：index=0.30 时普通魔杖 非垄断 5445 / 垄断 6499 纳特（+19.4%），封顶生效后仍守上沿。
 6. **取整**：所有价格 `roundi()` 到整数纳特；结果 **≥ 1**（不允许出现 0 价商品，除非断供）。
@@ -358,10 +374,39 @@ price = round( base_price_knuts × era_mult × scarcity_mult × local_mult )
 
 | op | 载荷 | 语义与校验 |
 | --- | --- | --- |
-| `deposit_money` | `{"op":"deposit_money","knuts":int}` | 校验：金额 > 0、`player.money_knuts >= 金额`（**不许透支存钱**）。成功：现金减、`economy.gringotts_balance` 增。 |
-| `withdraw_money` | `{"op":"withdraw_money","knuts":int}` | 校验：金额 > 0、`economy.gringotts_balance >= 金额`。成功：反向。余额不足时 `errors.append`（**不部分执行**）。 |
-| `exchange_money` | `{"op":"exchange_money","knuts":int,"direction":"buy"\|"sell"}` | 按 `foreign_rate` 与**买卖价差**（默认 2%）换算。`buy` = 用加隆买外币（玩家现金减少、记 `flags["foreign_currency"]` 纳特等值）；`sell` 反向。校验金额 > 0。 |
-| `trade_money` | `{"op":"trade_money","good_id":str,"qty":int,"mode":"buy"\|"sell"}` | 校验：`good_id` 存在、`qty > 0`、商品 `available()`（断供不可交易）。价格用 `price_of()` × qty + 路费（`trade_haul`，按 category 常量）。`illegal:true` ⇒ `smuggling_heat += 1` 并写 `flags["illegal_trade"]`。**不做法律后果**（03c）。 |
+| `deposit_money` | `{"op":"deposit_money","knuts":int}` | 校验：金额 > 0、金额 ≤ `OpGuard.MAX_BANK_MOVE`、`player.money_knuts >= 金额`（**不许透支存钱**）。成功：现金减、`economy.gringotts_balance` 增。 |
+| `withdraw_money` | `{"op":"withdraw_money","knuts":int}` | 校验：金额 > 0、金额 ≤ `OpGuard.MAX_BANK_MOVE`、`economy.gringotts_balance >= 金额`。成功：反向。余额不足时 `errors.append`（**不部分执行**）。 |
+| `exchange_money` | `{"op":"exchange_money","knuts":int,"direction":"buy"\|"sell"}` | 按 `foreign_rate` 与**买卖价差**（默认 2%）换算。`buy` = 用加隆买外币（现金减、外币增）；`sell` 反向。校验金额 > 0、`direction ∈ {buy,sell}`、`knuts ≤ OpGuard.MAX_BANK_MOVE`。汇率与余额存在 `economy.foreign_rate` / `economy.foreign_held`。 |
+| `trade_money` | `{"op":"trade_money","good_id":str,"qty":int,"mode":"buy"\|"sell","origin_location_id":str?,"location_id":str?}` | 校验：`good_id` 存在、`qty ∈ [1, OpGuard.MAX_TRADE_QTY]`、`Economy.available()`（断供不可交易）、`mode ∈ {buy,sell}`、**两地 `local_mult` 必须不同**（否则不是贸易）、**货值 ≤ `OpGuard.MAX_TRADE_VALUE`**（见下）。买价取 `origin_location_id` 的价、卖价取 `location_id` 的价（**两者缺省 = 玩家当前地点**，此时两地相同 ⇒ 被上面的「必须不同」拒绝）。买入加路费 `TRADE_HAUL_KNUTS[category] × qty`。`category == "illegal"` ⇒ `smuggling_heat += 1` 并写 `flags["illegal_trade"]`。**不做法律后果**（03c）。 |
+
+**⚠️ `trade_money` 的「货值上限」（2026-09-21 新增，这是本 op 唯一的防套利闸门）**：
+
+单笔交易的**基础货值** `base_price_knuts × qty`（**不含**任何倍数、不含路费）必须 `<= OpGuard.MAX_TRADE_VALUE`（`5000` 纳特）。
+实现放在 `StateOps` 侧（`OpGuard` 沿用既有的「按载荷推 qty 上限」钳制风格）。
+
+- **为什么必须加**：原 spec §13 风险 7 写「靠 `OpGuard` 的金额上限与『同回合不可重复同类交易』约束」防无限套利 ——
+  但 `MAX_TRADE_QTY := 100` **是件数上限，不是金额上限**，对高价商品形同虚设。实算（产地 0.85 → 偏远 1.2，扣两次路费）：
+
+  | 商品 | category | 净利/件 | `qty=100` 单笔净利 | 折合加隆 | 相对「普通家庭年收入数百加隆」 |
+  | --- | --- | ---: | ---: | ---: | --- |
+  | `svc_owl_post` | service | 6 | 600 | 1.2 | 合理 |
+  | `potion_common` | potion | 305 | 30 500 | 62 | 偏高但可接受 |
+  | `wand_standard` | wand | 1 148 | 114 800 | 233 | 已等同一年收入 |
+  | `broom_nimbus` | broom | 17 135 | **1 713 500** | **3 476** | **11.6 倍年收入 / 一轮** |
+
+  加 `MAX_TRADE_VALUE = 5000` 后（`qty_max = floor(5000 / base)`）：
+
+  | 商品 | `base` | `qty` 上限 | 单笔净利 | 折合加隆 |
+  | --- | ---: | ---: | ---: | ---: |
+  | `svc_owl_post` | 17 | 100（件数上限先到） | 600 | 1.2 |
+  | `potion_common` | 986 | **5** | ~1 525 | ~3.1 |
+  | `wand_standard` | 3 451 | **1** | 1 148 | 2.3 |
+  | `broom_nimbus` | 49 300 | **0** ⇒ 拒绝 | — | — |
+
+  ⇒ 高价耐用品**天然不可搬运**（符合现实：没人背包里倒腾 100 把飞天扫帚），跑量贸易只发生在低价快消品上。量级回到正典区间。
+- ⚠️ **不做「同回合不可重复交易」**（与 spec 正文不一致的说明）：`data` 层没有会话/回合级记账，且
+  `recent_training` 那种写 `world.flags` 的做法需要新增状态字段。**判定：`MAX_TRADE_VALUE` + `MAX_TRADE_QTY` 两道闸已足够**，
+  重复交易的边际收益受这两个上限钳制，不构成套利。若实跑发现仍可刷，由 03c 加回合级记账。
 
 **`Money`（`src/model/money.gd`）**：
 
@@ -438,12 +483,12 @@ func formatted() -> String                 # 负值 → 走 debt_formatted() 的
 
 | 套件 | 新增/修改 | 关键断言 |
 | --- | --- | --- |
-| `tests/economy_test.gd`（新） | 新增 | ① 两表引用合法（`industry_id`/`inputs`/`produces`）；② **C1**：常态价 `== base_price_knuts`；③ **C2**：`price_of()` 对 `economy_index` **单调不增**（1000 点扫描）；④ **C3**：危机侧最大值 `<= canon_hi`；⑤ **C5**：删掉 `supply` 也不影响价格（反证：把 supply 乘回去，断言必须变红）；⑥ `SUPPLY_CUTOFF`/`CRISIS_THRESHOLD` 边界（`0.15`/`0.35` 两侧各一例，且**两条线必须不同**）；⑦ `supply_critical` 商品在 `<=0.15` 断供（`price_of()==0` 且 `available()==false`）；⑧ `monopoly` 行业涨价幅度大于非垄断（同景气下对比，且**仍守上沿**）；⑨ 月度结算幂等（同回合两次只发一次钱）；⑩ 工资/开销**符号**正确（「无业者净收 < 0」必须有）；⑪ 古灵阁：存入后现金减余额增、超额存入被拒、超额取款被拒且**不部分执行**；⑫ `foreign_rate` 确定性（同 seed 双世界相等）；⑬ 贸易价差：产地买、销地卖**扣路费后仍为正**；⑭ 走私：`illegal` 商品交易后 `smuggling_heat` 增、`flags["illegal_trade"]` 置位；⑮ **缺 location 标签时 `local_mult == 1.0`**（缺省安全） |
+| `tests/economy_test.gd`（新） | 新增 | ① 两表引用合法（`industry_id`/`inputs`/`produces`）；② **C1**：常态价 `== base_price_knuts`；③ **C2**：`price_of()` 对 `economy_index` **单调不增**（1000 点扫描）；④ **C3**：危机侧最大值 `<= canon_hi`；⑤ **C5**：删掉 `supply` 也不影响价格（反证：把 supply 乘回去，断言必须变红）；⑥ `SUPPLY_CUTOFF`/`CRISIS_THRESHOLD` 边界（`0.15`/`0.35` 两侧各一例，且**两条线必须不同**）；⑦ `supply_critical` 商品在 `<=0.15` 断供（`price_of()==0` 且 `available()==false`）；⑧ `monopoly` 行业涨价幅度大于非垄断（同景气下对比，且**仍守上沿**）；⑨ 月度结算幂等（同回合两次只发一次钱）；⑩ 工资/开销**符号**正确（「无业者净收 < 0」必须有）；⑪ 古灵阁：存入后现金减余额增、超额存入被拒、超额取款被拒且**不部分执行**；⑫ `foreign_rate` 确定性（同 seed 双世界相等）；⑬ 贸易价差：产地 buy、销地 sell，**扣两次路费后仍为正**（⇒ 产区买、常规卖的 15% 价差必须覆盖路费，这是「贸易」有意义的必要条件）；⑭ 走私：`illegal` 商品交易后 `smuggling_heat` 增、`flags["illegal_trade"]` 置位；⑮ **缺 `zone` / 空 `location_id` 时 `local_mult == 1.0`**（缺省安全）；⑯ **`local_mult` 按 `zone` 推导**（`wild→0.85` / `wizarding→1.0` / `muggle→1.2`，且**换地点** `player.location_id` 后价格真的变）；⑰ **货值闸门**：`base × qty > MAX_TRADE_VALUE` 的单笔交易被拒（`broom_nimbus` 即使 `qty=1` 也拒），且**拒绝时不部分执行**（现金与走私热度都不动） |
 | `tests/money_test.gd` | 修改 | E9 债务形态（`-1002 → "负债 2加隆 16西可"`、`-5 → "负债 5西可"`、`-12 → "负债 12纳特"`、`-0 → 非负分支`）；`parts()` 现行为**保持不变**（这是「不破坏既有断言」的证据） |
 | `tests/panel_test.gd` | 修改 | 【经济】行存在且数值来自 `economy`；【财富】含存款（无存款时**不出现**该括号）；债务走债务形态；未揭示黑市商品不出现 |
 | `tests/save_test.gd` | 修改 | 「存 2 回合 + 存款 + 交易 → encode/decode → 重建引擎 → 继续 tick」与原时间线逐字段一致；老存档（无 `economy`）补齐后 `ok=true` |
 | `tests/registry_test.gd` | 修改 | 两表注册 + `validate()` 对坏引用/坏枚举/负价格报错；`canon_price > 0` 而 `base_price` 落出合理带时报错（§7.1 新口径） |
-| `tests/gm_test.gd` / `llm_test.gd` | 修改 | 4 个新 op 的守卫（金额上限钳制、余额不足拒绝、断供商品拒绝、`OpGuard` 对未知经济 op 一律拒绝） |
+| `tests/gm_test.gd` / `llm_test.gd` | 修改 | 4 个新 op 的守卫（金额上限钳制、余额不足拒绝、断供商品拒绝、跨地要求、货值上限拒绝、`OpGuard` 对未知经济 op 一律拒绝） |
 | `tools/b1_acceptance.gd` | 修改 | 经济可观测契约：① 存款一个月后余额**真的**多了利息；② 危机态下同一商品价格**真的**变贵；③ 债务显示形态可达（造一个负现金角色） |
 
 **新增套件必须追加到 `tests/run_tests.gd` 的 `SUITES`**（铁律），否则不会被执行。
@@ -465,8 +510,18 @@ func formatted() -> String                 # 负值 → 走 debt_formatted() 的
 4. **价格数量级必须对得上正典**：`普通家庭年收入约数百加隆`（223 行）是**唯一的量级锚点**。若月度结算后玩家年收入 / 年支出量与「数百加隆」差一个数量级，说明工资或物价系数需要整体校准。**这是本计划最可能返工的地方**（一次调常数，不是推翻设计）。
 5. **危机阈值 0.35 是首版拍数**（沿用 `factions.gd:369` 的既有危机判据，保持一致）。实跑后可能要调。
 6. **与 03a 的耦合点只读**（§5.1）：若实现时发现必须改 `factions.gd`，**先改 spec 文本**（03a 铁律）。
-7. **`trade_money` 的「路费」用 category 常量**（不是真实距离）：本计划没有地点距离数据。若 03b 要做真实距离，需要给 `data/locations.json` 加坐标 —— **本计划不做**，用常量近似（风险：玩家可能找到「无限套利」路径，靠 `OpGuard` 的金额上限与「同回合不可重复同类交易」约束）。
-8. **本 spec 的数值经「先实算后写表」全流程重算，共发现并修掉 7 处设计缺陷**（教训同 03a §13.2「0.45 在任何合法状态都不可达」）。
+7. **`trade_money` 的「路费」用 category 常量**（不是真实距离）：本计划没有地点距离数据。若 03b 要做真实距离，需要给 `data/locations.json` 加坐标 —— **本计划不做**，用常量近似。
+   **⚠️ 2026-09-21 修正：原写「靠 `OpGuard` 的金额上限与『同回合不可重复同类交易』约束」防套利 ——
+   实算证明该约束无效**（`MAX_TRADE_QTY=100` 是件数不是金额，`broom_nimbus` 单笔净利 1 713 500 纳特 = 11.6 倍家庭年收入）。
+   现改为**货值闸门 `OpGuard.MAX_TRADE_VALUE = 5000`（纳特，按 `base_price_knuts × qty` 算）+ 件数上限 `MAX_TRADE_QTY = 100` 双闸**，
+   并**放弃**「同回合不可重复交易」（缺回合级记账，不值得为它加状态字段；两道闸已足够钳制边际收益）。
+   详见 §7.5 `trade_money` 条下方实算表。
+8. **`local_mult_for` 原读 `world_vars["location_tag"]` —— 该键全仓库无写入方，是死路径**（2026-09-21 实况修正，属**缺陷⑧**）。
+   改按 `locations.json` 的 `zone` 推导（§7.4 第 4 条）。触发点是本计划的 E7「产地买、销地卖」：`world_vars` 在玩家换地点时不变，
+   所以原口径下这条玩法**在实现上不可能**，且 `trade_money` 会退化成「同一地点原价买卖」。
+   **元教训**（同 §7.1 `canon_price_hi_knuts`、§13 元教训）：**「读一个自己负责写入的键」必须验证写入方真的存在** ——
+   只在测试里手动塞一次就能让断言变绿，但生产路径永远走缺省分支。凡「参数**来源**」都必须 `grep` 确认有生产写入方，否则是死代码。
+9. **本 spec 的数值经「先实算后写表」全流程重算，共发现并修掉 8 处设计缺陷**（教训同 03a §13.2「0.45 在任何合法状态都不可达」）。
    实算脚本：`C:\Users\yhweix\AppData\Local\Temp\hali_03b_{pricecalc,diag,verdict,v2,v3,v4,v5,gen}.py`
    （一次性工具，不入库；结论已全部写进 §7.4）。
    | # | 缺陷 | 证据 | 修法 |

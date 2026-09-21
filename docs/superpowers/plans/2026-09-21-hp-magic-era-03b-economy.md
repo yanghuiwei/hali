@@ -523,9 +523,19 @@ static func scarcity_mult_for(world: WorldState, industry_id: String) -> float:
 
 
 static func local_mult_for(world: WorldState, good_id: String) -> float:
-	# 缺省必须安全：未标记的地点一律平价（spec §7.4 第 4 条）
-	var tag := str(world.world_vars.get("location_tag", ""))
+	# 缺省必须安全：未知/未标记的地点一律平价（spec §7.4 第 4 条）
+	# ⚠️ 实况修正（2026-09-21，缺陷⑧）：**不得**读 `world_vars["location_tag"]` ——
+	#    该键全仓库无写入方（生产路径永远走缺省），且 world_vars 在玩家换地点时不变，
+	#    导致 E7「产地买、销地卖」在实现上不可能。改按 locations.json 的 zone 推导。
+	var loc := world.registry.entry("locations", world.player.location_id)
+	var tag := str(_LOCAL_ZONE_TAG.get(str(loc.get("zone", "")), ""))
 	return float(LOCAL_MULT.get(tag, LOCAL_MULT_DEFAULT))
+
+const _LOCAL_ZONE_TAG := {
+	"wild": "产地", "forbidden": "产地",
+	"wizarding": "常规", "school": "常规",
+	"muggle": "偏远",
+}
 
 
 static func price_factors(world: WorldState, good_id: String) -> Dictionary:
@@ -717,7 +727,17 @@ git commit -m "feat(03b): Money 债务形态（is_debt/debt_formatted/formatted 
 
 **Interfaces:**
 - Consumes: Task 2 的 `Economy.price_of` / `available`；`WorldState.economy`。
-- Produces: 4 个 op；`OpGuard.MAX_BANK_MOVE` / `MAX_TRADE_QTY` 常量。
+- Produces: 4 个 op；`OpGuard.MAX_BANK_MOVE` / `MAX_TRADE_QTY` / `MAX_TRADE_VALUE` 常量。
+
+> **⚠️ 实况修正（2026-09-21，Task 4 开工前）**：本节原有两处与实况冲突，已按铁律**先改本计划文本**：
+> 1. `local_mult` 的**来源不存在**（缺陷⑧）—— 见 Task 2 的 `local_mult_for` 修正（改按 `zone` 推导）。
+> 2. **`MAX_TRADE_QTY = 100` 是件数上限，不是金额上限**，防不住高价商品套利：
+>    实算「产区 0.85 → 偏远 1.2，扣两次路费」得 `broom_nimbus` 净利 **17 135 纳特/件**，
+>    `qty=100` ⇒ 单笔 **1 713 500 纳特 = 3 476 加隆 ≈ 11.6 倍「普通家庭年收入数百加隆」**。
+>    ⇒ 新增**货值闸门** `MAX_TRADE_VALUE := 5000`（按 `base_price_knuts × qty` 判），与件数上限**双闸**。
+>    加闸后 `qty` 上限：`svc_owl_post` 100（件数先到）/ `potion_common` 5 / `wand_standard` 1 / `broom_nimbus` **0（拒绝）**。
+>    即「高价耐用品天然不可搬运，跑量只发生在低价快消品」——量级回到正典区间。
+>    同时**放弃**「同回合不可重复同类交易」（缺回合级记账，不值得加状态字段；双闸已足够钳制边际收益）。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -756,10 +776,16 @@ git commit -m "feat(03b): Money 债务形态（is_debt/debt_formatted/formatted 
 | --- | --- | --- |
 | `deposit_money` | `knuts > 0`、`knuts <= OpGuard.MAX_BANK_MOVE`、`player.money_knuts >= knuts` | 现金减、`economy.gringotts_balance` 增 |
 | `withdraw_money` | `knuts > 0`、`knuts <= MAX_BANK_MOVE`、`economy.gringotts_balance >= knuts` | 反向 |
-| `exchange_money` | `knuts > 0`、`direction ∈ {buy, sell}`、现金/外币余额足 | 按 `foreign_rate × (1 ∓ FOREIGN_SPREAD)` 换算；记 `flags["foreign_currency"]` |
-| `trade_money` | `good_id` 存在、`qty ∈ [1, MAX_TRADE_QTY]`、`Economy.available()` 为真、`mode ∈ {buy, sell}`、现金足（买）/有货（卖） | 价 = `price_of() × qty`；买时加路费 `TRADE_HAUL_KNUTS[category] × qty`；`illegal` ⇒ `smuggling_heat += 1`、`flags["illegal_trade"] = true` |
+| `exchange_money` | `knuts > 0`、`knuts <= MAX_BANK_MOVE`、`direction ∈ {buy, sell}`、现金/外币余额足 | 按 `foreign_rate × (1 ∓ FOREIGN_SPREAD)` 换算；余额存 `economy.foreign_held` |
+| `trade_money` | `good_id` 存在、`qty ∈ [1, MAX_TRADE_QTY]`、**`base_price_knuts × qty <= MAX_TRADE_VALUE`**、`Economy.available()` 为真、`mode ∈ {buy, sell}`、**两地 `local_mult` 必须不同**、现金足（买）/有货（卖） | 买价 = `price_of(origin) × qty` + 路费 `TRADE_HAUL_KNUTS[category] × qty`；卖价 = `price_of(dest) × qty`；`illegal` ⇒ `smuggling_heat += 1`、`flags["illegal_trade"] = true` |
 
-`OpGuard` 加：`MAX_BANK_MOVE := 100000`、`MAX_TRADE_QTY := 100`，并对 4 个 op 做金额/数量钳制（**照抄既有 op 的钳制写法**）。
+`OpGuard` 加：`MAX_BANK_MOVE := 100000`、`MAX_TRADE_QTY := 100`、`MAX_TRADE_VALUE := 5000`，
+并对 4 个 op 做金额/数量钳制（**照抄既有 op 的钳制写法**）。
+
+> **`trade_money` 的跨地语义**：`origin_location_id`（买价所在地，缺省 = 玩家当前地点）与
+> `location_id`（卖价所在地，缺省 = 玩家当前地点）。两者**必须不同** —— 相同就没有价差，
+> 不是贸易而是就地买卖（应被拒绝并给出明确错误串）。
+> `mode == "buy"` 在 `origin` 买（付 `price_of(origin)` + 路费），`mode == "sell"` 在 `location_id` 卖（收 `price_of(location_id)`）。
 
 > ⚠️ **`Economy` 不得写 `world.factions` / `player.standing`**（spec §10 第 2 条）。走私热度的**法律后果**属 03c，本任务**只记不判**。
 

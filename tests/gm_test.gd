@@ -402,4 +402,214 @@ func run() -> int:
 	a.is_true(renamed_res.narration.contains("奥术部"), "旁白使用 registry 的 label（说明不是硬编码）")
 	a.is_false(renamed_res.narration.contains("魔法部"), "旁白不得出现旧 label")
 
+	# ---- 计划 03b Task 4：4 个经济 op（存 / 取 / 汇 / 贸）+ OpGuard 钳制 ----
+	# 契约见 spec §7.5。共同铁律：**校验不过就完全不执行**（不部分执行），错误走 errors 不抛异常。
+	var ew := make_world()
+	WorldFactions.initialize(ew)
+	ew.player.money_knuts = 49300        # 100 加隆现金
+	ew.player.location_id = "diagon_alley"   # zone=wizarding → local_mult 1.0
+
+	# ---- deposit_money：正常存入 ----
+	var dep_errs := StateOps.apply(ew, [{"op": "deposit_money", "knuts": 4930}])
+	a.eq(dep_errs.size(), 0, "正常存入无错误")
+	a.eq(ew.player.money_knuts, 49300 - 4930, "存入后现金减")
+	a.eq(int(ew.economy["gringotts_balance"]), 4930, "存入后余额增")
+
+	# ---- deposit_money：超出现金被拒，且**不部分执行** ----
+	var poor := make_world()
+	WorldFactions.initialize(poor)
+	poor.player.money_knuts = 50
+	var poor_errs := StateOps.apply(poor, [{"op": "deposit_money", "knuts": 100}])
+	a.is_true(poor_errs.size() > 0, "超出现金被拒")
+	a.eq(poor.player.money_knuts, 50, "被拒时不扣钱（不部分执行）")
+	a.eq(int(poor.economy["gringotts_balance"]), 0, "被拒时余额不变")
+
+	# ---- deposit_money：金额 ≤ 0 / 超过 MAX_BANK_MOVE / 非数字 ----
+	var bad_dep := StateOps.apply(ew, [
+		{"op": "deposit_money", "knuts": 0},
+		{"op": "deposit_money", "knuts": -493},
+		{"op": "deposit_money", "knuts": OpGuard.MAX_BANK_MOVE + 1},
+		{"op": "deposit_money", "knuts": "很多"},
+	])
+	a.eq(bad_dep.size(), 4, "金额 0 / 负 / 超上限 / 非数字 各报一个错")
+	a.eq(ew.player.money_knuts, 49300 - 4930, "非法存入不动现金")
+	a.eq(int(ew.economy["gringotts_balance"]), 4930, "非法存入不动余额")
+
+	# ---- withdraw_money：余额不足被拒且不部分执行 ----
+	var wd_errs := StateOps.apply(ew, [{"op": "withdraw_money", "knuts": 100000}])
+	a.is_true(wd_errs.size() > 0, "余额不足被拒")
+	a.eq(int(ew.economy["gringotts_balance"]), 4930, "被拒时余额不变（不部分执行）")
+	a.eq(ew.player.money_knuts, 49300 - 4930, "被拒时现金不变")
+	# 正常取款
+	var wd_ok := StateOps.apply(ew, [{"op": "withdraw_money", "knuts": 4930}])
+	a.eq(wd_ok.size(), 0, "正常取款无错误")
+	a.eq(int(ew.economy["gringotts_balance"]), 0, "取款后余额清零")
+	a.eq(ew.player.money_knuts, 49300, "取款后现金复原")
+
+	# ---- exchange_money：buy / sell 方向、价差 2%、余额记账 ----
+	var fxw := make_world()
+	WorldFactions.initialize(fxw)
+	fxw.player.money_knuts = 49300
+	var buy_errs := StateOps.apply(fxw, [{"op": "exchange_money", "knuts": 4930, "direction": "buy"}])
+	a.eq(buy_errs.size(), 0, "buy 无错误")
+	# buy：付出 4930 现金，按 foreign_rate × (1 - SPREAD) 收到外币
+	a.eq(fxw.player.money_knuts, 49300 - 4930, "buy 扣现金")
+	var expected_buy := int(round(float(4930) * float(fxw.economy["foreign_rate"]) * (1.0 - Economy.FOREIGN_SPREAD)))
+	a.eq(int(fxw.economy["foreign_held"]), expected_buy,
+		"buy 收到外币 = 金额 × rate × (1 - 2%%)")
+	a.is_true(expected_buy < 4930, "价差让买入侧缩水（rate=1.0 时 %d < 4930）" % expected_buy)
+	# sell：反向，且**买卖价差让 round-trip 亏钱**（否则是无限套利）
+	var held_before := int(fxw.economy["foreign_held"])
+	var sell_errs := StateOps.apply(fxw, [{"op": "exchange_money", "knuts": held_before, "direction": "sell"}])
+	a.eq(sell_errs.size(), 0, "sell 无错误")
+	a.eq(int(fxw.economy["foreign_held"]), 0, "sell 清空外币")
+	var cash_after_sell := fxw.player.money_knuts
+	# sell 收到的是 `knuts × rate × (1 - 价差)` —— **再打一次折**，
+	# 所以一次往返（buy 打折进、sell 打折出）必然亏损，这就是 2% 价差的作用。
+	var expected_sell_cash := int(round(float(held_before) * float(fxw.economy["foreign_rate"]) * (1.0 - Economy.FOREIGN_SPREAD)))
+	a.eq(cash_after_sell, 49300 - 4930 + expected_sell_cash,
+		"sell 收到的加隆按 (1 - 价差) 打折")
+	a.is_true(cash_after_sell < 49300,
+		"一次买卖往返后现金减少（49430 → %d，价差真的生效）" % cash_after_sell)
+	# 负例：方向非法 / 金额非法 / 外币不足
+	var bad_fx := StateOps.apply(fxw, [
+		{"op": "exchange_money", "knuts": 100, "direction": "偷"},
+		{"op": "exchange_money", "knuts": 0, "direction": "buy"},
+		{"op": "exchange_money", "knuts": OpGuard.MAX_BANK_MOVE + 1, "direction": "buy"},
+		{"op": "exchange_money", "knuts": 100, "direction": "sell"},
+	])
+	a.eq(bad_fx.size(), 4, "方向非法 / 金额 0 / 超上限 / 外币不足 各报一个错")
+	a.eq(int(fxw.economy["foreign_held"]), 0, "失败的外汇操作不动外币")
+
+	# ---- trade_money：断供商品被拒 ----
+	var tw := make_world()
+	WorldFactions.initialize(tw)
+	tw.player.money_knuts = 100000
+	tw.player.location_id = "forbidden_forest"      # 产区
+	tw.world_vars["economy_index"] = 0.10           # 低于 SUPPLY_CUTOFF ⇒ wand_standard 断供
+	var cut_errs := StateOps.apply(tw, [{
+		"op": "trade_money", "good_id": "wand_standard", "qty": 1, "mode": "buy",
+		"origin_location_id": "forbidden_forest", "location_id": "diagon_alley",
+	}])
+	a.is_true(cut_errs.size() > 0, "断供商品交易被拒")
+	a.eq(tw.player.money_knuts, 100000, "被拒时不动现金")
+	a.eq(int(tw.economy["smuggling_heat"]), 0, "被拒时不记走私热度")
+
+	# ---- trade_money：产区买、常规卖，扣路费后仍为正（E7 的成立条件）----
+	tw.world_vars["economy_index"] = 0.5
+	var buy_price := Economy.price_at(tw, "potion_common", "forbidden_forest")
+	var sell_price := Economy.price_at(tw, "potion_common", "diagon_alley")
+	var haul := int(Economy.TRADE_HAUL_KNUTS["potion"])
+	a.is_true(buy_price < sell_price, "产区价 < 常规价（前置）")
+	a.is_true(sell_price - buy_price - 2 * haul > 0,
+		"扣两份路费后价差仍为正（%d - %d - %d = %d）"
+			% [sell_price, buy_price, 2 * haul, sell_price - buy_price - 2 * haul])
+	var cash_before_trade := tw.player.money_knuts
+	var t_errs := StateOps.apply(tw, [{
+		"op": "trade_money", "good_id": "potion_common", "qty": 2, "mode": "buy",
+		"origin_location_id": "forbidden_forest", "location_id": "diagon_alley",
+	}])
+	a.eq(t_errs.size(), 0, "合法交易无错误")
+	a.eq(tw.player.money_knuts, cash_before_trade - (buy_price * 2 + haul * 2),
+		"买入扣 (产区价 × qty + 路费 × qty)")
+
+	# ---- trade_money：货值闸门（防高价商品套利，缺陷⑧ 的第二半）----
+	var big_errs := StateOps.apply(tw, [{
+		"op": "trade_money", "good_id": "broom_nimbus", "qty": 1, "mode": "buy",
+		"origin_location_id": "forbidden_forest", "location_id": "diagon_alley",
+	}])
+	a.is_true(big_errs.size() > 0, "broom_nimbus 即使 qty=1 也被货值闸门拒绝")
+	a.is_true(" | ".join(big_errs).contains("货值"), "错误串明确指出货值超限")
+	a.eq(tw.player.money_knuts, cash_before_trade - (buy_price * 2 + haul * 2),
+		"被货值闸门拒绝时不动现金")
+
+	# ---- trade_money：两地相同 = 就地原价买卖，必须拒绝（否则不是贸易）----
+	var same_errs := StateOps.apply(tw, [{
+		"op": "trade_money", "good_id": "potion_common", "qty": 1, "mode": "buy",
+		"origin_location_id": "diagon_alley", "location_id": "diagon_alley",
+	}])
+	a.is_true(same_errs.size() > 0, "同地买卖被拒（无价差就不是贸易）")
+
+	# ---- trade_money 走私：illegal 商品记 smuggling_heat + flags ----
+	# ⚠️ 夹具：全表三个 illegal 商品里只有 `illegal_potion`(4930) 的货值 qty 上限 ≥ 1
+	# （`illegal_relic` 9860 / `illegal_creature` 14790 都被货值闸门钳到 0，会被拒）。
+	var sw2 := make_world()
+	WorldFactions.initialize(sw2)
+	sw2.player.money_knuts = 100000
+	sw2.player.location_id = "forbidden_forest"
+	sw2.world_vars["economy_index"] = 0.5
+	var heat_before := int(sw2.economy["smuggling_heat"])
+	var sm_errs := StateOps.apply(sw2, [{
+		"op": "trade_money", "good_id": "illegal_potion", "qty": 1, "mode": "buy",
+		"origin_location_id": "forbidden_forest", "location_id": "knockturn_alley",
+	}])
+	a.eq(sm_errs.size(), 0, "走私品交易本身无错误（后果留 03c）")
+	a.eq(int(sw2.economy["smuggling_heat"]), heat_before + 1, "illegal 商品走私热度 +1")
+	a.is_true(bool(sw2.flags.get("illegal_trade", false)), "illegal 商品置位 flags['illegal_trade']")
+	# 只记不判：错误串里**不得**出现任何法律判定（spec §10 第 4 条）
+	var sm_joined := " | ".join(sm_errs)
+	a.is_false(sm_joined.contains("通缉") or sm_joined.contains("逮捕") or sm_joined.contains("罚款"),
+		"不得在其中返回「已被通缉/逮捕/罚款」这类判定（只记不判）")
+	a.is_false(sw2.factions.has("smuggler"), "走私不改 factions（Economy 不得跨模块写）")
+	# 非 illegal 商品不得记热度
+	var heat_mid := int(sw2.economy["smuggling_heat"])
+	StateOps.apply(sw2, [{
+		"op": "trade_money", "good_id": "mat_ore", "qty": 1, "mode": "buy",
+		"origin_location_id": "forbidden_forest", "location_id": "diagon_alley",
+	}])
+	a.eq(int(sw2.economy["smuggling_heat"]), heat_mid, "合法商品不记走私热度")
+
+	# ---- trade_money：qty 越界 / 未知商品 / mode 非法 / 现金不足 ----
+	var bad_trade := StateOps.apply(tw, [
+		{"op": "trade_money", "good_id": "potion_common", "qty": 0, "mode": "buy",
+			"origin_location_id": "forbidden_forest", "location_id": "diagon_alley"},
+		{"op": "trade_money", "good_id": "potion_common", "qty": OpGuard.MAX_TRADE_QTY + 1, "mode": "buy",
+			"origin_location_id": "forbidden_forest", "location_id": "diagon_alley"},
+		{"op": "trade_money", "good_id": "不存在的商品", "qty": 1, "mode": "buy",
+			"origin_location_id": "forbidden_forest", "location_id": "diagon_alley"},
+		{"op": "trade_money", "good_id": "potion_common", "qty": 1, "mode": "偷",
+			"origin_location_id": "forbidden_forest", "location_id": "diagon_alley"},
+	])
+	a.eq(bad_trade.size(), 4, "qty=0 / qty 越界 / 未知商品 / mode 非法 各报一个错")
+	var no_cash := make_world()
+	WorldFactions.initialize(no_cash)
+	no_cash.player.money_knuts = 10
+	no_cash.player.location_id = "forbidden_forest"
+	var nc_errs := StateOps.apply(no_cash, [{
+		"op": "trade_money", "good_id": "potion_common", "qty": 1, "mode": "buy",
+		"origin_location_id": "forbidden_forest", "location_id": "diagon_alley",
+	}])
+	a.is_true(nc_errs.size() > 0, "现金不足被拒")
+	a.eq(no_cash.player.money_knuts, 10, "被拒时现金不变（不部分执行）")
+
+	# ---- OpGuard：未知经济 op 一律拒绝 / 4 个合法经济 op 必须放行 ----
+	# ⚠️ 夹具：`sanitize_op(world, raw)` 需要世界；给足够的钱使得钳制后的载荷仍合法。
+	var gw2 := make_world()
+	WorldFactions.initialize(gw2)
+	gw2.player.money_knuts = 2000000
+	gw2.player.location_id = "forbidden_forest"
+	# 拒绝侧：这 4 个 op **StateOps 根本没有实现**，必须在 OpGuard 层就拦掉
+	# （与 03a 的 `set_faction_*` 不同 —— 那些是透传给 StateOps 拒绝，这些不能透传，
+	#  否则它们会一路走到 `未知操作` 分支，错误串模棱两可、且将来有人给 StateOps 加上
+	#  同名 op 时会**静默放行**）。
+	a.is_true(not OpGuard.sanitize_op(gw2, {"op": "set_economy_index", "value": 0.9}).ok,
+		"LLM 不能改世界经济")
+	a.is_true(not OpGuard.sanitize_op(gw2, {"op": "set_gringotts_balance", "knuts": 9}).ok,
+		"LLM 不能直接改余额")
+	a.is_true(not OpGuard.sanitize_op(gw2, {"op": "set_smuggling_heat", "value": 0}).ok,
+		"LLM 不能改走私热度")
+	a.is_true(not OpGuard.sanitize_op(gw2, {"op": "set_foreign_rate", "value": 99.0}).ok,
+		"LLM 不能改汇率")
+	a.is_true(not OpGuard.sanitize_op(gw2, {"op": "set_prices", "prices": {}}).ok,
+		"LLM 不能改物价")
+	a.is_true(not OpGuard.sanitize_op(gw2, {"op": "set_gringotts_interest_rate", "value": 99.0}).ok,
+		"LLM 不能改利率")
+	# 放行侧（不能只测拒绝 —— 否则「把 4 个 op 全拉黑」也能全绿）
+	a.is_true(OpGuard.sanitize_op(gw2, {"op": "deposit_money", "knuts": 100}).ok, "deposit_money 被放行")
+	a.is_true(OpGuard.sanitize_op(gw2, {"op": "withdraw_money", "knuts": 100}).ok, "withdraw_money 被放行")
+	a.is_true(OpGuard.sanitize_op(gw2, {"op": "exchange_money", "knuts": 100, "direction": "buy"}).ok,
+		"exchange_money 被放行")
+	a.is_true(OpGuard.sanitize_op(gw2, {"op": "trade_money", "good_id": "potion_common", "qty": 1,
+		"mode": "buy"}).ok, "trade_money 被放行")
+
 	return a.report("gm")
