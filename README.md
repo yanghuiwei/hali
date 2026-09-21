@@ -30,7 +30,7 @@
 | 10 | 存档与读档 | ✅ 完成 |
 | 11 | 主界面与运行说明 | ✅ 完成 |
 
-后续计划：**03b 经济骨架 · 03c 社会与法律**（计划 03 的两个子计划，边界见 [03a spec §14](docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md)）；04 神奇生物生态与区域危险度；05 NPC 自主系统与信息可信度；06 多世代传承与世界记忆；另有独立小计划：设置界面、流式输出、长期记忆、存档格式 v2。
+后续计划：**03b 经济骨架 · 03c 社会与法律**（计划 03 的两个子计划，边界见 [03a spec §14](docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md)）——**03b 设计已出**：[03b spec](docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md)（待评审）；04 神奇生物生态与区域危险度；05 NPC 自主系统与信息可信度；06 多世代传承与世界记忆；另有独立小计划：设置界面、流式输出、长期记忆、存档格式 v2。
 
 ### 计划 02 · LLM 叙事引擎（已完成，已合入 `main`）
 
