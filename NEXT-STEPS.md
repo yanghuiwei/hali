@@ -73,6 +73,7 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 �
 - [ ] **A1 §B7：开新分支做 03b 经济骨架 / 03c 社会与法律**（下一批主线；边界照 03a spec §14）
   - ✅ **03b spec 已产出**（2026-09-21）：[`docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md`](docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md)
     —— **待人类评审**（内有 5 条待裁定 **K1–K5**，其中 **K5**（物价曲线的繁荣侧弹性）与 **K1**（`Money` 负值显示是否改成「负债 X」）需明确点头）
+  - ✅ **03b 台账已建**：[`docs/sdd/plan-03b-economy/progress.md`](docs/sdd/plan-03b-economy/progress.md)（Task 0 = spec）
   - ⏳ 下一步：spec 通过后由 writing-plans 产出实现计划 `docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md`，再拉分支施工
   - 先读 `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` §14
   - 若素材/玩法需要，可顺带落地 `assets/ui/` 里**尚未接的 6 件切片**（见 §A2）
