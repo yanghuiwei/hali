@@ -251,6 +251,11 @@ static func price_factors(world: WorldState, good_id: String) -> Dictionary
    - `gringotts_interest_rate` **下调**（默认 0.002 → 0.0012）；
    - 走私品**利润率上升**（`smuggling_profit_mult` 1.0 → 1.5）。
    退出危机（true→false）时利率回升，但不写事件（避免「危机结束」也刷屏）。
+   - ⚠️ **阈值必须只有一个来源**：`0.35` 这个数在仓库里已有两处用途 —— 本 spec 第 3 条的「断供」与第 7 条的「危机态」，
+     以及 **`factions.gd:369`（03a 已合入）的既有危机判据**。三者**必须共用同一个常量**
+     （`Economy.CRISIS_THRESHOLD := 0.35`，且 `factions.gd` 改为引用它；若跨模块引用不便，则在两处都写明「与 `Economy.CRISIS_THRESHOLD` 必须同步」）。
+     **不得各自硬编码一个 0.35** —— 将来调阈值时漏改一处，就会出现「物价已断供但派系层认为没危机」这类**静默不一致**。
+     这是 03a `§4 第 18 条`（helper 断言不足以保证调用处传对）的同族风险在**常量**上的形态。
 8. **确定性**：以上全部是 `world` 的**纯函数**（无随机），因此 `price_of()` 可以在测试里逐字段断言。唯一带随机的是 `foreign_rate` 的月度波动（走 `RngService` 命名流 `economy_foreign_rate`）。
 
 ### 7.5 新增 ops（`StateOps`）与 `Money` 负值
