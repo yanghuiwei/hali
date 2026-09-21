@@ -10,7 +10,7 @@
 - **换机器 / 交接 / 续做：先读 [`HANDOFF.md`](HANDOFF.md)**（分支、Godot 引擎获取、当前进度、待裁定项、踩过的坑）
 - 执行过程台账：[`docs/sdd/plan-01-core-foundation/progress.md`](docs/sdd/plan-01-core-foundation/progress.md) · [`docs/sdd/plan-02-llm-narrative/progress.md`](docs/sdd/plan-02-llm-narrative/progress.md)
 
-> 计划 01 / 计划 02 / 计划 03a（含 03a-P 表现层）均已合入 `main`；**后续计划从 `main` 拉新分支**（见 [`NEXT-STEPS.md`](NEXT-STEPS.md) 队列 B）。
+> 计划 01 / 计划 02 / 计划 03a（含 03a-P 表现层）均已合入 `main`；**后续计划从 `main` 拉新分支**（见 [`NEXT-STEPS.md`](NEXT-STEPS.md) §A 待办）。
 
 ## 当前进度
 
@@ -56,7 +56,13 @@
 - `Presentation`（安全加载 / 缓存 / **缺素材回退**）· `ThemeBuilder`（用清单造 `Theme`，暗色主题）· `AudioDirector`（8 个触发点接线 + BGM 随地点/时代切换）· `AssetSlots`（背景 / Logo / 学院徽记 / 立绘槽位，**缺素材不可见且不占位**）
 - **清单驱动**：换素材 = 改一行 JSON，**零代码**；缺任何素材都照常运行。素材台账见 [`assets/CREDITS.md`](assets/CREDITS.md)。
 
-⚠️ **已知缺口**：CJK 正文字体与 `interface.psd` 切片尚未入库（见 NEXT-STEPS §B6）。Godot 内置字体**不含中日韩字形**，因此在自带字体到位前，中文界面依赖系统字体回退（平台相关）。
+**UI 切片接线（B8 / P5b，`cdddb98`）**：`interface.psd` 切出的 13 张切片中，**7 个键已接进主题**（按钮四态 / 输入框 / 滚动条两件）——
+`ThemeBuilder` 按有无清单键逐键切换「扁平 ⇄ 贴图」，缺键回退扁平、不新增布局分支。余 **6 件**（`panel_bg` · `frame_horizontal` ·
+`frame_vertical` · `emblem_ring` · `panel_slot` · `button_close`）需要真实布局落点，**有意未接、也未写进清单**（避免「声明了但无效」的死旋钮），
+归 03b 界面改版，见 [`NEXT-STEPS.md`](NEXT-STEPS.md) §A2。
+
+**中文界面已可读**：CJK 正文字体（霞鹜文楷 + OFL 原文）与切片素材均已入库，`data/presentation.json` 的 `fonts.body` → `body_cjk.ttf`，
+由 `ThemeBuilder` 消费为 `default_font`；实测含生僻字（`龘爨饕餮`）**无缺字**（该断言为条件式：字体到场后自动生效）。
 
 ## 运行
 

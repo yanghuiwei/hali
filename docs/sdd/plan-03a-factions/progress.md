@@ -596,8 +596,9 @@
   ⇒ 以后在两者间切换素材，这条断言既不假红也不假绿。另测：`theme.has_stylebox(...)` **也不能**当判别器（内置默认同样为 `true`）
 - 授权偏离（控制器认可）：`OptionButton` 也套按钮贴图（任务原文只点名 `Button`）—— 创建界面 7 个下拉框是最显眼控件，
   只给 `Button` 贴图会当场不一致；若要撤销删 3 行即可
-- 有意不接的 5 件（**因此没有写进清单，避免死旋钮**）：`panel_bg` / `frame_horizontal` / `frame_vertical` / `emblem_ring` /
+- 有意不接的 6 件（**因此没有写进清单，避免死旋钮**）：`panel_bg` / `frame_horizontal` / `frame_vertical` / `emblem_ring` /
   `panel_slot` / `button_close` —— 需要真实布局落点（`PanelContainer` 包裹等）会新增布局分支、打掉 B1 的反返工断言 ⇒ 归 03b 界面改版
+  （原写「5 件」，2026-09-21 按 `assets/ui/` 实际文件核对更正为 6；13 张切片 = 7 接 + 6 未接）
 - B8: 残余/未验证：① **视觉观感未验**（无头环境看不到像素）：按钮贴图与文字贴合度、8px 滚动条里 grabber 压缩观感、
   禁用态是否够暗 ⇒ **待人类目视确认**（观感调只改 `nine_patch`，**零代码**）；② `[theme_audio]` 有一条既有断言
   （「缺 `fonts.body` ⇒ 用内置字号回退」）在真实清单上**恒真**（16==16），属既有测试强度问题，未修（范围外，已登记）

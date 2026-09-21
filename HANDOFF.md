@@ -1,7 +1,9 @@
 # 交接文档 · 哈利·波特·魔法纪元
 
 > 用途：换机器后凭这份文档 + 仓库源码即可继续执行。**先读第 1～3 节。**
-> 最后更新：2026-09-20（计划 01 / 02 / 03a（含 03a-P 与 B8）均已合入 `main`；本次修订：**§5/§6 压缩为索引**（去与台账重复的历史堆积）+ **新增 §4 第 23 条踩坑**）。交付点 = 分支 `main` 顶端（以 `git log` 为准）。
+> 最后更新：2026-09-21（**文档校正**：按实际文件核对，修掉 `§0` / `§8#72` 里「13 张切片尚未接进主题」的过时描述、
+> 失效的 `NEXT-STEPS` 章节引用，以及 §8#72 与真实文件名不符的切片清单；计划 01 / 02 / 03a（含 03a-P 与 B8）均已合入 `main`）。
+> 交付点 = 分支 `main` 顶端（以 `git log` 为准）。
 >
 > 📚 **本项目四份文档的职责（2026-09-20 定；目的：别每次任务都改四份）**
 >
@@ -35,9 +37,13 @@
 - ✅ **中文界面已可读**：`data/presentation.json` 的 `fonts.body` → `body_cjk.ttf`，`ThemeBuilder:47-50` 消费它设 `default_font`。
   实测 `FontFile.has_char()` 对含生僻字（`龘爨饕餮`）的测试串**缺字=无 / PASS**；既有 4 个字体对「你」全 `false`。
   该断言是**条件式**的（字体到场后自动生效），控制器做过负向验证：把它指向不含中文的 Cinzel ⇒ `test.sh` `EXIT=1` 且报文直指「中文界面是豆腐块」。
-- ⏳ **仍缺（不阻塞）**：短音效 SFX / 环境音（缺则静音）· **13 张切片尚未接进主题**（见 `NEXT-STEPS.md` §B8 P5b）
+- ✅ **UI 切片已接进主题**（B8 / P5b，`cdddb98`）：按钮四态 / 输入框 / 滚动条共 **7 个键**已消费；
+  余 **6 件**（`panel_bg` · `frame_horizontal` · `frame_vertical` · `emblem_ring` · `panel_slot` · `button_close`）
+  **需要真实布局落点**（`PanelContainer` 包裹等），会新增布局分支并打掉 B1 的「反返工」断言 ⇒ **归 03b 界面改版**
+  （详情见 `docs/sdd/plan-03a-factions/progress.md` 的 B8 节）
+- ⏳ **仍缺（不阻塞）**：短音效 SFX / 环境音（`data/audio_cues.json` 的 `cues` 现为空 ⇒ 对应 cue 静音，代码侧 8 个触发点都已接好）
 
-**接下来要做什么：见 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（§0 快跑模式 / §0.5 恢复指引 / §B 下一步 / §C 待裁定项）。
+**接下来要做什么：见 [`NEXT-STEPS.md`](NEXT-STEPS.md)**（§0 文档职责 / §0A 快跑模式 / §0B 门禁基线 / §0C 收尾清单 / §A 待办 / §C 待裁定项）。
 
 - 计划全文（唯一执行依据）：`docs/superpowers/plans/2026-09-18-hp-magic-era-01-core-foundation.md`（4450 行，Task 1–11）
 - 正典规格（唯一事实来源）：`哈利·波特·魔法纪元.md`（仓库根，勿移动、勿改名）
@@ -54,7 +60,7 @@
 | 开发分支 | `plan-03-factions`（计划 03a + 03a-P 的工作分支，已按 Task 13 合入 `main`；保留供追溯） |
 | `main` 已包含 | 计划 01（Task 1–11 + 收尾加固）· 计划 02（Tasks 1–12）· B1 观测通道 · 计划 03a（Tasks 1–13）· 计划 03a-P（P1–P5）· `assets/` 首批素材 |
 | 当前 HEAD | 以 `git log --oneline -1` 为准；**不要把 HEAD 或任何合入哈希钉死在文档里**——已漂移多次 |
-| 后续 | 从 `main` 拉新分支（见 `NEXT-STEPS.md` 队列 B） |
+| 后续 | 从 `main` 拉新分支（见 `NEXT-STEPS.md` §A 待办） |
 
 ```bash
 git clone https://github.com/yanghuiwei/hali.git
@@ -271,7 +277,7 @@ taskkill //PID <PID> //F
 ## 6. 接下来怎么做
 
 **待办与下一步一律看 [`NEXT-STEPS.md`](NEXT-STEPS.md)** —— 它是唯一的「状态 + 待办」源头：
-§0 文档职责 · §0A **快跑模式** · §0B 门禁与基线数字 · §0C 每任务收尾清单 · §A 待办 · §C 待裁定项 · §D 协作约定。
+§0 文档职责 · §0A **快跑模式** · §0B 门禁与基线数字 · §0C 每任务收尾清单 · §A 待办 · §B 已完成索引 · §C 待裁定项 · §D 协作约定。
 
 > 本节旧版本维护过一份「后续计划列表」（计划 02/03a/03b…），**已多次漂移**（把已完成的写成「未开始」）⇒ 删除，改为指向。
 
@@ -295,11 +301,14 @@ taskkill //PID <PID> //F
 >   （就是 `§8#69` 的原始证据那个 `squib`+`gryffindor`）读进来仍是 `gryffindor`，只有**重新建角**才得 `none`。
 >   控制器已裁定**归「存档格式 v2」批次**（与 `§8#26` 同族），理由见计划「Task 12 范围声明」；
 >   **创建路径已堵死**（复核：`assign_house` 在生产代码里只有 1 个调用点）。零成本缓解：旧存档属历史数据，重建角色即可。
-> - **素材线（新）**：CJK 正文字体（已下载霞鹜文楷 25.6MB，待交付）· OFL 许可证文本（3 个 OFL 字体**缺许可证原文**，这是 OFL 的强制义务）·
->   `interface.psd` 切片 PNG。二者到场后要做的两件事**都是零代码**：跑一次 `--import` 生成 `.import` + 在 `data/presentation.json` 加行（`fonts.body` / `ui.*`）。
->   跟踪：`NEXT-STEPS.md` §B6；交接提示词 `docs/sdd/plan-03a-P/assets-handoff-prompt-v2.md` 与 `assets-agent-repair-prompt.md`
+> - **素材线**：✅ **已全部闭合（2026-09-20，素材提交 `d18df0f` + 合并 `ea50b91` / `cdddb98`）** ——
+>   CJK 正文字体（霞鹜文楷 v1.522，已入库并由 `fonts.body` 接上）· 4 份 OFL 官方原文（补上 OFL 强制义务）·
+>   13 张 `interface.psd` 切片 PNG（其中 7 键已接进主题，余 6 件归 03b）。
+>   保留原文供追溯：「CJK 正文字体（已下载霞鹜文楷 25.6MB，待交付）· OFL 许可证文本（3 个 OFL 字体**缺许可证原文**，
+>   这是 OFL 的强制义务）· `interface.psd` 切片 PNG」。详见上方 `§8#72`。
+>   交接提示词（已完成使命，留档）：`docs/sdd/plan-03a-P/assets-handoff-prompt-v2.md` 与 `assets-agent-repair-prompt.md`
 > - **03a-P 残余**：槽位占位尺寸（Logo 48 / 立绘 144 / 徽记 32×32）需素材到场后复核 · 背景槽与不透明 StyleBox 的层级遮挡未验证 ·
->   `ui.panel_bg`/`button_*` 的九宫格**应用**留到切片到场（`AssetSlots.stylebox_for` 已实现且有断言）· `llm_fallback` 的真触发属 B2
+>   `ui.panel_bg`/`button_*` 的九宫格**应用**：按钮/输入框/滚动条已在 B8 接完，`panel_bg` 等 6 件留到 03b · `llm_fallback` 的真触发属 B2
 > - 内容/玩法参数待实跑观察：政治事件频率按 era 普查（Task 5 M6）· `oligarchy_pressure` 0.26 与政体门限 0.28 两套阈值需复核 · 离线替身同句多派系的 tie-break 按 id 序（确定但粗糙）· 名词性文本（"我最讨厌食死徒"）落 idle
 > - 语义已接受但需记账：`illegal_affiliation` 陈旧化（**03c 必须定清除/归一规则**）· 隐藏派系的控制权**数值**仍显示（只隐藏身份；若把"不得主动剧透"读作涵盖存在性则升级）· `last_change_turn` 语义单一化为"power 变更回合"· 量化（`QUANTIZE_DECIMALS=4`）只是**收窄** `§8#50` 触发面、存档 v2 仍是独立议题
 > - `wand_woods.json` 没有 `weight` 字段 ⇒ 木材与均匀抽取**分布等价**（将来加权重是**纯内容改动、零代码**）
@@ -426,13 +435,21 @@ taskkill //PID <PID> //F
     - **CJK 正文字体**：Godot 内置字体不含中日韩字形。**已入库** `assets/fonts/body_cjk.ttf`（LXGW WenKai v1.522，25,575,676 B，OFL-1.1）并已由 `fonts.body` 接上；控制器用 Godot `FontFile.has_char()` 实测**缺字=无 / PASS**。既有的 4 个字体对「你」全 `false`。
       **不得子集化**（玩家可输入任意汉字），全字集 10–20MB+ 属正常，**不用 Git LFS**；覆盖自检由控制器用 Godot `FontFile.has_char()` 在合并后做（不需要 Python 包）。
     - **OFL 许可证文本**：`Cinzel-Variable.ttf` / `IMFeENrm28P.ttf`（IM Fell English）/ `MedievalSharp.ttf` 都是 OFL-1.1，**OFL 强制要求再分发时随附许可证原文**，而仓库现在一个都没有（`assets/CREDITS.md` §三 已把它写成义务）。已落盘为 `assets/fonts/OFL-Cinzel.txt` / `OFL-IMFellEnglish.txt` / `OFL-MedievalSharp.txt` / `OFL-LXGWWenKai.txt`（官方原文，逐份做了 header/perm/term/disc 完整性校验）。
-    - **`interface.psd` 切片**：Godot 无 PSD 导入器（实测 `ResourceLoader.exists()` = false）⇒ 需切成 PNG（`assets/ui/panel_bg.png` / `button_normal|hover|pressed.png` / `scrollbar_bg|grab.png` / `checkbox_on|off.png` / `logo.png`，**文件名即契约**）。
+    - **`interface.psd` 切片**：Godot 无 PSD 导入器（实测 `ResourceLoader.exists()` = false）⇒ 需切成 PNG。
+      **实际切出 13 张**（`assets/ui/`，文件名即契约）：
+      `panel_bg` · `button_normal|hover|pressed|neutral` · `button_close` · `textfield` ·
+      `scrollbar_bg|grab` · `frame_horizontal|vertical` · `emblem_ring` · `panel_slot`。
+      ⚠️ 早期文档里写的 `checkbox_on|off.png` 与 `logo.png` **最终没有切出来**（Godot 无 CheckBox 实例；标题 Logo 槽留空）。
+      该清单已由控制器于 2026-09-21 按实际文件核对修正。
     - ✅ 两件零代码事**已做完**：① `--import` 生成 14 个 `.import` 并提交；② `data/presentation.json` 加了 `fonts.body` → `body_cjk.ttf`（`ThemeBuilder:47-50` 消费它设 `default_font`）⇒ **中文界面已可读**。
     - ✅ 额外交付：`assets/icons/ICON-MEANINGS.md` —— 15 个 SVG **实际渲染后逐格看图**再写描述（不是猜文件名），
       查出 **2 处文件名与图形不符**（`book-cover` 实为**摊开的书页**、`floating-ghost` 是**戴尖顶帽的幽灵**）；现有映射仍成立，故不改键、只留档。
-    - ⏳ **仍留一条**：13 张切片**暂未写进清单**（`panel_bg` 需 `PanelContainer` 包裹；按钮/文本框/滚动条要在 `ThemeBuilder` 里换成 `StyleBoxTexture`）。
-      先写清单行而无人消费 = 「声明了但无效」的死旋钮（`§8#16/#21` 同类）⇒ 登记为 **P5b**（`NEXT-STEPS.md` §B8）。
-    - 跟踪与流程：`NEXT-STEPS.md` §B6 · 提示词 `docs/sdd/plan-03a-P/assets-handoff-prompt-v2.md` 与 `assets-agent-repair-prompt.md`
+    - ✅ **13 张切片已接完该接的部分**：B8（`cdddb98`）把**按钮四态 / 输入框 / 滚动条**共 **7 个键**接进 `ThemeBuilder`
+      （缺键逐键独立回退；九宫格取值全部沿中行/中列扫 alpha 帽区实测得出，不是猜的）。
+      余 **6 件**（`panel_bg` · `frame_horizontal` · `frame_vertical` · `emblem_ring` · `panel_slot` · `button_close`）
+      **有意不接** —— 它们需要真实布局落点（`PanelContainer` 包裹等），会新增布局分支并打掉 B1 的「反返工」断言 ⇒ 归 03b 界面改版。
+      **故这 6 件也没有写进 `presentation.json`**（写进去而无人消费 = 死旋钮，`§8#16/#21` 同类）。
+    - 跟踪与流程：`NEXT-STEPS.md` §A2 · 提示词 `docs/sdd/plan-03a-P/assets-handoff-prompt-v2.md` 与 `assets-agent-repair-prompt.md`
 
 > 📝 **修复的复审记录**（`fix/plan-02-llm-settings`，独立只读 reviewer）：`docs/sdd/plan-02-llm-narrative/fix-settings-review.md`（含原文）。结论 **通过 / 0 Critical / 0 Important**；其 3 条 Minor 已分别处置（M-a → 本条 #68 登记；M-b `content:null` 经实证为真缺陷 → 已修 `c9a0c95`；M-c 断言强度 → 已采纳）。
 
