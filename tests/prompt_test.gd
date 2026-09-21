@@ -49,9 +49,9 @@ func run() -> int:
 	var fdigest := PromptBuilder.state_digest(fw)
 	var fkeys: Array = fdigest.keys()
 	fkeys.sort()
-	a.eq(fkeys, ["clock", "era", "government", "known_factions", "location", "player",
+	a.eq(fkeys, ["clock", "economy", "era", "government", "known_factions", "location", "player",
 		"recent_history", "recent_log", "world_vars"],
-		"摘要键集合 = 计划 02 既有 7 键 + 本计划新增 2 键（提示词契约未被重构）")
+		"摘要键集合 = 计划 02 既有 7 键 + 03a 新增 2 键 + 03b 新增 1 键（提示词契约未被重构）")
 	a.is_true(str(fdigest.get("government", "")).contains("政体：魔法部官僚制"), "摘要含政体（label 取自内容表）")
 	a.is_true(str(fdigest.get("known_factions", "")).contains("已知势力："), "摘要含已知势力行")
 	a.is_true(str(fdigest.get("known_factions", "")).contains("魔法部"), "摘要含已揭示派系")
@@ -97,5 +97,50 @@ func run() -> int:
 		"空可见集 → 摘要恰好是「已知势力：无」")
 	a.is_true(str(PromptBuilder.state_digest(empty_w).get("government", "")).begins_with("政体："),
 		"空可见集不影响政体键的形态")
+
+	# ---- 计划 03b Task 8：state_digest 加经济摘要（信息保护，spec §7.6 / §10） ----
+	# 适配说明（与 03a 同因）：`state_digest()` 返回 Dictionary，故经济段以**一个字符串键** `economy` 承载。
+	var ew := make_world()
+	WorldFactions.initialize(ew)
+	Economy.initialize(ew)
+	var edigest := PromptBuilder.state_digest(ew)
+	a.is_true(edigest.has("economy"), "摘要含 economy 键")
+	var eline := str(edigest.get("economy", ""))
+	a.is_true(eline.contains("经济："), "经济段以「经济：」开头")
+	a.is_true(eline.contains("景气"), "经济段含景气")
+	a.is_true(eline.contains("古灵阁"), "经济段含古灵阁（存款）")
+	# 主要物价：房租 + 食物（两条固定锚点必须出现，label 取自内容表）
+	a.is_true(eline.contains("房租（月）"), "经济段列房租")
+	a.is_true(eline.contains("黄油啤酒"), "经济段列食物")
+	# 现金随玩家变化（反向判别：若不读 player 则不会变）
+	ew.player.money_knuts = 12 * 493
+	a.is_true(str(PromptBuilder.state_digest(ew).get("economy", "")).contains("12加隆"),
+		"现金随 player 变化（不是常量）")
+	# 危机态随 economy_index 变化
+	ew.world_vars["economy_index"] = 0.20
+	a.is_true(str(PromptBuilder.state_digest(ew).get("economy", "")).contains("危机"),
+		"economy_index 低于阈值时标为危机")
+	ew.world_vars["economy_index"] = 0.80
+	var calm := str(PromptBuilder.state_digest(ew).get("economy", ""))
+	a.is_false(calm.contains("危机"), "景气高时不标危机")
+
+	# ---- 信息保护：黑市未揭示时摘要不得出现「黑市」字样；揭示后才出现 ----
+	# ⚠️ 这条门控制的是**「黑市」二字本身**，不是具体商品名 ——
+	#    实现从不把 illegal 商品名/价格写进摘要（那才是真正的保护），
+	#    故断言必须钉在「黑市」这个提示词上，否则拆掉门也不会红（反向控制 RC1 实测证实过）。
+	var dw := make_world()
+	WorldFactions.initialize(dw)
+	Economy.initialize(dw)
+	var before := str(PromptBuilder.state_digest(dw).get("economy", ""))
+	a.is_false(before.contains("黑市"), "未揭示时摘要不提黑市")
+	a.is_false(before.contains("禁售神奇生物"), "未揭示黑市商品不剧透")
+	a.is_false(before.contains("黑市文物"), "未揭示黑市文物不剧透")
+	a.is_false(before.contains("违禁药剂"), "未揭示违禁药剂不剧透")
+	# 揭示黑市（black_market）之后，「黑市有售」才出现，且仍不带商品名与价格
+	WorldFactions.reveal(dw, "black_market", "翻倒巷偶遇")
+	a.is_true(WorldFactions.visible_faction_ids(dw).has("black_market"), "夹具前置：黑市已揭示")
+	var after := str(PromptBuilder.state_digest(dw).get("economy", ""))
+	a.is_true(after.contains("黑市有售"), "揭示后经济段标出黑市有售")
+	a.is_false(after.contains("禁售神奇生物"), "即使揭示，也不列具体黑市商品名（只给「有售」二字）")
 
 	return a.report("prompt")

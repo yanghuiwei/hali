@@ -80,6 +80,8 @@ static func state_digest(world: WorldState) -> Dictionary:
 			world.player.standing_of(id),
 			",所属" if world.player.faction_id == id else ""])
 	var known_line := "已知势力：无" if faction_parts.is_empty() else "已知势力：%s" % " ".join(faction_parts)
+	# 计划 03b Task 8：经济摘要行。与 `government` / `known_factions` 同款 —— 一个字符串键承载可读行。
+	var economy_line := _economy_digest(world)
 	return JsonUtil.normalize({
 		"clock": {"year": world.clock.year, "month": world.clock.month, "turn": world.clock.turn},
 		"era": {"id": world.era_id, "start_year": world.era_start_year},
@@ -99,4 +101,45 @@ static func state_digest(world: WorldState) -> Dictionary:
 		"recent_history": history_tail,
 		"government": "政体：%s" % str(world.registry.entry("governments", gov_id).get("label", gov_id)),
 		"known_factions": known_line,
+		"economy": economy_line,
 	})
+
+# 计划 03b Task 8：经济摘要（只读）。
+# 格式：`经济：景气 0.61（平稳）｜ 现金 X ｜ 古灵阁 Y ｜ 主要物价：房租（月）Z、黄油啤酒 W`
+# ⚠️ 信息保护（第四十三/五十七章，spec §10 第 1 条）：
+#    `category == "illegal"` 的商品**只在黑市已揭示时**才以「黑市有售」四字提示，
+#    具体商品名与其价格**永不出现在提示词里**（LLM 不得替玩家「知道」黑市详情）。
+const _DIGEST_PRICE_GOODS: Array[String] = ["svc_rent", "food_butterbeer"]
+
+static func _economy_digest(world: WorldState) -> String:
+	var econ := world.economy
+	var index := float(world.world_vars.get("economy_index", 0.0))
+	var state_text := "危机中" if Economy.is_crisis(world) else "平稳"
+	var parts: Array[String] = []
+	parts.append("景气 %.2f（%s）" % [index, state_text])
+	parts.append("现金 %s" % world.player.money().formatted())
+	var balance := int(econ.get("gringotts_balance", 0))
+	parts.append("古灵阁 %s" % Money.from_knuts(balance).formatted())
+	# 主要物价：房租 + 食物（固定两条），外加一条 supply_critical 商品（危机期最能说明问题的那类）
+	var price_bits: Array[String] = []
+	for good_id in _DIGEST_PRICE_GOODS:
+		price_bits.append("%s %s" % [_good_label(world, good_id), Money.from_knuts(Economy.price_of(world, good_id)).formatted()])
+	var critical := _first_supply_critical(world)
+	if not critical.is_empty():
+		price_bits.append("%s %s" % [_good_label(world, critical), Money.from_knuts(Economy.price_of(world, critical)).formatted()])
+	var out := "经济：%s ｜ 主要物价：%s" % [" ｜ ".join(parts), "、".join(price_bits)]
+	# 黑市：只在已揭示时给一个**不含商品名**的提示
+	if WorldFactions.visible_faction_ids(world).has("black_market"):
+		out += " ｜ 黑市有售"
+	return out
+
+static func _good_label(world: WorldState, good_id: String) -> String:
+	return str(world.registry.entry("goods", good_id).get("label", good_id))
+
+# 取第一条 `supply_critical` 商品（表内顺序确定 ⇒ 摘要确定）。
+static func _first_supply_critical(world: WorldState) -> String:
+	for gid in world.registry.ids("goods"):
+		var id := str(gid)
+		if bool(world.registry.entry("goods", id).get("supply_critical", false)):
+			return id
+	return ""

@@ -46,7 +46,7 @@
 
 ```bash
 git fetch origin && git status -sb          # 期望：干净。⚠️ 仓库根可能有外来未跟踪文件（如 .workbuddy/），不算失败，别删别提交
-bash tools/test.sh                          # 期望：EXIT=0；23 套件 / 3482 断言 / 失败 0；4 步全过
+bash tools/test.sh                          # 期望：EXIT=0；23 套件 / 3484 断言 / 失败 0；4 步全过
 timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 失败（会临时移走 llm_settings.json 并逐字还原）
 ```
 
@@ -71,7 +71,7 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 �
 ## A. 待办（**未完成**；已完成的一律看 §B）
 
 - [ ] **A1 §B7：开新分支做 03b 经济骨架 / 03c 社会与法律**（下一批主线；边界照 03a spec §14）
-  - 🔄 **03b 进行中**（分支 `plan-03b-economy`）：**Task 1–7 已完成**，**下一步 = Task 8**
+  - 🔄 **03b 进行中**（分支 `plan-03b-economy`）：**Task 1–8 已完成**，**下一步 = Task 9**
     （`state_digest` 经济摘要）；**每完成一个 Task 立即推送远端**
   - ✅ **03b spec 已产出**（2026-09-21）：[`docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md`](docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md)
     —— K1–K5 五条裁定**已按建议默认写进计划**（K1 接受「负债 X」；K5 用口径 A），**两条仍可回退**（回退只改常数与断言串，不动结构）
@@ -157,4 +157,4 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 �
 | 计划 / spec / 台账 | 03a·03a-P：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` · `.../specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` · `docs/sdd/plan-03a-factions/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎）；**自带 stderr 噪音门禁** |
 | 工作模式 | **快跑模式**（§0A）—— 4 道门禁 + 每任务 2 处文档编辑 |
-| **下一步第一件事** | **03b Task 8**：`PromptBuilder.state_digest` 经济摘要（信息保护）；分支 `plan-03b-economy`，**每个 Task 完成即推送** |
+| **下一步第一件事** | **03b Task 9**：离线替身接线（关键词 → 经济 op）；分支 `plan-03b-economy`，**每个 Task 完成即推送** |
