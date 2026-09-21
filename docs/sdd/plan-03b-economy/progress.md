@@ -2,8 +2,8 @@
 
 > 本文件是**唯一权威**：每任务的提交 / 断言数 / 门禁结果 / 审查结论 / findings 处置 / 挂账。
 > 与代码同一次提交更新（`NEXT-STEPS.md` §0C 的硬规则）。
-> spec：`docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md`（**待评审**）
-> 实现计划：`docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md`（**待 writing-plans 产出**）
+> spec：`docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md`
+> 实现计划：`docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md`（**已产出，待执行**）
 
 ---
 
@@ -38,6 +38,59 @@
 
 ---
 
+## Task 1（前置）：实现计划产出 + 价格定版实算（2026-09-21，控制器直接执行）
+
+- **状态**：实现计划已产出；**spec 的 §7.4 已按实算重写**
+- **产物**：
+  - `docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md`（12 个任务，格式对齐 03a 计划）
+  - spec §7.4 / §7.1 / §13.8 / K5 行的**整段重写**（价格口径换版）
+- **执行 spec §13.8 的「先实算后写表」流程，实算发现并修掉 6 处设计缺陷**（脚本在 `%TEMP%\hali_03b_*.py`）：
+
+  | # | 缺陷 | 实算证据 | 修法 |
+  | --- | --- | --- | --- |
+  | ① | 债务用例 `-1002` 初稿写成「16**西可**」 | `parts=(-2,0,-16)` ⇒ 第三位是 16 纳特 | 改「16纳特」，已在 Task 0 修 |
+  | ② | `canon_price` 被直接当 `base_price` | 5 个锚点里 **2 个越界**（上等魔杖 11.54 > 10、顶级疗伤 22.68 > 20） | `canon` 与 `base` **解耦**（C1/C6） |
+  | ③ | **`supply_mult` 加重危机侧涨幅** | index=0.16 时 scarcity ×1.408、supply ×1.048 ⇒ 合计 **×1.479** > 区间宽 1.4286 | **`supply` 移出价格公式**（C5），只管可得性 |
+  | ④ | 危机线与断供线**同为 0.35** | 留下 `index ∈ (0.35, 0.43]` 的「已越界但仍供货」死区 | 解耦为 `CRISIS_THRESHOLD=0.35` / `SUPPLY_CUTOFF=0.15` |
+  | ⑤ | 原契约隐含「全域价必须落在正典区间内」 | **数学上不可能**：魔杖区间宽 1.4286x，乘数摆动必 >1.5x | 改为 C1–C6（危机侧守上沿；繁荣侧允许下探并记录） |
+  | ⑥ | 「上等魔杖」复用普通魔杖的 `[7,10]` 窗口 | 该窗口常态可用带仅 `[3451, 3521]`（= 上沿/1.40），容不下第二档 | **删掉「上等魔杖」** |
+
+- **价格定版常数**（实算反推，spec §7.4 常量总表）：
+  `NEUTRAL_INDEX=0.5` / `NEUTRAL_ERA_YEAR=1950` / `MIN_SCARCITY=0.75` / `MAX_SCARCITY=1.40` /
+  `CRISIS_THRESHOLD=0.35` / `SUPPLY_CUTOFF=0.15` / `MONOPOLY_EXCESS_MULT=2.0`
+- **最终产物**：**35 条商品**（25 goods + 10 service）+ **9 条产业**；
+  `industry_id` / `produces` 引用**全部实算校验通过**；5 个正典锚点**全域守门通过**（C1/C2/C3 全绿）
+- **实算关键中间值（供后续任务复用，勿重算）**：
+  - 普通魔杖 base 3451 ⇒ 常态 7.00 加隆；危机峰值 4831（**守 4930 上沿**）；繁荣谷值 3106
+  - 优质疗伤 base 2465 ⇒ 常态 5.00 加隆；危机峰值 3451（守 9860）
+  - 顶级疗伤 base 6162 ⇒ 常态 12.50 加隆（正典区间中点）；危机峰值 8627（守 9860）
+  - 光轮扫帚 base 49300 ⇒ 常态 100 加隆；危机峰值 69020（守 147900）
+  - 家庭月支出模型：房租 4437 + 食物 240 + 车票 493 + 医疗 986 + 杂项 1109 ≈ **7265 纳特/月**
+    ⇒ 年支出 ≈ 174 加隆，**落在正典「数百加隆」量级内**；从业者月薪应 ≥ 7300 纳特
+- **门禁**：`bash tools/test.sh` **EXIT=0**（21 套件 / 2023 断言 / 失败 0）—— 本任务纯文档，无断言变化
+- **评审状态**：K1–K5 五条裁定**已按建议默认**写进计划（K1 接受「负债 X」；K5 用口径 A）；
+  两条**仍可回退**，回退只需改 spec §7.4 常数 + 计划 Task 3 的断言串，不动结构
+- **挂账（不阻塞，已写入计划）**：
+  - `era_mult` 在代码常量表（非 `data/`）—— spec §13 风险 2 已登记理由与退路
+  - 月度结算量级（spec §13 风险 4）是本计划**最可能返工处**：Task 5 Step 3 要求实现后**必须实算一次月收支平衡点**
+  - 路费用 category 常量近似（无地点距离数据，spec §13 风险 7），靠 `OpGuard` 上限约束套利
+  - 危机阈值 0.35 的**单源**要求已写成 Global Constraint：`factions.gd:369` 必须改为引用 `Economy.CRISIS_THRESHOLD`
+
+- **下一步**：拉分支 `plan-03b-economy` 开工 Task 1（内容表 + Registry 校验）
+
+---
+
 ## 后续任务
 
-_（待 spec 评审通过、writing-plans 产出实现计划后逐个追加）_
+- [ ] Task 1: 内容表 `goods` / `industries` + Registry 注册与字段校验
+- [ ] Task 2: `Economy` 算价核心 + `WorldState.economy` + 存档白名单 + 危机常量单源
+- [ ] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
+- [ ] Task 4: 4 个新 op + OpGuard
+- [ ] Task 5: 月度结算（工资 / 开销 / 利息）
+- [ ] Task 6: `tick()` 接线（`evolve` + `monthly_settlement` + 危机边沿）
+- [ ] Task 7: 面板【财富】含存款 + 新增【经济】行
+- [ ] Task 8: `state_digest` 经济摘要（信息保护）
+- [ ] Task 9: 离线替身接线（关键词 → 经济 op）
+- [ ] Task 10: 经济类传闻内容
+- [ ] Task 11: B1 经济可观测契约
+- [ ] Task 12: 收尾（全绿 / 台账 / 文档 / 合入 `main`）
