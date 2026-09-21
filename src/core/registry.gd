@@ -22,6 +22,7 @@ const TABLE_FILES: Dictionary = {
 	"spells": "spells.json",
 	"goods": "goods.json",
 	"industries": "industries.json",
+	"jobs": "jobs.json",
 }
 
 var duplicate_ids: PackedStringArray = PackedStringArray()
@@ -158,6 +159,8 @@ func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedSt
 		errors.append_array(_validate_goods(where, e))
 	if table_name == "industries":
 		errors.append_array(_validate_industry(where, e))
+	if table_name == "jobs":
+		errors.append_array(_validate_job(where, e))
 	return errors
 
 # 计划 03b：商品字段与引用校验（C3/C6 的价格合理带在此落地）。
@@ -178,8 +181,12 @@ func _validate_goods(where: String, e: Dictionary) -> PackedStringArray:
 	if str(e.get("unit", "")).is_empty():
 		errors.append("%s: 缺少 unit" % where)
 	if kind == "goods":
+		# ⚠️ 2026-09-21 缺陷⑨：`food_*`（黄油啤酒/南瓜馅饼）的 `industry_id` 由错误的
+		# `publishing` 改为 `""`（无产业）—— 食物不是出版社的产物，这是原填充事故。
+		# 故此处对**空 industry_id** 放行：它表示「无产业归属」，与 `svc_*` 服务行同款语义。
+		# 非空时必须指向真实产业（引用完整性不变）。
 		var iid := str(e.get("industry_id", ""))
-		if not has("industries", iid):
+		if not iid.is_empty() and not has("industries", iid):
 			errors.append("%s: industry_id 不存在（%s）" % [where, iid])
 	if canon > 0:
 		if int(e.get("canon_line", 0)) <= 0:
@@ -220,4 +227,24 @@ func _validate_industry(where: String, e: Dictionary) -> PackedStringArray:
 		for p in (e["produces"] as Array):
 			if not has("goods", str(p)):
 				errors.append("%s: produces 引用不存在的商品（%s）" % [where, str(p)])
+	return errors
+
+# 计划 03b Task 5：职业表字段校验（spec §7.6）。
+# 量级锚点（硬约束）：正典 223 行「普通家庭年收入约数百加隆」⇒ 月收入 6–15 加隆 = 2958–7395 纳特；
+# 魁地奇球员（quidditch_pro）依正典 233 行「也是商业」允许破格到 9860。此处只做**下沿**守卫，
+# 上沿由 tests/registry_test.gd 的显式断言钉死（避免把「允许破格的职业」写进校验器）。
+const _JOB_WAGE_MIN := 2958
+const _JOB_WAGE_MAX := 9860
+
+func _validate_job(where: String, e: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if not e.has("wage_knuts"):
+		errors.append("%s: 缺少 wage_knuts" % where)
+		return errors
+	var wage := int(e["wage_knuts"])
+	if wage < _JOB_WAGE_MIN or wage > _JOB_WAGE_MAX:
+		errors.append("%s: wage_knuts 超出量级锚点 [%d, %d]（实际 %d）"
+			% [where, _JOB_WAGE_MIN, _JOB_WAGE_MAX, wage])
+	if int(e.get("canon_line", 0)) <= 0:
+		errors.append("%s: 职业行缺少 canon_line（正典 198 行职业清单）" % where)
 	return errors

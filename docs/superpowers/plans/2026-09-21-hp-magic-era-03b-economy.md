@@ -802,12 +802,40 @@ git commit -m "feat(03b): 4 个经济 op（存/取/汇/贸）+ OpGuard 钳制"
 ### Task 5: 月度结算 `Economy.monthly_settlement()` + 工资/开销/利息
 
 **Files:**
-- Modify: `src/rules/economy.gd`
-- Test: `tests/economy_test.gd`
+- Modify: `src/rules/economy.gd`、`src/core/registry.gd`（注册 `jobs` 表）
+- New: `data/jobs.json`
+- Modify (内容表修正): `data/goods.json`（缺陷⑨ 食物价 + `industry_id`）
+- Test: `tests/economy_test.gd`、`tests/registry_test.gd`
 
 **Interfaces:**
 - Produces: `static func monthly_settlement(world: WorldState) -> Dictionary`
   → `{"income": int, "expense": int, "interest": int}`；写回 `economy.last_month_income/expense`、`last_settlement_turn`。
+
+> **⚠️ 实况修正（2026-09-21，Task 5 开工前）**：本节原有两处硬前提**根本不存在**，已按铁律先改本计划文本 + spec §7.6：
+> 1. **缺陷⑩：`data/jobs.json` 不存在** —— 本节结尾写「职业名到 id 的映射若已在 `data/jobs.json` 就复用（**先查**，不要新造表）」。
+>    **查了：没有**（`data/` 只有 22 个文件，无 jobs）。且 `player.job` 是**自由字符串**（`gm_test` 塞「魔药学徒」、`economy_test` 塞「auror」）。
+>    ⇒ 必须新建 `data/jobs.json`（正典 **198** 行 9 类城市巫师职业；注意 spec §4 原引用写 196，实际正文在 **198**）。
+> 2. **缺陷⑨：食物价量级错** —— `food_pumpkin_pastry = 1 纳特`、`food_butterbeer = 2 纳特`
+>    （1 纳特 ≈ 0.002 加隆 ⇒ 南瓜馅饼比月房租 4437 便宜 4437 倍），且 `industry_id` 错填 `publishing`（南瓜饼归出版社）。
+>    是本节「§③ 食物开销」的必经路径。按本节自己的口径实算：**月支出只有 4497，而本节预期 6900**。
+>    ⇒ 修正为 `34` 纳特/份 + `industry_id = ""`，月支出回到 **6477**（与本节预期自洽）。
+>    **旁证**：本节作者做那次实算时用的食物价是对的，写进 `goods.json` 时错了。
+> 3. **`ADULT_MONTHS` 与 `UNKNOWN_WAGE_KNUTS` 是本任务要新定的常量**（`204` / `4930`），见 spec §7.6。
+
+> **⚠️ 实况修正 2（2026-09-21，Task 5 施工中，写测试时暴露）**：又发现两处口径错误，同样先改 spec 再改代码：
+> 4. **缺陷⑪：工资上沿口径自相矛盾** —— 本节结尾硬约束原写「其余 8 条**全部**在 `[2958, 7395]` 内」。
+>    实算：`healer = 8874 = 18.00 加隆`、`pub_owner = 7888 = 16.00 加隆`，**两条越出 7395**；越界数 **3 条**不是 1 条。
+>    ⇒ **不改薪资数值，改断言口径**：下沿 `2958`（6 加隆）保持硬约束（9 条全满足）；上沿放宽到 `9860` 且**只有 `quidditch_pro` 可达**（其余 8 条严格 `< 9860`）。
+>    量级自洽的真判据改为「**中位年收入落在数百加隆**」：中位 6900 × 12 = **168 加隆** ✔（正典 223 行）。
+>    元教训：`15 加隆` 不是正典数字，是从「年收入数百加隆 ÷ 12」倒推的**软参考**，不能拿来当硬断言。
+> 5. **缺陷⑫：未成年是否照收生活费未定义** —— K2 只说了「工资门槛」，§7.6 开销行只说「房租 + 食物×60」，**两处都没说未成年**。
+>    实算：若照收 ⇒ 11 岁开局到 17 岁前累计欠 **−946 加隆**（≈普通家庭 6 年收入）；正典 424 行未成年不得在校外使用魔法、563 行 17 岁前属「学徒」阶段。
+>    ⇒ **裁定读法 B（用户 2026-09-21 拍板）：未成年整月跳过**（收支皆 0，仅推进 `last_settlement_turn`）。
+>    「未成年无开销」升为**契约**（测试显式断言，防止将来被改回「照收」）。
+
+> **⚠️ 测试写法提醒（实测踩到）**：幂等门是 `last_settlement_turn == clock.turn`，而**新建世界的 `turn` 与 `last_settlement_turn` 都是 0**
+> ⇒ 不推回合的话第一次结算就被门挡掉（我一开始全测出 0，误以为实现坏了）。
+> 真实流程里 `tick()` **先** `advance_month()`（turn 0→1）**再**结算，测试须用 `w.clock.advance_month()` 复现这一调用序。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -847,47 +875,73 @@ git commit -m "feat(03b): 4 个经济 op（存/取/汇/贸）+ OpGuard 钳制"
 - [ ] **Step 3: 实现**
 
 ```gdscript
+const ADULT_MONTHS := 204              # 17 × 12；未成年整月跳过（K2 + 缺陷⑫）
+const FOOD_UNITS_PER_MONTH := 60       # 简化：两餐/日
+const UNKNOWN_WAGE_KNUTS := 4930       # 自由文本职业的保守兜底（店员档，**不是 0**）
+
 static func monthly_settlement(world: WorldState) -> Dictionary:
 	var e: Dictionary = world.economy
-	# 幂等：同回合不重复结算
+	# 幂等：同回合不重复结算（**不改任何字段**，spec §9 第 5 条）
 	if int(e.get("last_settlement_turn", -1)) == world.clock.turn:
+		return {"income": 0, "expense": 0, "interest": 0}
+
+	# 未成年整月跳过（缺陷⑫ 读法 B）：收支皆 0，但照常推进回合标记
+	if world.player.age_months < ADULT_MONTHS:
+		e["last_month_income"] = 0
+		e["last_month_expense"] = 0
+		e["last_settlement_turn"] = world.clock.turn
 		return {"income": 0, "expense": 0, "interest": 0}
 
 	var income := 0
 	var expense := 0
 
-	# ① 工资（仅成年 + 有职业；正典第十五章「上班」是基线）
-	if world.player.age_months >= ADULT_MONTHS and not str(world.player.job).is_empty():
-		income += _wage_for(world.player.job)
+	# ① 工资（成年 + 有职业；正典第十五章「上班」是基线，K2）
+	if not str(world.player.job).is_empty():
+		income += _wage_for(world, world.player.job)
 
-	# ② 生活开销（房租 + 食物，按 era/scarcity —— 用 price_of 保证与市价一致）
+	# ② 生活开销（房租 + 食物）—— **必须走 price_of**（不写死 base），
+	#    否则危机期物价翻倍而开销不变（口径漂移）。
 	expense += price_of(world, "svc_rent")
-	expense += price_of(world, "food_pumpkin_pastry") * 60   # 简化：两餐/日
+	expense += price_of(world, "food_pumpkin_pastry") * FOOD_UNITS_PER_MONTH
 
-	# ③ 存款利息
+	# ③ 存款利息（负余额不加息）
 	var rate := float(e.get("gringotts_interest_rate", INTEREST_RATE))
 	var bal := int(e.get("gringotts_balance", 0))
-	var interest := int(floor(float(bal) * rate))
-	e["gringotts_balance"] = bal + interest
+	var interest := 0
+	if bal > 0:
+		interest = int(floor(float(bal) * rate))
+		e["gringotts_balance"] = bal + interest
 
-	world.player.money_knuts += income - expense
+	world.player.money_knuts += income - expense   # 允许为负 ⇒ Money 负债形态（Task 3 已就绪）
 	e["last_month_income"] = income
-	e["last_month_expense"] = expense
+	e["last_month_expense"] = expense              # **正值**，符号由面板加
 	e["last_settlement_turn"] = world.clock.turn
 	return {"income": income, "expense": expense, "interest": interest}
+
+
+## 工资查表：`label` 精确 → `id` 精确 → 包含匹配（自由文本宽容，取最长命中）→ `UNKNOWN_WAGE_KNUTS`。
+static func _wage_for(world: WorldState, job: String) -> int:
+	# 实现见 src/rules/economy.gd（三级匹配 + 最长命中键，防短标签误伤）
 ```
 
-> **工资表 `_wage_for(job)`**：按正典第十五章的职业清单（商人/魔药师/记者/治疗师/店员/酒吧老板/扫帚修理工/猫头鹰驯养师/魁地奇球员）。
-> **量级锚点（硬约束，spec §13 风险 4）**：普通家庭年收入约数百加隆 ⇒ 月收入应落在 **6–15 加隆（~3000–7500 纳特）** 量级。
-> 实现后**必须实算一次**「该家庭月收支平衡点」，确认与房租 4437 纳特量级自洽（实算参考：月支出约 6900 纳特 ⇒ 工资应 ≥ 7000 纳特/月）。
-> 职业工资率进 `Economy` 常量表（属演化参数）；**职业名到 id 的映射**若已在 `data/jobs.json` 就复用（**先查**，不要新造表）。
+> **工资表 `_wage_for(job)`**：按正典 **198** 行（⚠️ 原写「第十五章」未给行号，spec §4 曾误写 196）的 9 类城市巫师职业清单
+> （商人/魔药师/记者/治疗师/店员/酒吧老板/扫帚修理工/猫头鹰驯养师/魁地奇球员）建 `data/jobs.json`。
+> **量级锚点（spec §13 风险 4）**：普通家庭年收入约数百加隆 ⇒ 月收入下沿 **6 加隆 = 2958 纳特**（**硬约束**，9 条全满足）；
+> 上沿放宽到 **9860**（20 加隆），**只有魁地奇球员可达**（正典 233 行「也是商业」），其余 8 条严格 `< 9860`。
+> ⚠️ **原写「月收入 6–15 加隆（2958–7395）」是错的**（缺陷⑪）：`healer = 8874 = 18 加隆`、`pub_owner = 7888 = 16 加隆` 越出 7395。
+> 量级自洽改判「**中位年收入落在数百加隆**」：中位 6900 × 12 = **168 加隆** ✔。
+> **实算（Table 见 spec §7.6）**：月支出 = 房租 4437 + 食物 34×60 = **6477**；中位工资 6900 ⇒ 月净 **+423**；
+> 无业者月净 **−6477** ⇒ K2 的「不工作会饿」有牙齿 ✔；未成年月净 **0**（缺陷⑫）。
+> **工资率进 `data/jobs.json` 而不是 `Economy` 常量表**：职业 `label` 是**玩家可见文本**（面板【职业】行直接显示），
+> 与 `ERA_MULT` 那种纯演化参数不同（spec §13 风险 2 讨论的同款张力，此处按「可见文本进 data」判）。
 
 - [ ] **Step 4: 跑测试确认绿 + 提交**
 
 ```bash
 bash tools/test.sh
-git add src/rules/economy.gd tests/economy_test.gd
-git commit -m "feat(03b): 月度结算（工资/开销/利息）+ 幂等"
+git add src/rules/economy.gd src/core/registry.gd data/jobs.json data/goods.json \
+        tests/economy_test.gd tests/registry_test.gd
+git commit -m "feat(03b): 月度结算（工资/开销/利息）+ jobs 表 + 食物价修正"
 ```
 
 ---

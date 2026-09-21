@@ -186,6 +186,10 @@ func run() -> int:
 		var iid := str(ge.get("industry_id", ""))
 		if str(ge.get("kind", "")) == "service":
 			n_service += 1
+		elif iid.is_empty():
+			# 缺陷⑨：食物（黄油啤酒/南瓜馅饼）无产业归属，`industry_id == ""`。
+			# 与 `svc_*` 服务行同款语义：空 = 无产业，不是坏引用。
+			pass
 		else:
 			a.is_true(reg.has("industries", iid), "%s: industry_id %s 存在" % [gid, iid])
 		if int(ge.get("canon_price_knuts", 0)) > 0:
@@ -335,5 +339,38 @@ func run() -> int:
 	})
 	a.is_true(" | ".join(bad_output.validate()).contains("base_output 超值域"),
 		"产业 base_output 越界被抓到")
+
+	# ---- 计划 03b Task 5：jobs 表（缺陷⑩）----
+	var jobs := reg.ids("jobs")
+	a.eq(jobs.size(), 9, "职业表 9 条（正典 198 行逐条对应）")
+	for jid in jobs:
+		var je := reg.entry("jobs", str(jid))
+		a.is_true(not str(je.get("label", "")).is_empty(), "job/%s: 有 label" % jid)
+		a.is_true(int(je.get("wage_knuts", 0)) > 0, "job/%s: wage_knuts 为正" % jid)
+		a.eq(int(je.get("canon_line", 0)), 198, "job/%s: canon_line == 198" % jid)
+	# 量级锚点上下沿（spec §7.6 + 缺陷⑪修正）：下沿 2958 硬约束；
+	# 上沿 9860 只有 quidditch_pro 可达，其余 8 条**严格小于**。
+	a.eq(int(reg.entry("jobs", "quidditch_pro")["wage_knuts"]), 9860, "魁地奇球员 20 加隆")
+	for jid2 in jobs:
+		var w2 := int(reg.entry("jobs", str(jid2))["wage_knuts"])
+		a.is_true(w2 >= 2958, "job/%s: >= 6 加隆下沿" % jid2)
+		if str(jid2) != "quidditch_pro":
+			a.is_true(w2 < 9860, "job/%s: 不触及 20 加隆上沿" % jid2)
+
+	# 坏职业：工资越界要被抓到
+	var bad_job := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"jobs": [{"id": "cheat", "label": "作弊职业", "wage_knuts": 100000, "canon_line": 198}],
+	})
+	a.is_true(" | ".join(bad_job.validate()).contains("wage_knuts 超出量级锚点"),
+		"职业工资越界被抓到")
+
+	# 坏职业：缺 canon_line 要被抓到
+	var bad_job_line := Registry.from_tables({
+		"eras": [{"id": "a", "label": "甲"}],
+		"jobs": [{"id": "noline", "label": "无行号", "wage_knuts": 4930, "canon_line": 0}],
+	})
+	a.is_true(" | ".join(bad_job_line.validate()).contains("canon_line"),
+		"职业缺 canon_line 被抓到")
 
 	return a.report("registry")

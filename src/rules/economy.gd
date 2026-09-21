@@ -58,6 +58,15 @@ const INTEREST_RATE := 0.002           # 古灵阁月息（常态）
 const INTEREST_RATE_CRISIS := 0.0012   # 危机期利率（spec §7.4 第 7 条）
 const SMUGGLING_PROFIT_MULT_CRISIS := 1.5
 
+# ---- Task 5：月度结算口径（spec §7.6）----
+## 成年门槛（K2）：17 岁。与 character_creation / 既有年龄口径对齐。
+const ADULT_MONTHS := 204
+## 生活开销里的食物份数（两餐/日 × 30 日）。
+const FOOD_UNITS_PER_MONTH := 60
+## 自由文本职业匹配不到 job 表时的兜底月薪（店员档）。**不是 0** ——
+## 自由文本职业（LLM 给的「见习傲罗」之类）不得变成零收入（spec §7.6）。
+const UNKNOWN_WAGE_KNUTS := 4930
+
 # ============================================================================
 # 算价核心（spec §7.4）
 # price = roundi(base × era_mult × scarcity_mult × local_mult)
@@ -251,5 +260,103 @@ static func snapshot_price(world: WorldState, good_id: String) -> int:
 	if snap.has(good_id):
 		return int(snap[good_id])
 	return price_of(world, good_id)
+
+
+# ============================================================================
+# 月度结算（E4② / spec §7.6）—— 确定性，无随机
+# ============================================================================
+
+static func _wage_for(world: WorldState, job: String) -> int:
+	## 求 `job` 对应的月薪（纳特）。三级匹配（spec §7.6「工资」行）：
+	##   ① 按 `label` 精确匹配（面板【职业】行显示的就是 label）
+	##   ② 按 `id` 精确匹配（`player.job` 也可能是 id 形态）
+	##   ③ 包含匹配（自由文本宽容：「霍格沃茨的魔药师」命中「魔药师」）
+	## 全部落空 ⇒ `UNKNOWN_WAGE_KNUTS`（**不是 0**：自由文本职业不得变成零收入）。
+	if world == null or world.registry == null:
+		return UNKNOWN_WAGE_KNUTS
+	var want := str(job).strip_edges()
+	if want.is_empty():
+		return UNKNOWN_WAGE_KNUTS
+
+	# ① label 精确 / ② id 精确
+	for jid in world.registry.ids("jobs"):
+		var e: Dictionary = world.registry.entry("jobs", str(jid))
+		if str(e.get("label", "")) == want or str(jid) == want:
+			return int(e.get("wage_knuts", UNKNOWN_WAGE_KNUTS))
+
+	# ③ 包含匹配（两侧互相包含，取最长命中键以避免短标签误伤）
+	var best_wage := UNKNOWN_WAGE_KNUTS
+	var best_len := 0
+	for jid in world.registry.ids("jobs"):
+		var e2: Dictionary = world.registry.entry("jobs", str(jid))
+		var label := str(e2.get("label", ""))
+		if label.is_empty():
+			continue
+		if want.contains(label) or label.contains(want):
+			if label.length() > best_len:
+				best_len = label.length()
+				best_wage = int(e2.get("wage_knuts", UNKNOWN_WAGE_KNUTS))
+	return best_wage
+
+
+static func monthly_settlement(world: WorldState) -> Dictionary:
+	## 按「玩家职业 + 所在地 + 世界景气」结算**一个月的工资/开销/利息**。
+	##
+	## 返回 `{"income", "expense", "interest"}`（**都是正数**，符号由调用方/面板加）。
+	## 幂等：`last_settlement_turn == clock.turn` ⇒ 返回全 0 且**不改任何字段**
+	## （spec §9 第 5 条 —— 同回合重复调用不得重复发钱）。
+	##
+	## 门槛（K2）：`age_months >= ADULT_MONTHS` **且** `job` 非空才有工资；
+	## 无业者**只有支出**（会真的变穷，正典第十五章「上班」是基线）。
+	##
+	## ⚠️ **未成年整月跳过**（缺陷⑫，2026-09-21 裁定读法 B）：
+	## `age_months < ADULT_MONTHS` ⇒ 返回全 0 且**不收生活费**（只推进 `last_settlement_turn`）。
+	## 理由：正典 424 行未成年不得在校外使用魔法、563 行 17 岁前属「学徒」阶段
+	## ⇒ 由家庭/学校供养。若照收 6477 纳特/月，11 岁开局到 17 岁前会累计欠 −946 加隆
+	## （≈普通家庭 6 年收入），构成「必破产开局」。
+	##
+	## 开销**必须走 `price_of`**（不写死 base）—— 否则危机期物价翻倍而开销不变。
+	##
+	## ⚠️ `player == null` ⇒ 返回全 0（与 `initialize` 同款防御：畸形存档路径上
+	## `SaveCodec.decode` 会在类型校验失败前走一遍 `from_dict`，此时可能没有玩家）。
+	if world == null or world.player == null or world.registry == null:
+		return {"income": 0, "expense": 0, "interest": 0}
+
+	var cur_turn := int(world.clock.turn)
+	if int(world.economy.get("last_settlement_turn", 0)) == cur_turn:
+		return {"income": 0, "expense": 0, "interest": 0}
+
+	var p := world.player
+
+	# ---- 未成年整月跳过（缺陷⑫）：收支皆 0，但照常推进回合标记 ----
+	if int(p.age_months) < ADULT_MONTHS:
+		world.economy["last_month_income"] = 0
+		world.economy["last_month_expense"] = 0
+		world.economy["last_settlement_turn"] = cur_turn
+		return {"income": 0, "expense": 0, "interest": 0}
+
+	# ---- 工资：成年且有职业才有 ----
+	var income := 0
+	if not str(p.job).strip_edges().is_empty():
+		income = _wage_for(world, str(p.job))
+
+	# ---- 生活开销：房租 + 食物 × 份数（走 price_of，随景气浮动）----
+	var expense := price_of(world, "svc_rent") \
+		+ price_of(world, "food_pumpkin_pastry") * FOOD_UNITS_PER_MONTH
+
+	# ---- 利息：只对正余额计息；负余额不计（不资本化债务）----
+	var interest := 0
+	var bal := int(world.economy.get("gringotts_balance", 0))
+	if bal > 0:
+		interest = floori(float(bal) * float(world.economy.get("gringotts_interest_rate", INTEREST_RATE)))
+		world.economy["gringotts_balance"] = bal + interest
+
+	# ---- 写回：现金按净额变更（允许为负 ⇒ 走 Money 的负债形态，Task 3 已就绪）----
+	p.money_knuts = int(p.money_knuts) + income - expense
+	world.economy["last_month_income"] = income
+	world.economy["last_month_expense"] = expense
+	world.economy["last_settlement_turn"] = cur_turn
+
+	return {"income": income, "expense": expense, "interest": interest}
 
 

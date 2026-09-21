@@ -321,9 +321,83 @@
 - `Max_TRADE_VALUE` 是否需要在 b1 契约里被观测（Task 11 定）
 - K1（`Money` 负值形态）与 K5（`scarcity_mult` 口径 A）仍为**默认接受、可回退**
 
+---
+
+## Task 5：月度结算（工资 / 开销 / 利息）+ `data/jobs.json` + 食物价修正
+
+**状态：完成**（2026-09-21）
+
+### 交付内容
+
+| 文件 | 变更 |
+| --- | --- |
+| `data/jobs.json` | **新增**（第 3 张内容表）：正典 198 行 9 类城市巫师职业 + 月薪，全部 `canon_line: 198` |
+| `data/goods.json` | 缺陷⑨：`food_butterbeer` `2→34`、`food_pumpkin_pastry` `1→34`，两行 `industry_id` `publishing→""` |
+| `src/core/registry.gd` | `TABLE_FILES` 注册 `jobs`；新增 `_validate_job`（量级锚点 + `canon_line` 守卫）；`_validate_goods` 对**空 `industry_id` 放行**（缺陷⑨ 的连带修正） |
+| `src/rules/economy.gd` | 新常量 `ADULT_MONTHS=204` / `FOOD_UNITS_PER_MONTH=60` / `UNKNOWN_WAGE_KNUTS=4930`；`monthly_settlement()`；`_wage_for()`（三级匹配） |
+| `tests/economy_test.gd` | +84 断言（⑱–㉙ + 未成年契约 + 成年边界 + 多回合） |
+| `tests/registry_test.gd` | +11 断言（jobs 表 + 空 industry_id 放行 + 两条坏职业负例） |
+| `docs/superpowers/specs/...03b-economy-design.md` | §7.6 补章 + 缺陷⑪/⑫ 修正 + §4 行号 196→198 + §6 加 `jobs.json` + §13 缺陷表 ⑦→⑫（共 **13** 处） |
+| `docs/superpowers/plans/...03b-economy.md` | Task 5「实况修正 2」+ Step 3 代码样本 + 薪资锚点note 重写 + Step 4 提交命令 |
+
+### 缺陷表（本任务新发现 3 个：⑨ / ⑩+⑩b / ⑪ / ⑫）
+
+| # | 缺陷 | 证据 | 修法 |
+| --- | --- | --- | --- |
+| **⑨** | **食物价量级错**：`food_butterbeer=2 纳特`、`food_pumpkin_pastry=1 纳特`，`industry_id` 错填 `publishing` | `1 纳特 ≈ 0.002 加隆` ⇒ 南瓜馅饼比月房租 4437 便宜 4437 倍；「南瓜饼归出版社」 | 改 `34` 纳特/份 + `industry_id=""`；月支出回到 **6477**（与 plan 既有实算自洽）。取 34 而非 58 的理由见 spec §7.6 |
+| **⑩** | **职业表不存在**：plan 写「若已在 `data/jobs.json` 就复用（先查）」，`_wage_for` 无表可依 | 查了 `data/` 22 个文件，**无 jobs**；`player.job` 是自由字符串 | 新建 `data/jobs.json`（正典 198 行 9 类）+ 注册 + 校验 |
+| **⑩b** | 正典行号偏移：spec §4 写「196 ⇒ 职业清单」 | 实际正文在 **198** | 修正引用表；`jobs.json` 各行 `canon_line=198` |
+| **⑪** | **工资上沿口径自相矛盾**：§7.6 断言「其余 8 条**全部**在 `[2958, 7395]` 内」 | 实算 `healer=8874=18加隆`、`pub_owner=7888=16加隆`，**两条越出 7395**（越界 3 条不是 1 条） | **不改数值改断言**：下沿 2958 硬约束；上沿放宽至 `9860` 且**仅 `quidditch_pro` 可达**；量级自洽改判「中位年收入落在数百加隆」（中位 6900×12 = **168 加隆** ✔）。元教训：15 加隆不是正典数字，是倒推的软参考 |
+| **⑫** | **未成年是否照收生活费未定义**：K2 只说工资门槛，§7.6 开销行只说「房租+食物×60」 | 照收 ⇒ 11 岁开局到 17 岁前累计 **−946 加隆**（≈普通家庭 6 年收入）；正典 424 行未成年不得在校外用魔法、563 行 17 岁前属「学徒」 | **用户拍板读法 B：未成年整月跳过**（收支皆 0，仅推进 `last_settlement_turn`）。「未成年无开销」升为**契约**（显式断言防回退） |
+
+### 真实 bug（写测试过程中抓到，1 个）
+
+| # | 症状 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| **B3** | `_validate_goods` 对 `food_*` 报 `industry_id 不存在（）`（内容表校验失败 2 条，`registry_test` 4 红） | 原校验 `if not has("industries", iid)` **对空串也判失败**；而缺陷⑨ 把食物改成「无产业」⇒ 空串成了合法值。`svc_*` 服务行之所以没事，是因为它们走 `kind == "service"` 分支**整个跳过**这段 | `if not iid.is_empty() and not has(...)` —— 空 = 无产业（与服务行同款语义），非空才查引用完整性 |
+
+### 我自己的测试 bug（2 个，如实记录）
+
+| # | 症状 | 原因 |
+| --- | --- | --- |
+| t4 | `monthly_settlement` 全套件测出**全 0**，一度误判实现坏了 | 幂等门是 `last_settlement_turn == clock.turn`，而**新建世界的 `turn` 与 `last_settlement_turn` 都是 0** ⇒ 不推回合则第一次结算就被门挡掉。真实流程 `tick()` **先** `advance_month()` **再**结算 ⇒ 测试须用 `w.clock.advance_month()` 复现调用序 |
+| t5 | 我按 spec 原文字写「未成年无开销」断言，代码却收了 6477 ⇒ 2 红 | 这条红**暴露了缺陷⑫**（spec 未定义），不是测试写错 —— 正是「测试先写、红得有理」的价值 |
+
+### 量级锚点最终口径（缺陷⑪ 修正后）
+
+| 职业 | 纳特 | 加隆 | 判定 |
+| --- | ---: | ---: | --- |
+| `shop_clerk` | 4 930 | 10.00 | ✔ |
+| `journalist` / `owl_keeper` | 5 423 | 11.00 | ✔ |
+| `broom_repair` | 5 916 | 12.00 | ✔ |
+| `shopkeeper`（**中位**） | 6 900 | 14.00 | ✔ 年收入 **168 加隆**（正典 223 行「数百加隆」） |
+| `apothecary` | 7 395 | 15.00 | ✔ |
+| `pub_owner` | 7 888 | 16.00 | ✔（自营业主，含经营所得） |
+| `healer` | 8 874 | 18.00 | ✔（圣芒戈高技能专业岗） |
+| `quidditch_pro` | 9 860 | **20.00** | ✔ 唯一可达上沿（正典 233 行「也是商业」） |
+
+**硬约束**：下沿 `>= 2958`（6 加隆）—— 9 条全满足；上沿 `<= 9860`，且**仅 `quidditch_pro` 可达**（其余 8 条严格 `< 9860`）。
+
+### 门禁（四道全过）
+
+| 门 | 结果 |
+| --- | --- |
+| `bash tools/test.sh` | **EXIT=0**，23 套件 / **3431 断言**（3301 → +130）/ 失败 1（`probe` 故意失败）；`registry` **568**、`economy` **1001** |
+| `stderr` 噪声 | `^SCRIPT ERROR` = **2**、`^ERROR:` = **7** —— **与基线逐字一致** |
+| `timeout 300 bash tools/b1_acceptance.sh` | **EXIT=0**，151 断言 / 失败 0，配置逐字还原 |
+| 工作区 + 进程 | 7 个已跟踪文件修改 + `data/jobs.json` 新增、`.workbuddy/` 未跟踪；godot 进程 **0** |
+
+### 挂账（不阻塞）
+
+- `registry.gd` 的 `_SCARCITY_MAX = 1.40` 与 `Economy.MAX_SCARCITY` 仍**无一致性断言**（同 Task 2/4 挂账，留 Task 11/12）
+- `registry.gd` 的 `_JOB_WAGE_MIN/_MAX`（2958/9860）与 `Economy` 侧无同名常量 ⇒ **暂无漂移风险**，但若 Task 6+ 把锚点搬进 `Economy` 需补一致性断言
+- `MAX_TRADE_VALUE`、`monthly_settlement` 是否进 b1 经济可观测契约（Task 11 定）
+- K1（`Money` 负值形态）与 K5（`scarcity_mult` 口径 A）仍为**默认接受、可回退**
+- 缺陷⑫ 的读法 B 是**用户裁定**，若后续想开「未成年打工」通道需重开 spec 章节
+
 - [x] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
 - [x] Task 4: 4 个新 op（存/取/汇/贸）+ OpGuard 钳制 + 缺陷⑧（local_mult 口径 + 货值闸门）
-- [ ] Task 5: 月度结算（工资 / 开销 / 利息）
+- [x] Task 5: 月度结算（工资 / 开销 / 利息）+ `jobs` 表 + 缺陷⑨⑩⑪⑫
 - [ ] Task 6: `tick()` 接线（`evolve` + `monthly_settlement` + 危机边沿）
 - [ ] Task 7: 面板【财富】含存款 + 新增【经济】行
 - [ ] Task 8: `state_digest` 经济摘要（信息保护）

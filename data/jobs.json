@@ -1,0 +1,11 @@
+[
+  {"id":"shopkeeper","label":"商人","wage_knuts":6900,"canon_line":198},
+  {"id":"apothecary","label":"魔药师","wage_knuts":7395,"canon_line":198},
+  {"id":"journalist","label":"记者","wage_knuts":5423,"canon_line":198},
+  {"id":"healer","label":"治疗师","wage_knuts":8874,"canon_line":198},
+  {"id":"shop_clerk","label":"店员","wage_knuts":4930,"canon_line":198},
+  {"id":"pub_owner","label":"酒吧老板","wage_knuts":7888,"canon_line":198},
+  {"id":"broom_repair","label":"扫帚修理工","wage_knuts":5916,"canon_line":198},
+  {"id":"owl_keeper","label":"猫头鹰驯养师","wage_knuts":5423,"canon_line":198},
+  {"id":"quidditch_pro","label":"魁地奇球员","wage_knuts":9860,"canon_line":198}
+]
