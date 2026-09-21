@@ -27,11 +27,46 @@ func run() -> int:
 	a.eq(plus.total_knuts(), 150, "add 返回新对象")
 	a.eq(plus.subtract(Money.from_knuts(200)).total_knuts(), -50, "允许负债（第十九章：家族破产）")
 
-	# 负值分段/格式的现状（HANDOFF §8#5 待人类裁定）；锁定现状以便裁定落地时能察觉回归
+	# 负值分段/格式（计划 03b Task 3，E9 债务形态；HANDOFF §8#5 裁定落地）
+	# ⚠️ parts() 返回 [-g, -s, -k]，第三位是**纳特**不是西可（-1002 = 2×493 + 16）
 	var debt := Money.from_knuts(-50)
-	a.eq(debt.parts(), [0, -2, -16], "负值分段（现状）")
-	a.eq(debt.formatted(), "0加隆 -2西可 -16纳特", "负值格式（现状，待裁定）")
+	a.eq(debt.parts(), [0, -2, -16], "负值分段不变（parts() 契约未动）")
 	a.eq(Money.from_dict(debt.to_dict()).total_knuts(), -50, "负值往返一致")
+
+	# ---- E9 债务形态（实算，不是猜：每档都按 parts 的纳特位反推）----
+	a.eq(Money.from_knuts(-1002).debt_formatted(), "负债 2加隆 16纳特", "-1002 = 2×493 + 16纳特")
+	a.eq(Money.from_knuts(-17).debt_formatted(), "负债 1西可", "-17 = 1西可")
+	a.eq(Money.from_knuts(-5).debt_formatted(), "负债 5纳特", "-5 = 5纳特")
+	a.eq(Money.from_knuts(-493).debt_formatted(), "负债 1加隆", "-493 = 1加隆（0 值低位单位省略）")
+	a.eq(Money.from_knuts(-510).debt_formatted(), "负债 1加隆 1西可", "-510 = 1加隆1西可")
+	a.eq(Money.from_knuts(-511).debt_formatted(), "负债 1加隆 1西可 1纳特", "-511 三位齐全")
+	a.eq(Money.from_knuts(-50).debt_formatted(), "负债 2西可 16纳特", "-50 = 2西可16纳特")
+	# 负债 1加隆整时**不得**出现「0西可 0纳特」尾巴
+	a.is_false(Money.from_knuts(-493).debt_formatted().contains("0西可"),
+		"-493 不出现 0 值单位尾巴")
+
+	a.is_true(Money.from_knuts(-1).is_debt(), "-1 是负债")
+	a.is_true(Money.from_knuts(-50).is_debt(), "-50 是负债")
+	a.is_false(Money.from_knuts(0).is_debt(), "0 不是负债")
+	a.is_false(Money.from_knuts(7).is_debt(), "正数不是负债")
+
+	# formatted() 负值走债务形态，非负分支**逐字不变**
+	a.eq(Money.from_knuts(-1002).formatted(), "负债 2加隆 16纳特", "formatted 负值走债务形态")
+	a.eq(Money.from_knuts(-50).formatted(), "负债 2西可 16纳特", "formatted -50")
+	a.eq(Money.from_knuts(0).formatted(), "0加隆 0西可 0纳特", "0 不是负债（保持原形态）")
+	a.eq(Money.from_knuts(493 + 17 + 1).formatted(), "1加隆 1西可 1纳特", "非负分支逐字不变")
+	a.eq(Money.from_knuts(1).formatted(), "0加隆 0西可 1纳特", "非负小值仍写满三位")
+
+	# ---- 正典 223 行量级：债务显示不得把加隆和纳特搞混 ----
+	a.eq(Money.from_knuts(-3451).debt_formatted(), "负债 7加隆", "普通魔杖价对应的债务")
+	a.eq(Money.from_knuts(-49300).debt_formatted(), "负债 100加隆", "光轮扫帚价对应的债务")
+
+	# to_dict / parts 对负值的既有行为**一条不改**（防「顺手把 parts 也改了」）
+	a.eq(Money.from_knuts(-1002).parts(), [-2, 0, -16], "parts 负值契约未动")
+	a.eq(Money.from_knuts(-1002).to_dict(), {"galleons": -2, "sickles": 0, "knuts": -16},
+		"to_dict 负值契约未动")
+
+	return a.report("money")
 
 	# 往返
 	var d := Money.from_knuts(493 * 3 + 17 * 2 + 5).to_dict()

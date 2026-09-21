@@ -37,7 +37,36 @@ func parts() -> Array[int]:
 		return [-g, -s, -k]
 	return [g, s, k]
 
+func is_debt() -> bool:
+	## 是否负债（正典第十九章：家族破产允许负值）。
+	return _knuts < 0
+
+
+func debt_formatted() -> String:
+	## 债务形态：「负债 2加隆 16纳特」。
+	## ⚠️ parts() 返回 [-g, -s, -k]，第三位是**纳特**不是西可（-1002 = 2×493 + 16）。
+	## 0 值单位一律省略（-493 只写「负债 1加隆」，不带「0西可 0纳特」尾巴）。
+	var p := parts()
+	var g: int = -p[0]
+	var s: int = -p[1]
+	var k: int = -p[2]
+	if g == 0 and s == 0 and k == 0:
+		return "0加隆 0西可 0纳特"   # 防御：不该走到这里（is_debt 已保证 < 0）
+	var out := "负债"
+	if g > 0:
+		out += " %d加隆" % g
+	if s > 0:
+		out += " %d西可" % s
+	if k > 0:
+		out += " %d纳特" % k
+	return out
+
+
 func formatted() -> String:
+	## 非负分支**逐字保持既有输出**（三位全写，含 0）；
+	## 负值走债务形态（计划 03b Task 3 / E9）。
+	if is_debt():
+		return debt_formatted()
 	var p := parts()
 	return "%d加隆 %d西可 %d纳特" % [p[0], p[1], p[2]]
 

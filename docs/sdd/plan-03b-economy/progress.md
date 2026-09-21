@@ -222,12 +222,27 @@
 
 ---
 
-## 后续任务
+## Task 3：`Money` 负值语义（2026-09-21）
 
-- [x] Task 1: 内容表 `goods` / `industries` + Registry 注册与字段校验
-- [x] Task 2: `Economy` 算价核心 + `WorldState.economy` + 存档白名单 + 危机常量单源
-- [ ] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
-- [ ] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
+- **状态**：✅ 完成（HANDOFF §8#5 裁定落地）
+- **变更文件**：`src/model/money.gd`（加 `is_debt` / `debt_formatted`，`formatted` 加负值分支）、
+  `tests/money_test.gd`（18 → **35 断言**）
+- **契约**：
+  - `parts()` / `to_dict()` **一字未改**（负值仍是 `[-g,-s,-k]`，第三位是纳特）
+  - `formatted()` 非负分支**逐字保持原输出**（三位全写，含 0）
+  - `formatted()` 负值 → `debt_formatted()`：`负债 2加隆 16纳特`
+  - `debt_formatted()` **省略 0 值单位**（`-493` → 「负债 1加隆」，不带「0西可 0纳特」尾巴）
+- **实算钉死的期望值**（不是照抄「看起来对」的串）：`-1002` → `负债 2加隆 16纳特`；
+  `-17` → `负债 1西可`；`-5` → `负债 5纳特`；`-493` → `负债 1加隆`；
+  `-510` → `负债 1加隆 1西可`；`-511` → 三位齐全；`-50` → `负债 2西可 16纳特`
+- **额外钉死**：`-493` 的债务串**不含** `0西可`（防有人给债务形态也加「写满三位」）；
+  正典量级两条（`-3451` → 7加隆 / `-49300` → 100加隆）
+- **`panel_test` 结论**：面板既有 102 条断言**无需改动** —— 说明 03a 的面板测试里
+  没有负值形态的断言（spec Task 3 Step 4 预设的「要同步改」实际未发生）
+- **门禁**：`test.sh` **EXIT=0**（22 套件 / **2881 断言** / 0 失败；`money` 35/0）
+- **下一步**：Task 4（4 个新 op + OpGuard 钳制）
+- [x] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
+- [ ] Task 4: 4 个新 op（存/取/汇/贸）+ OpGuard 钳制
 - [ ] Task 4: 4 个新 op + OpGuard
 - [ ] Task 5: 月度结算（工资 / 开销 / 利息）
 - [ ] Task 6: `tick()` 接线（`evolve` + `monthly_settlement` + 危机边沿）
