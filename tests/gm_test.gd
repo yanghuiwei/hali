@@ -277,6 +277,95 @@ func run() -> int:
 			two_id = str(d.get("faction_id", ""))
 	a.eq(two_id, "gringotts", "同句多派系：确定性取 id 字典序第一个")
 
+	# ---- 计划 03b（Task 9）：离线替身也支持经济 op（存 / 取 / 汇 / 贸）----
+	# 与派系分支同款：**只增不改既有分支**；未命中经济关键词时不提前 return，继续走原有分支。
+	var ecw := make_world()
+	WorldFactions.initialize(ecw)
+	Economy.initialize(ecw)
+	ecw.player.money_knuts = 100000
+	ecw.economy["gringotts_balance"] = 0
+
+	# 存：产出 deposit_money，端到端余额变大
+	var dep_res := sg.act(ecw, "我要把 100 纳特存进古灵阁")
+	var dep_knuts := 0
+	for d in dep_res.deltas:
+		if str(d.get("op", "")) == "deposit_money":
+			dep_knuts = int(d.get("knuts", 0))
+	a.eq(dep_knuts, 100, "关键词「存进古灵阁」产出 deposit_money(knuts=100)")
+	a.is_true(dep_res.tags.has("economy"), "经济动作打 economy 标签")
+	StateOps.apply(ecw, dep_res.deltas)
+	a.eq(int(ecw.economy.get("gringotts_balance", 0)), 100, "端到端：存入后余额 +100")
+	a.eq(ecw.player.money_knuts, 99900, "端到端：存入后现金 -100")
+
+	# 取：产出 withdraw_money，端到端余额变小
+	var wd_res := sg.act(ecw, "取出 50 纳特")
+	var wd_knuts := 0
+	for d in wd_res.deltas:
+		if str(d.get("op", "")) == "withdraw_money":
+			wd_knuts = int(d.get("knuts", 0))
+	a.eq(wd_knuts, 50, "关键词「取」产出 withdraw_money(knuts=50)")
+	StateOps.apply(ecw, wd_res.deltas)
+	a.eq(int(ecw.economy.get("gringotts_balance", 0)), 50, "端到端：取出后余额 -50")
+
+	# 贸：产出 trade_money（good_id 由内容表 label 反查，qty 来自数字）
+	var td_res := sg.act(ecw, "买 2 根普通魔杖")
+	var td_good := ""
+	var td_qty := 0
+	var td_mode := ""
+	for d in td_res.deltas:
+		if str(d.get("op", "")) == "trade_money":
+			td_good = str(d.get("good_id", ""))
+			td_qty = int(d.get("qty", 0))
+			td_mode = str(d.get("mode", ""))
+	a.eq(td_good, "wand_standard", "关键词「普通魔杖」反查到 good_id（label 取自内容表，不硬编码）")
+	a.eq(td_qty, 2, "数量 2 来自句内数字")
+	a.eq(td_mode, "buy", "「买」映射 mode=buy")
+	# 卖
+	var ts_res := sg.act(ecw, "卖 1 根普通魔杖")
+	var ts_mode := ""
+	for d in ts_res.deltas:
+		if str(d.get("op", "")) == "trade_money":
+			ts_mode = str(d.get("mode", ""))
+	a.eq(ts_mode, "sell", "「卖」映射 mode=sell")
+
+	# 汇：产出 exchange_money（方向来自买入/卖出）
+	var ex_res := sg.act(ecw, "把 1000 纳特换成外币")
+	var ex_dir := ""
+	for d in ex_res.deltas:
+		if str(d.get("op", "")) == "exchange_money":
+			ex_dir = str(d.get("direction", ""))
+	a.eq(ex_dir, "buy", "「换成外币」映射 direction=buy")
+
+	# ⚠️ 关键：普通动作不得被经济分支吞掉（派系分支同款风险的镜像）
+	var plain_work := sg.act(ecw, "我去对角巷打工赚钱")
+	a.is_true(plain_work.tags.has("work"), "「打工赚钱」仍走 work（未被经济分支吞掉）")
+	var work_has_econ := false
+	for d in plain_work.deltas:
+		if str(d.get("op", "")) in ["deposit_money", "withdraw_money", "exchange_money", "trade_money"]:
+			work_has_econ = true
+	a.is_false(work_has_econ, "work 分支不产出经济 op")
+
+	var plain_rest := sg.act(ecw, "我在家休息")
+	a.is_true(plain_rest.tags.has("rest"), "「休息」仍走 rest")
+	var train_res := sg.act(ecw, "我练习魔药")
+	a.is_true(train_res.tags.has("train"), "「练习魔药」仍走 train（未被经济分支吞掉）")
+
+	# 无数字的存/取：命中关键词但缺金额 → 不产出 op（避免瞎猜金额），落回 idle 或原分支
+	var no_amount := sg.act(ecw, "我要存钱进古灵阁")
+	var bare_econ := false
+	for d in no_amount.deltas:
+		if str(d.get("op", "")) == "deposit_money":
+			bare_econ = true
+	a.is_false(bare_econ, "缺金额时不产出 deposit_money（不瞎猜）")
+
+	# 「买」但物品不在内容表 → 不产出 trade_money
+	var unknown_good := sg.act(ecw, "买 2 个不存在的东西")
+	var unknown_has := false
+	for d in unknown_good.deltas:
+		if str(d.get("op", "")) == "trade_money":
+			unknown_has = true
+	a.is_false(unknown_has, "物品不在内容表时不产出 trade_money")
+
 	# 控制器点名风险 1：普通动作不得被派系分支吞掉（tags 必须走原分支，且不产出派系 op）
 	var plain_cases := {
 		"我去对角巷打工赚钱": "work",
