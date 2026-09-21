@@ -179,4 +179,45 @@ func run() -> int:
 	a.is_false(member_panel.contains("【所属势力】ministry"), "不再显示原始 faction_id")
 	a.is_true(PanelFormatter.player_panel(w_empty).contains("【所属势力】无"), "无所属仍显示「无」")
 
+	# ---- 计划 03b Task 7：【财富】含存款 + 新增【经济】行 ----
+	var w_econ := make_world()
+	WorldFactions.initialize(w_econ)
+	Economy.initialize(w_econ)
+
+	# 【财富】含存款：余额为 0 时不出现该括号
+	w_econ.economy["gringotts_balance"] = 0
+	a.is_true(not PanelFormatter.player_panel(w_econ).contains("含古灵阁"), "无存款时不显示括号")
+	# 12加隆 = 12*493 = 5916 纳特（写成裸纳特数，避免手算进位出错）
+	w_econ.economy["gringotts_balance"] = 12 * 493
+	a.is_true(PanelFormatter.player_panel(w_econ).contains("【财富】10加隆 0西可 0纳特（含古灵阁 12加隆 0西可 0纳特）"),
+		"有存款时追加括号（现金与存款各自独立格式化）")
+
+	# 【经济】行存在且数值来自 economy
+	w_econ.world_vars["economy_index"] = 0.61
+	w_econ.economy["gringotts_interest_rate"] = 0.002
+	w_econ.economy["foreign_rate"] = 1.03
+	w_econ.economy["last_month_income"] = 29
+	w_econ.economy["last_month_expense"] = 0
+	var econ_panel := PanelFormatter.player_panel(w_econ)
+	a.is_true(econ_panel.contains("【经济】"), "有【经济】行")
+	a.is_true(econ_panel.contains("景气 0.61"), "景气来自 economy_index")
+	a.is_true(econ_panel.contains("存款月息 0.20%"), "月息按 rate*100 两位小数")
+	a.is_true(econ_panel.contains("汇率 1.03"), "汇率两位小数")
+	a.is_true(econ_panel.contains("本月 +0加隆 1西可 12纳特"), "本月净收入带符号（29 纳特 = 1西可 12纳特）")
+
+	# 净支出显示为负号，且**不隐藏**该行（spec §7.6）
+	w_econ.economy["last_month_income"] = 0
+	w_econ.economy["last_month_expense"] = 29
+	a.is_true(PanelFormatter.player_panel(w_econ).contains("本月 -0加隆 1西可 12纳特"), "净支出带负号且可见")
+	a.is_false(PanelFormatter.player_panel(w_econ).contains("负债"), "负号路径不得走债务形态（否则会出「负债」二字）")
+
+	# 收支为 0
+	w_econ.economy["last_month_income"] = 0
+	w_econ.economy["last_month_expense"] = 0
+	a.is_true(PanelFormatter.player_panel(w_econ).contains("本月 无收支"), "零收支特判")
+
+	# 债务走债务形态（E9）
+	w_econ.player.money_knuts = -1002
+	a.is_true(PanelFormatter.player_panel(w_econ).contains("负债 2加隆 16纳特"), "面板债务形态")
+
 	return a.report("panel")

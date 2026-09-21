@@ -458,9 +458,70 @@
 - [x] Task 4: 4 个新 op（存/取/汇/贸）+ OpGuard 钳制 + 缺陷⑧（local_mult 口径 + 货值闸门）
 - [x] Task 5: 月度结算（工资 / 开销 / 利息）+ `jobs` 表 + 缺陷⑨⑩⑪⑫
 - [x] Task 6: `tick()` 接线（`evolve` + `monthly_settlement` + 危机边沿）+ 缺陷⑬
-- [ ] Task 7: 面板【财富】含存款 + 新增【经济】行
+- [x] Task 7: 面板【财富】含存款 + 新增【经济】行
 - [ ] Task 8: `state_digest` 经济摘要（信息保护）
 - [ ] Task 9: 离线替身接线（关键词 → 经济 op）
 - [ ] Task 10: 经济类传闻内容
 - [ ] Task 11: B1 经济可观测契约
 - [ ] Task 12: 收尾（全绿 / 台账 / 文档 / 合入 `main`）
+
+---
+
+## Task 7：面板 —— 【财富】含存款 + 新增【经济】行
+
+**状态：完成**（2026-09-21）
+
+### 交付内容
+
+| 文件 | 变更 |
+| --- | --- |
+| `src/ui/panel_formatter.gd` | 抽出 `_wealth_line(world)` / `_economy_line(world)` 两个静态函数；`player_panel()` 的【财富】行改为调 `_wealth_line()`，其后**插入【经济】行** |
+| `tests/panel_test.gd` | +11 断言（存款括号两向 / 经济行四段 / 负号路径 / 零收支特判 / 债务形态） |
+
+### 实现契约
+
+- **【财富】**：`"【财富】%s" % Money.from_knuts(p.money_knuts).formatted()`；
+  `gringotts_balance != 0` 时追加 `（含古灵阁 %s）` —— **余额为 0 不追加**（避免开局多一个恒 0 括号）。
+- **【经济】**：`景气 %.2f ｜ 存款月息 %.2f%% ｜ 汇率 %.2f ｜ 本月 %s`；
+  月息 = `gringotts_interest_rate * 100`（0.002 → `0.20%`）；汇率两位小数。
+- **本月净收支**：`net = last_month_income - last_month_expense`；
+  `>0` 带 `+`、`<0` 带 `-`（**先取负再格式化**）、`==0` 写「无收支」。
+  ⚠️ 负值分支**不得**直接把负数交给 `Money.formatted()` —— Task 3 之后它会输出「负债 X」，
+  与「本月 -X」语义重复（spec §7.6）。已用 `is_false(contains("负债"))` 钉死。
+- `power_panel()` 的「财政」指标**保持不变**（仍读 `economy_index`，`panel_formatter.gd:116` 原行号）。
+
+### 与 plan 的三处实况偏差（照抄示例会编译失败）
+
+| # | plan 原文 | 实况 | 处置 |
+| --- | --- | --- | --- |
+| 1 | 示例用 `Money.new(balance)` / `Money.new(net)` | **`Money` 没有接收参数的构造**（无 `_init`），`Money.new(int)` 直接 Parse Error | 改用 **`Money.from_knuts(n)`** |
+| 2 | 期望 `"本月 +1西可"`（假定 0 值单位省略） | `Money.formatted()` **三位全写（含 0）**；「0 单位省略」是 `debt_formatted()` 的行为 | 断言改为 `"本月 +0加隆 1西可 12纳特"`（29 纳特） |
+| 3 | 测试片段用 `_panel(w)` 辅助函数 | `tests/panel_test.gd` **没有** `_panel`；既有风格是直接 `PanelFormatter.player_panel(w)` | 按实况写法 |
+
+⇒ **元教训（与缺陷⑬ 同族）**：plan 的示例代码是**示意**不是**可编译契约**。
+后续任务（Task 8~）照抄前**必须先核对真实 API**（`grep` 一下签名），否则会浪费一轮「编译失败 → 定位」。
+本任务实测代价：2 轮编译失败 + 1 轮断言值错误。
+
+### 我自己的测试 bug（1 个，如实记录）
+
+| # | 症状 | 原因 |
+| --- | --- | --- |
+| t6 | 断言 `"含古灵阁 12加隆 3西可 4纳特"` 红 | 我手算 `12*493 + 3*29 + 4` 时把 `3*29+4=91` 纳特当成了「3西可 4纳特」，实际 91 纳特 = **5西可 6纳特**（17 纳特/西可）。教训：**断言里的钱数一律写成裸纳特表达式**（`12 * 493`），不要手算进位 |
+
+### 门禁（四道全过）
+
+| 门 | 结果 |
+| --- | --- |
+| `bash tools/test.sh` | **EXIT=0**，23 套件 / **3482 断言**（3471 → +11）/ 失败 0；`panel` **113**（102 → +11） |
+| `stderr` 噪声 | `^SCRIPT ERROR` = **2**、`^ERROR:` = **7** —— **与基线逐字一致** |
+| `timeout 300 bash tools/b1_acceptance.sh` | **EXIT=0**，151 断言 / 失败 0，配置逐字还原 |
+| 工作区 + 进程 | 2 个已跟踪文件修改、`.workbuddy/` 未跟踪 |
+
+### 挂账（不阻塞）
+
+- 缺陷⑬ 的「快照同源同月」契约：本任务的面板**读的是活算 `price_of`（或快照优先）**，
+  与结算同源 —— **Task 8 落地后应补一条跨模块断言**（面板价 == 结算价，同回合）
+- `registry.gd` 的 `_SCARCITY_MAX = 1.40` 与 `Economy.MAX_SCARCITY` 仍无一致性断言（Task 11/12）
+- K1（`Money` 负值形态）与 K5（`scarcity_mult` 口径 A）仍为**默认接受、可回退**
+
+- **下一步**：Task 8（`PromptBuilder.state_digest` 经济摘要，信息保护）

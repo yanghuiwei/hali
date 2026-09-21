@@ -40,12 +40,44 @@ static func player_panel(world: WorldState) -> String:
 	lines.append("【姓名】%s" % p.name_text)
 	lines.append("【时间】%s 【年龄】%d岁 【血统】%s" % [world.clock.formatted(), p.age_years(), _label(world, "bloodlines", p.bloodline_id)])
 	lines.append("【身份】%s 【所在地】%s 【职业】%s" % [_label(world, "houses", p.house_id), _label(world, "locations", p.location_id), (p.job if not p.job.is_empty() else "无")])
-	lines.append("【财富】%s 【家庭】%s" % [p.money().formatted(), _label(world, "birth_identities", p.birth_identity_id)])
+	lines.append(_wealth_line(world))
+	lines.append(_economy_line(world))
 	lines.append("【社会地位】%s 【魔法能力】%s 【战斗能力】%s" % [_label(world, "political_leanings", p.political_leaning_id), _magic_level_label(p), _top_skill(p, world)])
 	lines.append("【魔药/治疗】%s 【技能】%s" % [str(p.skill("potions")), _skills_line(p, world)])
 	lines.append("【声望】%d 【重要关系】%d人 【所属势力】%s" % [p.reputation, p.relations.size(), (_label(world, "factions", p.faction_id) if not p.faction_id.is_empty() else "无")])
 	lines.append("【当前目标】%s" % (p.current_goal if not p.current_goal.is_empty() else UNKNOWN))
 	return "\n".join(lines)
+
+# 计划 03b Task 7：【财富】= 随身现金 + 【家庭】。
+# 有古灵阁存款时追加「（含古灵阁 X）」，**余额为 0 时不追加** —— 避免开局就多一个恒为 0 的括号。
+static func _wealth_line(world: WorldState) -> String:
+	var p := world.player
+	var out := "【财富】%s" % p.money().formatted()
+	var balance := int(world.economy.get("gringotts_balance", 0))
+	if balance != 0:
+		out += "（含古灵阁 %s）" % Money.from_knuts(balance).formatted()
+	return "%s 【家庭】%s" % [out, _label(world, "birth_identities", p.birth_identity_id)]
+
+# 计划 03b Task 7：新增【经济】行 —— 景气 / 存款月息 / 汇率 / 本月净收支。
+# ⚠️ 净支出走「-" + 正数格式化」而不是把负数交给 Money.formatted()：
+#    后者在 03b Task 3 之后会输出「负债 X」，与这里的「本月 -X」语义重复（spec §7.6）。
+static func _economy_line(world: WorldState) -> String:
+	var vars := world.world_vars
+	var econ := world.economy
+	var index := float(vars.get("economy_index", 0.0))
+	var rate := float(econ.get("gringotts_interest_rate", 0.0))
+	var rate_pct := rate * 100.0
+	var foreign := float(econ.get("foreign_rate", 0.0))
+	var net := int(econ.get("last_month_income", 0)) - int(econ.get("last_month_expense", 0))
+	var net_text := ""
+	if net > 0:
+		net_text = "本月 +%s" % Money.from_knuts(net).formatted()
+	elif net < 0:
+		net_text = "本月 -%s" % Money.from_knuts(-net).formatted()
+	else:
+		net_text = "本月 无收支"
+	return "【经济】景气 %.2f ｜ 存款月息 %.2f%% ｜ 汇率 %.2f ｜ %s" % [index, rate_pct, foreign, net_text]
+
 
 # 第六十三章
 static func magic_panel(world: WorldState) -> String:
