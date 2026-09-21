@@ -152,10 +152,81 @@
 
 ---
 
+## Task 2：`Economy` 算价核心 + `WorldState.economy` + 存档白名单 + 危机常量单源（2026-09-21）
+
+- **状态**：✅ 完成（含 2 处口径修正 + 3 处实况修正）
+- **变更文件**：
+  | 文件 | 动作 |
+  | --- | --- |
+  | `src/rules/economy.gd` | 加算价核心（`era_mult_for`/`scarcity_mult_for`/`local_mult_for`/`available`/`is_crisis`/`effective_output`/`price_factors`/`price_of`）+ `initialize`/`_snapshot_prices`/`snapshot_price` |
+  | `src/model/world_state.gd` | 加 `economy` 字段；`create`/`from_dict` 调 `Economy.initialize`；`to_dict` 输出 |
+  | `src/persist/save_codec.gd` | `economy` 进字典字段白名单（**未升 `save_version`**） |
+  | `src/rules/factions.gd` | `:369` 的 `0.35` 字面量 → `Economy.CRISIS_THRESHOLD`（**只改这一处**） |
+  | `tests/economy_test.gd`(+`.uid`) | 新建，**906 断言** |
+  | `tests/run_tests.gd` | `SUITES` 追加 `economy_test.gd`（22 套件） |
+  | spec / 计划 | C1 定义点修正、三处实况修正 |
+
+- **⚠️ 口径修正 A（人类裁定）：C1 的定义点是「中性时代」，不是 `modern`**
+  - 现象：`modern`(2010) 的 `era_mult = 1.10`，导致 C1 全线偏 ×1.10，且
+    `wand_standard` 危机峰 `3451 × 1.10 × 1.40 = **5315 > 4930**`（**越了 canon 上沿**）。
+  - 根因：C1 初稿把「常态」与「`modern` 时代」错误划了等号。
+    `ERA_MULT` 表里中性档是 `y ≤ 1980`（实际命中 `first_wizarding_war` 1970 = **1.00**），
+    `modern` 落 `1.10`；而 `NEUTRAL_ERA_YEAR = 1950` 锚的是 canon 223 行的价位语境。
+  - 修法：C1 改为 `era_mult == 1.0` 的时代；`base_price_knuts` 语义明确为
+    「**常态 + 中性时代**的价」。35 条 base **一个数没改**。`modern` 时代物价 = `base × 1.10`
+    是**有意设计**（现代巫师社会物价高于 1950 年代），已写进 spec。
+  - 附带：断言里正面钉死「`modern` = 1.10 **非中性**」「战后回落 `modern(1.10) < 二次战争(1.15)`」
+
+- **⚠️ 三条实况修正（计划原文有误，已同步改计划）**
+  | # | 计划原文 | 实况 |
+  | --- | --- | --- |
+  | 1 | `Registry.entry("eras", ...)` | `entry()`/`ids()` 是**实例方法**，静态直呼 → Parse Error。必须走 **`world.registry`** |
+  | 2 | `world.vars.get(...)` | 字段名是 **`world.world_vars`**；写 `world.vars` → 运行期 `Invalid access` |
+  | 3 | `_industry_monopoly(industry_id)` | 因第 1 条，签名必须是 `_is_monopoly(world, industry_id)` |
+
+- **🐛 施工中修掉的真 bug（1 个，非文档问题）**
+  - **`economy.prices` 快照被 `initialize()` 误重算** —— `from_dict` 拿到的 `world_vars`
+    已过 `JsonUtil.normalize()`（浮点尾差），重算出的价与存盘时**逐字不同**
+    （实测 `wand_standard` 3644 → 3646），打破 `save_test` 的
+    「读档后重建引擎续跑：世界状态一致」断言。
+  - 修法：`initialize()` 只补**缺失**的 `prices`；快照唯一刷新点是**世界推进**（Task 6 `evolve()`）。
+  - **`from_dict` 扛不住 `economy = null`** —— 类型化字段 `Dictionary` 赋 `Nil` 直接运行期报错。
+    修法：非字典一律回落 `{}`。（这两条都是「生产值/异常存档路径」类，正向断言测不出来）
+
+- **✅ 反证实验（Task 2 Step 7，spec §9 第 3 条，必做项）**
+  | 实验 | 注入 | 实测结果 | 判定 |
+  | --- | --- | --- | --- |
+  | ① 取消 `scarcity_mult` 封顶 | `return raw` | `C3 全域价 <= canon_hi: wand_standard (**6342** <= 4930)` 变红 + 「垄断倍率守 MAX_SCARCITY」变红 | ✅ **C3 有判别力** |
+  | ② 把 `supply` 乘回价格 | `raw *= effective_output(...)` | C1 全线腰斩（`wand_standard 3451 → **1812**`）+ **C2 单调性也破**（`1948 → 1946 → 1948 → 1951` 出现回升） | ✅ **C5 有判别力**，且实证了 spec 的理由 |
+  - ② 的意外收获：`effective_output` 依赖 `economy_index`，乘进去后引入**方向相反的第二项**，
+    连**单调性**都破坏 —— 这是对 spec §7.4 C5「`supply` 语义与 `economy_index` 重复且方向冲突」
+    的**实测证据**（不只是纸面推理）。两段原始输出已存档待贴报告。
+  - 恢复代码后复跑：**全绿**（`economy` 906/0，总计 0 失败）。
+
+- **门禁（四道全过）**：
+  | 门 | 结果 |
+  | --- | --- |
+  | `bash tools/test.sh` | **EXIT=0**，**22 套件 / 2864 断言** / 失败 0（`economy` = **906** 新套件） |
+  | `stderr` 噪声 | `^SCRIPT ERROR` = **2**、`^ERROR:` = **7** —— 与基线一致 |
+  | `timeout 300 bash tools/b1_acceptance.sh` | **EXIT=0**，151 断言 / 失败 0，配置**逐字还原** |
+  | 工作区 + 进程 | 仅 `.workbuddy/` 未跟踪；godot 进程 **0** |
+
+- **挂账（不阻塞）**：
+  - `registry.gd` 的 `_SCARCITY_MAX = 1.40` 与 `Economy.MAX_SCARCITY` 两个字面量**尚无一致性断言** ——
+    Task 2 已在 `economy_test.gd` 里加了 `CATEGORIES`/`KINDS` 的两处一致断言，但**没加这个数的**，
+    留到 Task 11/12 一并补齐（或本轮补）
+  - K1（`Money` 负值形态）与 K5（`scarcity_mult` 口径 A）仍为**默认接受、可回退**
+  - `world_vars.economy_index` 是 03a 的字段，03b **只读**；`Economy` 不写 `factions`/`standing`（已遵守）
+
+- **下一步**：Task 3（`Money` 负值语义）
+
+---
+
 ## 后续任务
 
 - [x] Task 1: 内容表 `goods` / `industries` + Registry 注册与字段校验
-- [ ] Task 2: `Economy` 算价核心 + `WorldState.economy` + 存档白名单 + 危机常量单源
+- [x] Task 2: `Economy` 算价核心 + `WorldState.economy` + 存档白名单 + 危机常量单源
+- [ ] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
 - [ ] Task 3: `Money` 负值语义（`is_debt` / `debt_formatted` / `formatted` 分支）
 - [ ] Task 4: 4 个新 op + OpGuard
 - [ ] Task 5: 月度结算（工资 / 开销 / 利息）

@@ -167,7 +167,11 @@ WorldState.tick()  （唯一的世界时间推进入口）
   「优质疗伤药剂 5–20 加隆」一个区间），但 base 取该区间**上段**（12.50 加隆 = 6162）。用推导式算出上界 4601，
   会把一个 **C3 实际满足**（危机峰 8627 < canon_hi 9860）的条目误判为越界。
   ⇒ 上界必须来自**正典写明的区间上沿本身**，而不是从下沿反推。
-- `base_price_knuts`：**实际算价基准 = 常态零售价**（`index=0.5` / `modern` / `local=1.0` 时的价，见 §7.4 C1）。
+- `base_price_knuts`：**实际算价基准 = 常态零售价**（`index=0.5` / **`era_mult == 1.0` 的时代** / `local=1.0` 时的价，见 §7.4 C1）。
+  ⚠️ **「常态」不含时代加成**（2026-09-21 Task 2 施工时的口径澄清）：C1 的定义点是**中性时代**，
+  **不是 `modern` 时代**。`modern`（2010）的 `era_mult = 1.10`，其物价 = `base × 1.10` ——
+  这是**有意的**（现代巫师社会物价高于 1950 年代 canon 语境）。把 `modern` 当定义点会让
+  危机峰价被时代系数顶出 `canon_hi`（实算：3451×1.10×1.40 = **5315 > 4930**）。
   ⚠️ **原 spec 要求「有正典锚点的条目必须 `== canon_price_knuts`」，该硬校验已作废**（实算证明二者不是同一个量）；
   `Registry.validate()` 改为：`base_price_knuts > 0`，且**若 `canon_price_knuts > 0` 则 `base_price_knuts` 必须落在
   `[canon_price_knuts, canon_price_hi_knuts]` 内、且 `roundi(base_price_knuts × MAX_SCARCITY) <= canon_price_hi_knuts`**
@@ -291,7 +295,7 @@ price = round( base_price_knuts × era_mult × scarcity_mult × local_mult )
      | 1.00 | 极盛 | 6.30 加隆 | 5.25 加隆 |
    - 口径 B 仍保留为 **K5 的可选项**（繁荣侧更便宜，弹性 0.6）。**两套都通过全域守门**（危机侧守上沿）。
 3. **正典符合性验收契约（C1–C6，定版）** —— 这是「价格算对了没有」的判据：
-   - **C1（硬）**：**常态**（`index=0.5`, `modern`, `local=1.0`）价 **== `base_price_knuts`**
+   - **C1（硬）**：**常态**（`index=0.5`, **`era_mult == 1.0` 的时代**, `local=1.0`）价 **== `base_price_knuts`**
      （因 `index=0.5` 时 `scarcity_mult=1.0`、`era_mult=1.0`、`local_mult=1.0`）。
      ⇒ 这也让 `goods.json` 的 `base_price_knuts` 有了**可读的语义**：它就是「常态零售价」。
    - **C2（硬）**：价格对 `economy_index` **单调不增**（景气降 ⇒ 价不降，不许反号）。实算已验证 1001 点全单调。
@@ -341,7 +345,7 @@ price = round( base_price_knuts × era_mult × scarcity_mult × local_mult )
 | 常量 | 值 | 说明 |
 | --- | --- | --- |
 | `NEUTRAL_INDEX` | `0.5` | canon 常态价的定义基准（此时 `scarcity_mult == 1.0`） |
-| `NEUTRAL_ERA_YEAR` | `1950` | canon 价位语境的时代（`era_mult == 1.0`） |
+| `NEUTRAL_ERA_YEAR` | `1950` | canon 价位语境的时代；**这就是 C1 的中性时代**（`era_mult == 1.0`）<br>⚠️ 注意 `modern`（2010）落 `1.10` 档，**不是中性时代** —— 实算时按 `ERA_MULT` 表，中性档是 `y ≤ 1980`（实际命中 `first_wizarding_war` 1970） |
 | `MIN_SCARCITY` | `0.75` | 繁荣侧地板 |
 | `MAX_SCARCITY` | `1.40` | 危机侧天花板（由魔杖区间 1.4286x 反推，留 2.9% 余量） |
 | `CRISIS_THRESHOLD` | `0.35` | 危机态（**与 `factions.gd:369` 共用**） |

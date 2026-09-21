@@ -366,7 +366,9 @@ static func event_condition_met(world: WorldState, condition: String) -> bool:
 	var v := world.world_vars
 	match condition:
 		"economic_slump":
-			return float(v.get("economy_index", 0.6)) <= 0.35
+			# ⚠️ 阈值只有一个来源：Economy.CRISIS_THRESHOLD（计划 03b Global Constraint）。
+			# 不要在这里写 0.35 字面量 —— 调阈值时漏改一处会出现「物价已断供但派系层认为没危机」的静默不一致。
+			return float(v.get("economy_index", 0.6)) <= Economy.CRISIS_THRESHOLD
 		"oligarchy_pressure":
 			return float(power_share(world).get("pureblood", 0.0)) >= 0.26 \
 				or float(v.get("pureblood_influence", 0.3)) >= 0.65

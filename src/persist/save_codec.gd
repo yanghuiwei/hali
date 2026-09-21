@@ -13,7 +13,7 @@ static func checksum(payload: String) -> String:
 # 而 decode 的契约是「所有失败路径都返回 ok=false 且 world=null，绝不崩溃」，
 # 因此在校验和通过后、from_dict 之前先做一次顶层类型检查（嵌套字段仍由 to_dict 生产者保证）。
 static func _validate_payload(parsed: Dictionary) -> String:
-	var dict_fields := ["clock", "player", "npcs", "factions", "locations", "world_vars", "flags", "rng_state"]
+	var dict_fields := ["clock", "player", "npcs", "factions", "locations", "world_vars", "flags", "rng_state", "economy"]
 	for field in dict_fields:
 		if parsed.has(field) and typeof(parsed[field]) != TYPE_DICTIONARY:
 			return "存档载荷字段类型错误：%s 应为对象" % field

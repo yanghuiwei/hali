@@ -18,6 +18,7 @@ var world_vars: Dictionary = {}
 var log: Array = []
 var flags: Dictionary = {}
 var rng_state: Dictionary = {}
+var economy: Dictionary = {}
 var era_start_year: int = 0        # 时代锚点年份，供时间线自检使用
 
 static func create(era_id_: String, player_: PlayerState, seed_: int, registry_: Registry) -> WorldState:
@@ -34,6 +35,8 @@ static func create(era_id_: String, player_: PlayerState, seed_: int, registry_:
 	w.world_vars = JsonUtil.normalize((era.get("world_vars", {}) as Dictionary).duplicate(true))
 	w.player.age_months = maxi(w.player.age_months, 0)
 	WorldFactions.initialize(w)
+	# 计划 03b：经济状态初始化（幂等，含首帧价格快照）
+	Economy.initialize(w)
 	return w
 
 func era() -> Dictionary:
@@ -175,6 +178,7 @@ func to_dict() -> Dictionary:
 		"npcs": npcs, "factions": factions, "locations": locations,
 		"history": history, "pending": pending, "world_vars": world_vars,
 		"log": log, "flags": flags, "rng_state": rng_state,
+		"economy": economy,
 	})
 
 static func from_dict(d: Dictionary, registry_: Registry) -> WorldState:
@@ -195,6 +199,13 @@ static func from_dict(d: Dictionary, registry_: Registry) -> WorldState:
 	w.log = JsonUtil.normalize(d.get("log", []))
 	w.flags = JsonUtil.normalize(d.get("flags", {}))
 	w.rng_state = JsonUtil.normalize(d.get("rng_state", {}))
+	# economy 必须进 normalize：JSON 解析出的整数是 float，不过 normalize 会让
+	# 存读档往返的内存类型不一致（HANDOFF §4 第 1 条）。
+	# ⚠️ 非字典（null / 字符串 / 数组）必须回落到 {}，否则类型化字段赋值直接运行期报错
+	# （2026-09-21 Task 2：老存档与畸形存档路径实测）。
+	w.economy = JsonUtil.normalize(d.get("economy", {})) if typeof(d.get("economy", {})) == TYPE_DICTIONARY else {}
 	# 老存档（无 factions 或只有部分）在此补齐；幂等，不覆盖已存档的值（设计 §9.3/§9.5）
 	WorldFactions.initialize(w)
+	# 计划 03b：老存档（无 economy）在此补齐；幂等，不覆盖已存档的值
+	Economy.initialize(w)
 	return w

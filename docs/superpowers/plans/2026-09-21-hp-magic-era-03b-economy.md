@@ -56,7 +56,10 @@ scarcity_mult = clampf(raw_scarcity, MIN_SCARCITY, MAX_SCARCITY)
 ```
 
 **C1–C6 验收契约（每个价格任务都要自检）**：
-- C1 常态（`index=0.5`/`modern`/`local=1.0`）价 == `base_price_knuts`
+- C1 常态（`index=0.5`/**`era_mult == 1.0` 的时代**/`local=1.0`）价 == `base_price_knuts`
+  > ⚠️ **不是 `modern`！**（2026-09-21 Task 2 施工澄清）`modern`（2010）落 `1.10` 档，
+  > 把 `modern` 当定义点会让危机峰价被时代系数顶出 `canon_hi`（3451×1.10×1.40 = **5315 > 4930**）。
+  > `NEUTRAL_ERA_YEAR = 1950` 与 `ERA_MULT` 的中性档（`y ≤ 1980`，实际命中 `first_wizarding_war` 1970）一致。
 - C2 对 `economy_index` 单调不增
 - C3 危机侧最大值 `<= canon_hi`
 - C4 繁荣侧可低于 `canon_lo`（记录不阻断）
@@ -410,7 +413,7 @@ git commit -m "feat(03b): 商品与产业内容表 + Economy 常量骨架 + Regi
 
 ```gdscript
 	# ---- C1：常态价 == base_price_knuts ----
-	var w := _make_world(1950, 0.5)     # era=modern, economy_index=0.5
+	var w := _make_world(1950, 0.5)     # era 取「era_mult == 1.0 的中性时代」, economy_index=0.5
 	for gid in ["wand_standard", "potion_healing", "broom_nimbus", "svc_rent"]:
 		var e := Registry.entry("goods", gid)
 		a.eq(Economy.price_of(w, gid), int(e["base_price_knuts"]),
@@ -477,6 +480,10 @@ git commit -m "feat(03b): 商品与产业内容表 + Economy 常量骨架 + Regi
 	a.is_true(int(w3.economy["gringotts_interest_rate"]) > 0, "补齐了利率默认值")
 ```
 
+> ⚠️ **`_make_world(...)` 的第一个参数是「时代 id」，不是年份** —— 实现时要挑一个
+> `era_mult == 1.0` 的时代（按 `ERA_MULT` 表是 `first_wizarding_war`，start_year 1970；
+> 其 `world_vars.economy_index` 默认 0.5，与 `NEUTRAL_INDEX` 一致），否则 C1 必挂。
+
 > ⚠️ `_make_world(...)` / `world_to_dict(...)` / `_mutate_industry_base_output(...)` 是**测试内的辅助函数**，按 `tests/factions_test.gd` 里造 world 的既有写法实现（先读该文件）。**不要**在实现前猜 Registry 的 API。
 
 - [ ] **Step 2: 跑测试确认红**
@@ -490,7 +497,7 @@ bash tools/test.sh 2>&1 | grep -A8 "economy"
 
 ```gdscript
 static func era_mult_for(world: WorldState) -> float:
-	var eras := Registry.entry("eras", world.era_id)
+	var eras := world.registry.entry("eras", world.era_id)
 	var y := int(eras.get("start_year", NEUTRAL_ERA_YEAR))
 	if y <= 1000:
 		return 0.35
@@ -506,23 +513,23 @@ static func era_mult_for(world: WorldState) -> float:
 
 
 static func scarcity_mult_for(world: WorldState, industry_id: String) -> float:
-	var idx := float(world.vars.get("economy_index", NEUTRAL_INDEX))
+	var idx := float(world.world_vars.get("economy_index", NEUTRAL_INDEX))
 	var raw := 1.0 - (idx - NEUTRAL_INDEX) * 0.2 if idx >= NEUTRAL_INDEX \
 		else 1.0 + (NEUTRAL_INDEX - idx) * 1.2
 	# 垄断行业：涨价侧的超额部分加倍（spec §7.4 第 5 条）
-	if raw > 1.0 and _industry_monopoly(industry_id):
+	if raw > 1.0 and _is_monopoly(world, industry_id):
 		raw = 1.0 + (raw - 1.0) * MONOPOLY_EXCESS_MULT
 	return clampf(raw, MIN_SCARCITY, MAX_SCARCITY)
 
 
 static func local_mult_for(world: WorldState, good_id: String) -> float:
 	# 缺省必须安全：未标记的地点一律平价（spec §7.4 第 4 条）
-	var tag := str(world.vars.get("location_tag", ""))
+	var tag := str(world.world_vars.get("location_tag", ""))
 	return float(LOCAL_MULT.get(tag, LOCAL_MULT_DEFAULT))
 
 
 static func price_factors(world: WorldState, good_id: String) -> Dictionary:
-	var e := Registry.entry("goods", good_id)
+	var e := world.registry.entry("goods", good_id)
 	var iid := str(e.get("industry_id", ""))
 	return {
 		"base": int(e.get("base_price_knuts", 0)),
@@ -539,6 +546,15 @@ static func price_of(world: WorldState, good_id: String) -> int:
 	var raw := float(f["base"]) * float(f["era_mult"]) * float(f["scarcity_mult"]) * float(f["local_mult"])
 	return maxi(1, roundi(raw))
 ```
+
+> ⚠️ **三条实况修正（2026-09-21 Task 2 施工时暴露，计划原文有误）**：
+> 1. **`Registry.entry()` / `ids()` 是实例方法，不是静态方法** —— `Economy` 是静态函数集合，
+>    拿不到 `Registry` 单例，必须走 **`world.registry`**。计划原文的 `Registry.entry("eras", ...)`
+>    会直接 Parse Error：`Cannot call non-static function "entry()" on the class "Registry" directly`。
+> 2. **世界变量字段名是 `world.world_vars`，不是 `world.vars`** —— 原文写 `world.vars.get(...)`
+>    会在运行期报 `Invalid access to property or key 'vars'`。
+> 3. **`_is_monopoly` 必须收 `world` 参数**（因为第 1 条）：签名为
+>    `static func _is_monopoly(world: WorldState, industry_id: String) -> bool`。
 
 同时实现 `available()`（`supply_critical` 且 `economy_index <= SUPPLY_CUTOFF` ⇒ false）、
 `effective_output()`（`clampf(base_output * (0.5 + idx * 0.5), 0, 1)`，保留供面板用）、
