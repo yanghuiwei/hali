@@ -868,3 +868,30 @@ a.eq(Registry._SCARCITY_MAX, Economy.MAX_SCARCITY, "危机封顶倍数两处一�
 - K1（`Money` 负值形态：**已由 B5 实现落地**，`负债 X` 形态现在**两处面板一致**）与
   K5（`scarcity_mult` 口径 A）**仍为默认接受、可回退**。
 
+### Step 4–5 合入 `main`（**换了做法，理由见下**）
+
+**计划原文写法**（`git checkout main` → `git merge --no-ff plan-03b-economy`）在本机触发了一次真实事故，
+**已放弃**，改用 `git branch -f`：
+
+| 步骤 | 命令 | 结果 |
+| --- | --- | --- |
+| 事故 | `git checkout main` | ⛔ `main` 停在合并前旧快照（508 文件），checkout **把 13 个提交里新增的文件从磁盘删掉** —— `data/` 23→4、`tests/` 48→8 |
+| 恢复 | `git checkout plan-03b-economy` → `rm -f .git/index.lock` → `git checkout HEAD -- .` | ✅ 515 文件全部回填；`registry.gd` md5 **`bf0d36a2…`** 对上；重跑 `test.sh` **EXIT=0 / 3513 / 0 失败** |
+| 合入 | `git branch -f main plan-03b-economy` | ✅ 两分支同指 `a70778f`，**不切分支、不动工作区**，零风险 |
+| 推送 | `git push origin main` + `plan-03b-economy` | ✅ 远端两分支均 `a70778f` |
+
+**为什么换做法**：合并前先验 `git merge-base --is-ancestor main plan-03b-economy` = **YES**，
+且 `git log plan-03b-economy..main` **为空** ⇒ 纯 fast-forward，`main` 是 `plan` 的直接祖先。
+这种情形下 `git branch -f` 与 `merge --no-ff` 的**内容结果完全相同**（都指向 `a70778f`），
+但前者**完全不碰工作区**，而后者在本机有「checkout 批量删文件 + `.git` 写入被回收」双重风险。
+代价：少了 `--no-ff` 的合并提交。**这是有意的取舍** —— 提交图信息量远不如「零丢文件风险」重要。
+
+> 教训已写入 `HANDOFF.md` §4 第 24、25 条（含完整恢复步骤）。
+
+| 门 | 结果（**合入后重跑**） |
+| --- | --- |
+| `bash tools/test.sh` | **EXIT=0**，23 套件 / **3513 断言** / 失败 0 |
+| `stderr` 噪声 | `^SCRIPT ERROR` = **2**、`^ERROR:` = **7** |
+| `timeout 400 bash tools/b1_acceptance.sh` | **EXIT=0**，**160** 断言 / 失败 0，两个 `user://` 文件逐字还原 |
+| 工作区 + 进程 | 干净（仅 `?? .workbuddy/`）+ godot 残留 **0** |
+

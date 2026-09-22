@@ -1230,15 +1230,33 @@ git status --porcelain                  # 期望干净（仅 .workbuddy/ 未跟�
 2. `README.md`：进度表加「计划 03b · 经济骨架（已完成）」；补一句「游戏内可以存钱生息、买卖商品、跨国套利（例：把 100 加隆存进古灵阁 / 买 2 根魔杖）」。
 3. `NEXT-STEPS.md`：§A1 标 03b 完成；把 03c 提为下一个待办（边界照 spec §14）；把「6 张未接 UI 切片」（`panel_bg`/`frame_horizontal`/`frame_vertical`/`emblem_ring`/`panel_slot`/`button_close`）挂到**下一个界面改版**待办下。
 
-- [ ] **Step 4: 合入 `main`**
+- [x] **Step 4: 合入 `main`**
+
+> ⚠️ **本节已按实况重写（2026-09-22）**。原写法 `git checkout main` + `git merge --no-ff`
+> 在本机触发了一次真实事故：`main` 停在合并前的旧快照（508 文件），`checkout` **把 13 个提交里
+> 新增的文件直接从磁盘删掉**（`data/` 23→4、`tests/` 48→8）。已恢复（`git checkout HEAD -- .`，515 文件全回，
+> 关键文件 md5 对上，重跑全绿），并改用**不切分支**的做法。详见 `HANDOFF.md` §4 第 24、25 条。
+
+**先验关系（必做）**：
 
 ```bash
-git checkout main
-git merge --no-ff plan-03b-economy -m "merge: 计划 03b 经济骨架（Tasks 1-12）"
-bash tools/test.sh    # 合入后再跑一次
+git merge-base --is-ancestor main plan-03b-economy && echo "main 是祖先"
+git log --oneline plan-03b-economy..main     # 期望为空（plan 没有缺 main 的提交）
 ```
 
-- [ ] **Step 5: 提交并推送**
+**若上面成立（纯 fast-forward）—— 用这个，不要 checkout**：
+
+```bash
+git push origin plan-03b-economy              # 先推，别把提交攒在本地
+git branch -f main plan-03b-economy           # 直接推进指针，不切分支、不动工作区
+git push origin main
+bash tools/test.sh                             # 合入后再跑一次
+```
+
+**若不成立（真有分叉）**：先确认工作区干净且目标分支包含当前全部文件
+（`git ls-tree -r --name-only main | wc -l`），再 `git checkout main`，**切完立刻 `ls` 核对文件数**。
+
+- [x] **Step 5: 提交并推送**
 
 ```bash
 git add docs/sdd/plan-03b-economy README.md HANDOFF.md NEXT-STEPS.md

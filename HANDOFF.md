@@ -229,6 +229,40 @@ taskkill //PID <PID> //F
 21. **九宫格边距顺序冻结为 `[上, 右, 下, 左]`**（与 `presentation.gd` 的 `nine_patch()` 文档一致）：Godot `StyleBoxTexture` 用的是 `(left, top, right, bottom)`，两者映射封在 `AssetSlots.patch_insets()` **唯一一处**（写作 `Vector4i(raw[3], raw[0], raw[1], raw[2])`）。**写断言时必须用非对称值**（如 `[1,2,3,4]`）——对称值（`[12,12,12,12]`）测不出左右写反。
 22. **不要用 PowerShell 驱动 git；也不要手工改 `.git/` 下的文件**：PowerShell 会把 git 正常的 stderr 当 error record，且 `>` / `Out-File` 会加 **UTF-8 BOM**，把 BOM 写进 `.git/refs/**` 会直接弄坏引用。03a-P 期间真实事故：`git worktree add -b ...` 报 `fatal: invalid reference` 后，改用手工 `mkdir .git/refs/heads/assets` 造分支 ⇒ 该分支的 worktree 引用**悬空**（`git worktree list` 显示 `0000000`、分支 ref 不存在，且在该 worktree 里 `git status` 会把**整个仓库**看成「全新未跟踪」），若当时 `git add -A` 就会造出「整个仓库当初始提交」的巨型 commit。**处置**：用 Git Bash 跑 git；命令失败就把**原始输出**拿出来问，不要手工绕；临时文件写 `/tmp` 或仓库外；`git add` 只写明确路径。
 23. **「类型/属性代理」当判别器会变成假绿**：03a-P B8 实测 —— 用 `is StyleBoxFlat` 当「样式来自 ThemeBuilder、不是 Godot 内置默认」的**代理**，而 **Godot 内置默认主题的 `Button.normal` 也是 `StyleBoxFlat`** ⇒ 该断言**从来没有判别力**，只是恰好一直为真（直到我们把 normal 换成 `StyleBoxTexture` 才变红）。同理 `theme.has_stylebox(...)` 也不能当判别器（内置默认同样为 `true`）。**处置**：判别器要选一个**内置默认不会碰巧满足**的可观测量（本次用 `content_margin == ThemeBuilder.CONTENT_MARGIN_H`：我们 8 / 内置默认 4，且该值对扁平与贴图两种盒子都成立 ⇒ 在两者间切换素材时既不假红也不假绿）。**一般规则**：写「X 来自我们而不是引擎默认」这类断言时，先用一个**刻意退回默认**的夹具确认它会红。
+24. **⛔ 本机 `git checkout <分支>` 会删掉「目标分支里不存在」的工作区文件（2026-09-22 真实事故，03b Task 12）**：
+   **现象**：`main` 是 03b 分支的**祖先**（停在合并前的旧快照 `c0fa1c9`，508 文件），
+   在干净工作区里执行 `git checkout main` 后，`git` 把这 13 个提交里新增的文件当成「切过去就不该存在」，
+   **直接从磁盘删除** —— `data/` 从 23 个 json 掉到 4 个、`tests/` 从 48 掉到 8 个，`git status` 报出一长串 ` D`。
+   **为什么在本机特别危险**：仓库里的规矩是「不手工碰 `.git/`」，所以第一反应不敢乱来；
+   而这台机器**`.git/` 写入会被策略回收**（见第 22 条），容易出现「HEAD 切了、文件没落盘」的半成品状态。
+   更糟的是**这跟 `git stash` 事故是同一类**（记忆 §4#22）：切分支触发的批量删/写，一旦被拦截，
+   损失的是**不在任何历史里的东西**才不可恢复；本次幸运在于所有文件都已在 `a70778f` 提交里且**已推送远端**。
+   **铁律**：
+   1. **开工前先 push**（本次正因如此毫发无伤）。
+   2. **要合并时不要 `git checkout` 目标分支**。用 **`git branch -f <目标> <来源>`** 直接推进指针 ——
+      **不切分支、不动工作区**，从根上避开批量删文件。
+      本次：`git branch -f main plan-03b-economy` → `git push origin main`（纯 fast-forward，零风险）。
+   3. **合并前先验祖先关系**：`git merge-base --is-ancestor main plan-03b-economy`；
+      再看 `git log --oneline <目标>..<来源>`（目标缺的）与反向（来源缺的）——
+      反向为空 + 祖先成立 ⇒ 就是 fast-forward，用 `branch -f` 即可，**根本不需要 merge**。
+   4. **真的需要切分支时**：先确认工作区干净、且**目标分支包含当前所有文件**（`git ls-tree -r --name-only <目标> | wc -l` 对比）；
+      否则就是上面那个陷阱。
+   **万一已经踩了（文件被删但提交还在）**：**不要** `git reset --hard` / `git stash` / `git checkout -- .` 乱试。
+   按序做：
+   ```bash
+   git checkout <含文件的分支>          # 先让 HEAD 站到对的地方
+   rm -f .git/index.lock               # 陈旧锁会导致 Unable to create index.lock
+   git checkout HEAD -- .              # 从 HEAD 强制回填整个工作区
+   md5sum <关键文件>                    # 用已知哈希核对（本次 registry.gd=bf0d36a2… 对上了）
+   ls tests/ | wc -l && ls data/*.json | wc -l   # 48 / 23 即恢复完好
+   ```
+   **为什么 `git checkout HEAD -- .` 是这里的关键**：本机 checkout 出现过「HEAD 已切、文件未落盘」，
+   而显式带路径的 `checkout HEAD -- .` 走的是「从对象库回填」路径，实测能一次到位（48 tests / 23 json / `status` 干净）。
+   恢复后**必须重跑 `tools/test.sh` 全绿**才算真的没事。
+25. **`git checkout` 被 SIGTERM 掐断会留下 `.git/index.lock`**：本机 checkout 偶发超时被 SIGTERM，
+   之后所有 git 命令报 `Unable to create 'E:/Hali/.git/index.lock': File exists`。
+   **处置**：先 `tasklist | grep -i "^git"` 确认**没有**残留 git 进程，再 `rm -f .git/index.lock`。
+   **绝不在有 git 进程在跑时删锁**。这个锁是**空文件**（`0` 字节），可安全清理。
 
 ---
 
