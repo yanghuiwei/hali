@@ -1,8 +1,9 @@
 # 下一步待办 · 哈利·波特·魔法纪元
 
 > **本文件 = 唯一的「状态 + 待办」源头。** 其他文档**不复制**这里的数字与清单，只指向它。
-> 最后更新：2026-09-22（**03b 经济骨架已完成并合入 `main`**（12/12 任务，含收尾期间修掉的 2 个非本计划缺陷）；
-> 素材线全部入库；**下一步 = 开 03c 社会与法律**）
+> 最后更新：2026-09-22（**03c 社会与法律已开工**：spec + 台账 + 12 任务实现计划均已产出并推送，
+> 分支 `plan-03c-society-law`，**待人类评审 spec 后开 Task 1**；03b 经济骨架已完成并合入 `main`；
+> 素材线全部入库）
 
 ---
 
@@ -93,8 +94,18 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
     `canon` 与 `base` 混淆 / `supply` 反而推高危机价 / 危机线与断供线重叠 / 原契约数学上不可能等）
     ⇒ spec §7.4 / §7.1 / §13.8 / K5 行已整段重写；**35 条商品 + 9 条产业**的数值全部实算校验通过
   - ✅ **03b 台账已建**：[`docs/sdd/plan-03b-economy/progress.md`](docs/sdd/plan-03b-economy/progress.md)（Task 0 = spec，Task 1 前置 = 价格定版；Task 1–12 均已录入）
-  - ⏳ 下一步：**开 03c**（社会与法律）—— 先读 `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` §14 划边界
-  - 03c **必须处理**的挂账：`illegal_affiliation` 陈旧化（需定清除/归一规则）· 隐藏派系控制权数值仍显示
+  - ✅ **03c spec + 台账 + 实现计划已产出**（2026-09-22，分支 `plan-03c-society-law`）：
+    - spec：[`docs/superpowers/specs/2026-09-22-hp-magic-era-03c-society-law-design.md`](docs/superpowers/specs/2026-09-22-hp-magic-era-03c-society-law-design.md)（10 节）
+    - 台账：[`docs/sdd/plan-03c-society-law/progress.md`](docs/sdd/plan-03c-society-law/progress.md)
+    - 计划：[`docs/superpowers/plans/2026-09-22-hp-magic-era-03c-society-law.md`](docs/superpowers/plans/2026-09-22-hp-magic-era-03c-society-law.md)（12 个任务）
+    - 范围：纯血家族制度 / 协会体系 / 法律与审判 / 傲罗与非法施法后果（照 03a spec §14）
+    - **设计期实算修掉 3 个缺陷**：① 家族财富初稿是拍数且稀释论证算错 ② 法律风险只有累积没衰减
+      ⇒ 第 8 月必被抓且无翻身手段 ③ `player.reputation` 全仓无写入方（同 03b 缺陷⑧ 的死路径）
+    - ⏳ **下一步：人类评审 spec → 开 Task 1**（家族内容表）
+  - ⏳ 03c **必须处理**的挂账（已写进 spec §2.3 / §5.4）：`illegal_affiliation` 陈旧化（**裁定：三态归一，
+    `leave_faction` 时清除**）· `illegal_cast_count` 只记不判（**接入 `Law.heat`**）·
+    `Outcome` 被拦截时 `failure_rate/roll` 混淆（**加 `rolled: bool`**）·
+    `prejudice_level` float 写进 flags（**提升为字段**）
 - [ ] **A2 人类目视验收（顺手可做，无头环境看不到像素）**：跑 `./Godot_v4.7.2-stable_win64_console.exe --path .`
   - 待确认三处：① 按钮贴图与文字的**贴合度**（内容边距 8/4）② 8px 滚动条里 **grabber 的压缩观感** ③ **禁用态**是否够暗
   - **调观感零代码**：只改 `data/presentation.json` 的 `nine_patch`
@@ -123,6 +134,7 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
 | 队列 B3–B6 | 03a 启动 · 03a 续做 · 03a-P P1–P5 · 素材合并 + 清单加行 | 同上（含素材合并 `ea50b91`） |
 | **B8** | **P5b：把 UI 切片接进主题**（`cdddb98`） | 同上 |
 | **计划 03b** | **经济骨架（Tasks 1–12）** —— 35 商品 / 9 产业 / 9 职业 · 算价核心 · 4 个经济 op + `OpGuard` 双闸 · 月度结算 · `tick` 接线 · 面板两行 · 提示词摘要 · 离线替身 · 3 条传闻 · B1 契约 | `docs/sdd/plan-03b-economy/progress.md` |
+| **计划 03c** | **社会与法律（12 任务，进行中）** —— 纯血家族制度 / 协会体系 / 法律与审判 / 傲罗与非法施法后果；4 张新内容表（`families`/`associations`/`crimes`/`penalties`）+ 2 个新状态容器（`world.families`/`world.law`） | `docs/sdd/plan-03c-society-law/progress.md` |
 
 ---
 
@@ -168,4 +180,4 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
 | 计划 / spec / 台账 | 03b：`docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md` · `.../specs/2026-09-21-hp-magic-era-03b-economy-design.md` · `docs/sdd/plan-03b-economy/progress.md`<br>03a·03a-P：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` · `.../specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` · `docs/sdd/plan-03a-factions/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎）；**自带 stderr 噪音门禁** |
 | 工作模式 | **快跑模式**（§0A）—— 4 道门禁 + 每任务 2 处文档编辑 |
-| **下一步第一件事** | **开 03c 社会与法律**：从 `main` 拉分支 → 读 03a spec §14 划边界 → 出 spec（照 03b 的「先实算后写表」流程）；**每个 Task 完成即推送** |
+| **下一步第一件事** | **03c Task 1**：先让人类评审 spec（`docs/superpowers/specs/2026-09-22-hp-magic-era-03c-society-law-design.md`）→ 通过后写 `data/families.json` + `src/rules/families.gd`（**字段名以 `panel_formatter.gd:160-170` 的既有契约为准**）；**每个 Task 完成即推送**。⚠️ 合并回 `main` 用 `git branch -f`，**不要 `git checkout`**（`HANDOFF §4#24`） |
