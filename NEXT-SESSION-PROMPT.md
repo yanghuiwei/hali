@@ -28,19 +28,24 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0、失败 0（会�
 【按顺序读（不要跳）】
 1. **`NEXT-STEPS.md`** —— **唯一的「状态 + 待办」源头**：§0 文档职责 · §0A **快跑模式** · §0B 门禁与基线数字 · §0C 收尾清单 · §A 待办
 2. `HANDOFF.md` —— 知识库：现状、铁律、**§4 踩坑（改代码前必读）**、§8 待裁定项
-3. `docs/sdd/plan-03a-factions/progress.md` —— 耐久台账（每任务提交 / 断言数 / 门禁 / 审查结论 / 挂账）
+3. **当前进行中计划的台账**（干哪个计划就读哪份）：
+   - `docs/sdd/plan-03b-economy/progress.md` —— **03b 经济骨架**（当前主线）
+   - `docs/sdd/plan-03a-factions/progress.md` —— 03a 派系与政治（已完工，作参考）
 4. 计划与 spec（**以文件当前文本为准，它们被按实跑修正过多次**）：
-   - `docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md`（03a）
-   - `docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`（表现层契约，§2 有 🔒 接口冻结）
+   - 03b：`docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md`
+     + `docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md`
+   - 03a：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md`
+   - 03a-P：`docs/superpowers/specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md`（表现层契约，§2 有 🔒 接口冻结）
 
 【现状（一句话）】
 计划 01 / 02 / **03a（派系与政治骨架，Tasks 1–13）** / **03a-P（表现层与素材接线，P1–P5 + B8）** 均已完成并合入 `main`。
+**03b（经济骨架）进行中** —— 在分支 **`plan-03b-economy`** 上做，**Task 1–11 已完成并逐个推送**。
 素材全部入库：**CJK 正文字体**（霞鹜文楷，中文界面已可读）+ 4 份 OFL 原文 + `interface.psd` 切出的 **13 张 UI 切片**
 （其中 7 个键已接进主题：按钮四态 / 输入框 / 滚动条）。
 ⇒ **可直接跑窗口程序看效果**：`./Godot_v4.7.2-stable_win64_console.exe --path .`
 （观测界面文本加前缀 `HALI_DEBUG_LOG=1`）
 
-【接下来做什么】看 `NEXT-STEPS.md` §A（待办）与 §E（下一步第一件事）。当前为 **§A1：开新分支做 03b 经济 / 03c 社会与法律**。
+【接下来做什么】看 `NEXT-STEPS.md` §A（待办）与 §E（下一步第一件事）。当前为 **§A1 = 03b，下一步 = Task 12（收尾：全绿 / 台账 / 文档 / B1 复跑 / 合入 `main`）**。
 
 【工作模式：快跑模式（人类 2026-09-20 裁定；别自创，也别偷偷恢复旧仪式）】
 **砍掉**（昂贵且冗余）：独立 reviewer（降级为**控制器自己读 diff + 静态反证**，仅**不变量/契约改动**时才临时派）·

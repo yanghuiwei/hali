@@ -1,8 +1,9 @@
 # 下一步待办 · 哈利·波特·魔法纪元
 
 > **本文件 = 唯一的「状态 + 待办」源头。** 其他文档**不复制**这里的数字与清单，只指向它。
-> 最后更新：2026-09-20（计划 03a（Tasks 1–13）与 03a-P（P1–P5 + B8）均已完成并合入 `main`；
-> 素材线全部入库；**下一步 = §A1：03b 经济骨架 / 03c 社会与法律**）
+> 最后更新：2026-09-22（计划 03a（Tasks 1–13）与 03a-P（P1–P5 + B8）已完成并合入 `main`；
+> 素材线全部入库；**03b 经济骨架进行中**（分支 `plan-03b-economy`，Task 1–11 已完成，
+> **下一步 = Task 12 收尾**））
 
 ---
 
@@ -86,8 +87,8 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
   - ✅ **价格已定版**（执行 spec §13.8「先实算后写表」，实算发现并修掉 **6 处设计缺陷**：
     `canon` 与 `base` 混淆 / `supply` 反而推高危机价 / 危机线与断供线重叠 / 原契约数学上不可能等）
     ⇒ spec §7.4 / §7.1 / §13.8 / K5 行已整段重写；**35 条商品 + 9 条产业**的数值全部实算校验通过
-  - ✅ **03b 台账已建**：[`docs/sdd/plan-03b-economy/progress.md`](docs/sdd/plan-03b-economy/progress.md)（Task 0 = spec，Task 1 前置 = 价格定版）
-  - ⏳ 下一步：拉分支 `plan-03b-economy`，从 Task 1（内容表 + Registry 校验）开工
+  - ✅ **03b 台账已建**：[`docs/sdd/plan-03b-economy/progress.md`](docs/sdd/plan-03b-economy/progress.md)（Task 0 = spec，Task 1 前置 = 价格定版；Task 1–11 均已录入）
+  - ⏳ 下一步：**Task 12（收尾）** —— 全绿回归 → 台账 → `README`/`HANDOFF` 更新 → B1 复跑 → 合入 `main`
   - 先读 `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` §14
   - 若素材/玩法需要，可顺带落地 `assets/ui/` 里**尚未接的 6 件切片**（见 §A2）
 - [ ] **A2 人类目视验收（顺手可做，无头环境看不到像素）**：跑 `./Godot_v4.7.2-stable_win64_console.exe --path .`
