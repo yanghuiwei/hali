@@ -46,8 +46,8 @@
 
 ```bash
 git fetch origin && git status -sb          # 期望：干净。⚠️ 仓库根可能有外来未跟踪文件（如 .workbuddy/），不算失败，别删别提交
-bash tools/test.sh                          # 期望：EXIT=0；23 套件 / 3508 断言 / 失败 0；4 步全过
-timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 失败（会临时移走 llm_settings.json 并逐字还原）
+bash tools/test.sh                          # 期望：EXIT=0；23 套件 / 3511 断言 / 失败 0；4 步全过
+timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 失败（会临时移走 llm_settings.json 并逐字还原）
 ```
 
 `tools/test.sh` **自带 stderr 噪音门禁**：`SCRIPT ERROR` 必须 == **2** 且 `^ERROR:` 必须 == **7**，不符即 `EXIT=1`。
@@ -71,8 +71,13 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 �
 ## A. 待办（**未完成**；已完成的一律看 §B）
 
 - [ ] **A1 §B7：开新分支做 03b 经济骨架 / 03c 社会与法律**（下一批主线；边界照 03a spec §14）
-  - 🔄 **03b 进行中**（分支 `plan-03b-economy`）：**Task 1–9 已完成**，**下一步 = Task 10**
-    （经济类传闻内容 `data/rumors.json`）；**每完成一个 Task 立即推送远端**
+  - 🔄 **03b 进行中**（分支 `plan-03b-economy`）：**Task 1–11 已完成**，**下一步 = Task 12（收尾）**
+    （全绿 / 台账 / 文档 / B1 复跑 / 合入 `main`）；**每完成一个 Task 立即推送远端**
+  - ⚠️ **03b 期间新发现缺陷⑮**（2026-09-21，Task 11 的 B1 契约暴露，**非本计划引入**）：
+    `eras.json` 的「自定义时代」`start_year: null` + `era_mult_for()` 的 `int(null)` 抛错
+    ⇒ **玩家一选「自定义时代」全部商品价崩成 1 纳特**。已修（**仅改实现、未动数据** ——
+    `registry_test.gd:40` 有意钉住该 null）。**同族风险仍在**：任何「键存在但值为 null」+
+    `int()/float()` 强转都会同样抛错，建议择机全仓扫描一次
   - ✅ **03b spec 已产出**（2026-09-21）：[`docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md`](docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md)
     —— K1–K5 五条裁定**已按建议默认写进计划**（K1 接受「负债 X」；K5 用口径 A），**两条仍可回退**（回退只改常数与断言串，不动结构）
   - ✅ **03b 实现计划已产出**（2026-09-21）：[`docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md`](docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md)（12 个任务，格式对齐 03a 计划）
@@ -157,4 +162,4 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 �
 | 计划 / spec / 台账 | 03a·03a-P：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` · `.../specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` · `docs/sdd/plan-03a-factions/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎）；**自带 stderr 噪音门禁** |
 | 工作模式 | **快跑模式**（§0A）—— 4 道门禁 + 每任务 2 处文档编辑 |
-| **下一步第一件事** | **03b Task 11**：`tools/b1_acceptance.gd` 经济可观测契约（3 条：存款利息到账 / 危机态同商品变贵 / 债务形态可达）；分支 `plan-03b-economy`，**每个 Task 完成即推送** |
+| **下一步第一件事** | **03b Task 12（收尾）**：全绿回归 + 台账 + README/HANDOFF 更新 + B1 复跑 + 合入 `main`；分支 `plan-03b-economy`，**每个 Task 完成即推送** |

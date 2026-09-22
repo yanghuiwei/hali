@@ -171,6 +171,28 @@ func run() -> int:
 		< Economy.era_mult_for(make_world("second_wizarding_war")),
 		"战后回落：modern(1.10) < second_wizarding_war(1.15)")
 
+	# ---- 缺陷⑮ 回归：start_year 为 null 时 era_mult_for 不得抛错、不得归零 ----
+	# 背景：`eras.json` 的「自定义时代」写的是 `"start_year": null`（**键存在、值为 null**），
+	# 这是**有意的**设计（年份由玩家指定，故无固定值；registry_test 有一条断言专门钉住它）。
+	# 而原实现写 `int(entry.get("start_year", NEUTRAL_ERA_YEAR))` —— `.get` 的默认值只在
+	# **键缺失**时生效，键存在但值为 null 时返回 null；Godot 4.7 下 `int(null)` 抛
+	# 「Invalid call. Nonexistent 'int' constructor.」，函数**中途中止并返回 0.0**
+	# ⇒ 玩家选「自定义时代」时全部商品价被 `maxi(1, …)` 压成 1 纳特。
+	# 该断言由 Task 11 的 B1 可观测契约暴露（此前无任何测试在 custom 时代下算过价）。
+	# 注：回退值是 `NEUTRAL_ERA_YEAR = 1950` ⇒ 落 `y_max:1980` 档 ⇒ **1.00**（中性）,
+	# 不是 `era_mult_for` 文档里旧写的「现代档 1.10」—— 那句注释与常数定义相矛盾，已一并订正。
+	var w_custom := make_world("custom")
+	a.near(Economy.era_mult_for(w_custom), 1.00, 0.000001,
+		"缺陷⑮：custom 的 start_year 为 null ⇒ 回退中性档 1.00（不抛错、不归零）")
+	a.is_true(Economy.price_of(w_custom, "wand_standard") > 100,
+		"缺陷⑮：custom 时代商品价正常（不被压成 1 纳特，实际 %d）"
+			% Economy.price_of(w_custom, "wand_standard"))
+	# 缺键（不是 null）也必须安全 —— 与 null 走同一条兜底
+	var w_missing := make_world("custom")
+	w_missing.era_id = "没有这个时代"
+	a.near(Economy.era_mult_for(w_missing), 1.00, 0.000001,
+		"缺失时代条目 ⇒ 同样回退 1.00（不抛错）")
+
 	# ---- 未知商品不得静默返回 0（防「字典 get 缺省」类静默错误）----
 	a.eq(Economy.price_of(w, "没有这个商品"), 0, "未知商品 price_of == 0")
 	a.eq(Economy.price_of(w, ""), 0, "空 id price_of == 0")

@@ -215,6 +215,7 @@ func _initialize() -> void:
 	await _part11c_null_engine(restarted)
 	await _part12_theme_audio(node, restarted)
 	_part13_asset_slots(node)
+	_part14_economy_contract(restarted)
 
 	_part10_summary()
 	_restore_user_files()
@@ -315,6 +316,73 @@ func _part13_asset_slots(node: Node) -> void:
 	check(backdrop != null and backdrop.mouse_filter == Control.MOUSE_FILTER_IGNORE, "背景槽不吃鼠标事件（不撞输入框）")
 	check(AssetSlots.stylebox_for(node.get("presentation"), "ui.panel_bg") == null,
 		"真实清单还没有 ui.panel_bg ⇒ stylebox_for 返回 null（切片到场后只需加一行清单）")
+
+# 清单 14（计划 03b Task 11）：经济可观测契约
+# 三条都钉「玩家真能观测到的量」：①钱真的变多 ②同一件东西真的变贵 ③欠债长什么样。
+# 刻意**不走 UI**（面板已由 Task 7 单独覆盖），只驱动规则层 + 一次真实 tick，避免与 UI 断言互相污染。
+func _part14_economy_contract(node: Node) -> void:
+	part("清单 14 · 经济可观测契约：存钱生息 / 危机涨价 / 负债形态（计划 03b Task 11）")
+	var w := _world(node)
+
+	# ---- ① 存款利息真的到账：存 100000 纳特 → 过一个真实月 → 余额确实变大 ----
+	# 用 world.tick() 而非直接调 monthly_settlement，是为了顺带证明「tick 真的接线了结算」
+	# （与 spec §9 第 6 条同款：只调结算函数会漏掉接线本身坏掉的情况）。
+	# 先保证成年 + 有职业，否则缺陷⑫ 会让整月收支为 0、利息也不计。
+	w.player.age_months = maxi(int(w.player.age_months), 12 * 25)
+	if str(w.player.job).strip_edges().is_empty():
+		w.player.job = "shop_assistant"
+	var deposit := 100000
+	w.economy["gringotts_balance"] = deposit
+	w.economy["gringotts_interest_rate"] = Economy.INTEREST_RATE
+	w.economy["last_settlement_turn"] = -1   # 强制下次 tick 必结算（否则同回合幂等会短路）
+	var rate := float(w.economy.get("gringotts_interest_rate", 0.0))
+	var bal_before := int(w.economy.get("gringotts_balance", 0))
+	w.tick()
+	var bal_after := int(w.economy.get("gringotts_balance", 0))
+	var interest_expected := int(floor(float(bal_before) * rate))
+	check(bal_after > bal_before,
+		"①存钱生息：存 %d 纳特过一个月后余额真的变大（%d → %d）" % [bal_before, bal_before, bal_after])
+	check(bal_after == bal_before + interest_expected,
+		"①利息额精确到分：余额 %d = 本金 %d + floor(%d × %.4f) = %d" % [
+			bal_after, bal_before, bal_before, rate, interest_expected])
+	check(interest_expected > 0, "①月息为正数（利率 %.4f ⇒ 利息 %d 纳特）" % [rate, interest_expected])
+	note("观察：存款利息实测 本金 %d 纳特 × 月息 %.4f = 利息 %d 纳特（结算后余额 %d）" % [
+		bal_before, rate, interest_expected, bal_after])
+
+	# ---- ② 危机态下同一商品价格真的变贵：economy_index 0.7 → 0.3 ----
+	# 取一件 supply_critical=false 的普通商品，避免被「断供」逻辑干扰（断供是另一条线，见 E8）。
+	var probe_good := "wand_standard"
+	if not Economy.available(w, probe_good):
+		probe_good = "food_butterbeer"
+	var idx_before := float(w.world_vars.get("economy_index", 0.0))
+	w.world_vars["economy_index"] = 0.7
+	var price_high_idx := Economy.price_of(w, probe_good)
+	var crisis_flag_at_07 := Economy.is_crisis(w)
+	w.world_vars["economy_index"] = 0.3
+	var price_low_idx := Economy.price_of(w, probe_good)
+	var crisis_flag_at_03 := Economy.is_crisis(w)
+	check(price_low_idx > price_high_idx,
+		"②危机涨价：%s 景气 0.70 → 0.30 时价格真的上升（%d → %d 纳特）" % [
+			probe_good, price_high_idx, price_low_idx])
+	check(not crisis_flag_at_07, "②景气 0.70 不判为危机（阈值 ≤ %.2f）" % Economy.CRISIS_THRESHOLD)
+	check(crisis_flag_at_03, "②景气 0.30 判为危机（阈值 ≤ %.2f）" % Economy.CRISIS_THRESHOLD)
+	note("观察：%s 在景气 0.70 时 %d 纳特、0.30 时 %d 纳特（贵 %d 纳特，%.1f%%）" % [
+		probe_good, price_high_idx, price_low_idx, price_low_idx - price_high_idx,
+		(100.0 * float(price_low_idx - price_high_idx)) / float(maxi(price_high_idx, 1))])
+	w.world_vars["economy_index"] = idx_before   # 还原，避免影响后续断言
+
+	# ---- ③ 债务显示形态可达：负现金 ⇒ 面板输出含「负债」 ----
+	var saved_cash := int(w.player.money_knuts)
+	w.player.money_knuts = -1002   # 2加隆 16纳特 的负债（Task 3 的形态）
+	var debt_text := Money.from_knuts(w.player.money_knuts).formatted()
+	check(debt_text.contains("负债"),
+		"③负现金走债务形态（输出「%s」）" % debt_text)
+	var panel := PanelFormatter.player_panel(w)
+	check(panel.contains("负债"),
+		"③面板【财富】行真的显示负债（可达路径，不只是 Money 单测）")
+	check(not panel.contains("-1002"), "③面板不出现裸负数（形态已人类可读）")
+	note("观察：负债形态实测「%s」" % debt_text)
+	w.player.money_knuts = saved_cash   # 还原
 	note("观察（P5）：4 个槽位在素材缺失时全部不可见；槽位贡献的可见子节点 = 0（与加槽位前一致）")
 
 # 清单 1：窗口/创建界面

@@ -74,8 +74,21 @@ const UNKNOWN_WAGE_KNUTS := 4930
 # ============================================================================
 
 static func era_mult_for(world: WorldState) -> float:
-	## 时代系数：按时代起始年落档。缺省落在现代档（1.10），不抛错。
-	var years := int(world.registry.entry("eras", world.era_id).get("start_year", NEUTRAL_ERA_YEAR))
+	## 时代系数：按时代起始年落档。
+	## 缺省走 `NEUTRAL_ERA_YEAR`(1950) ⇒ 中性档 **1.00**（**不是** 1.10；
+	## 旧注释写的「现代档 1.10」与常数定义矛盾，已于缺陷⑮ 订正），且不抛错。
+	##
+	## ⚠️ 缺陷⑮（2026-09-21，Task 11 的 B1 契约暴露）：原写
+	## `int(entry.get("start_year", NEUTRAL_ERA_YEAR))` —— `.get(k, 默认)` 的默认值
+	## **只在键缺失时生效**；而 `eras.json` 里「自定义时代」写的是 `"start_year": null`
+	## （**键存在、值为 null**）。Godot 4.7 下 `int(null)` 抛
+	## 「Invalid call. Nonexistent 'int' constructor.」，函数**中途中止并返回 0.0**
+	## ⇒ 玩家一选「自定义时代」，`era_mult` 归零、全部商品价被 `maxi(1, …)` 压成 1 纳特。
+	## 修法：先取**原始值**，显式判 `null` / 非数值，再回退 —— 不能依赖 `.get` 的默认值。
+	var raw = world.registry.entry("eras", world.era_id).get("start_year")
+	var years := NEUTRAL_ERA_YEAR
+	if typeof(raw) == TYPE_INT or typeof(raw) == TYPE_FLOAT:
+		years = int(raw)
 	for band in ERA_MULT:
 		if years <= int(band["y_max"]):
 			return float(band["mult"])
