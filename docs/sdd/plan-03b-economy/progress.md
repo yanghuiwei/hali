@@ -658,4 +658,66 @@
 - 裸「取」有意不入选关键词（防「取消/取消掉」误吞）；若将来要支持，需加词边界
 - 「买/卖」+ 商品名 + 数量的完整组合仍由 LLM 路径主导；离线替身只覆盖直白口令
 
-- **下一步**：Task 10（经济类传闻内容 `data/rumors.json`）
+---
+
+## Task 10 — 经济类传闻内容（`data/rumors.json`）
+
+**目标**：追加 3 条经济传闻，让世界月度演化时能抛出经济口径的街谈巷议。
+
+### 交付
+
+| 文件 | 改动 |
+| --- | --- |
+| `data/rumors.json` | +3 条（21 → 23）：`economy_price_surge`（物价飞涨）/ `economy_gringotts_run`（古灵阁挤兑）/ `economy_black_market_boom`（黑市繁荣） |
+| `tests/world_tick_test.gd` | +24 断言（189 → 213） |
+
+### 三条传闻的字段
+
+| id | label | weight | zones | min_year |
+| --- | --- | --- | --- | --- |
+| `economy_price_surge` | 物价飞涨 | 10 | diagon_alley / knockturn_alley / hogsmeade | 990 |
+| `economy_gringotts_run` | 古灵阁挤兑 | 6 | gringotts / diagon_alley / knockturn_alley | 990 |
+| `economy_black_market_boom` | 黑市繁荣 | 6 | knockturn_alley / diagon_alley | 990 |
+
+均为 `"category": "经济"`、`"major": false`、`"requires_flags": []`；zones 已逐一核对 `locations.json`（均真实存在）。
+
+### ⚠ 与 plan 原文的实质偏差（需明确知情）
+
+| # | plan 原文 | 实况 | 处置 |
+| --- | --- | --- | --- |
+| 1 | 「让「物价飞涨」只在 `crisis` 为真时可用」 | rumor 的 `requires_flags` 是 **flag 存在性**检查（`flags.has(x)\`），而 `crisis` 存在于 `economy.crisis`（**字典字段**）—— 两者不通 | **经评审后选择退让语义**：三条传闻均不加 crisis 门控 |
+
+> **这是一次有意识的偏离，视为技术债挂账（见下）。**
+
+### 反向控制验证（1 组）
+
+| # | 故意破坏 | 期望 | 实测 |
+| --- | --- | --- | --- |
+| RC1 | 把 `economy_gringotts_run` 的一个 zone 改成不存在的地点 | zone 断言应红 | ✅ **恰好 2 条红**（「 zone 真实存在」+ 「三条均可得」） |
+
+**关键发现**：RC1 中 **`registry` 套件仍然全绿**（语义校验器不检查 zones 引用）。
+也就是说：没有本次新增的断言，一个 zone 拼写错误会让该传闻
+**永远抽不到且无任何报错** —— 这类「静默失效」正是断言应该钉的东西。
+
+### 门禁（四道全过）
+
+| 门 | 结果 |
+| --- | --- |
+| `bash tools/test.sh` | **EXIT=0**，23 套件 / **3508 断言**（3484 → +24）/ 失败 0；`world_tick` **213** |
+| `stderr` 噪声 | `^SCRIPT ERROR` = **2**、`^ERROR:` = **7** —— 与基线逐字一致 |
+| `timeout 300 bash tools/b1_acceptance.sh` | **EXIT=0**，151 断言 / 失败 0，配置逐字还原 |
+| 工作区 + 进程 | 2 文件修改、`.workbuddy/` 未跟踪；godot 残留 0 |
+
+### 挂账（不阻塞，但建议后续处理）
+
+1. **★ crisis 门控未做（本次有意偏离 plan 原文）**。若将来要做，推荐路径：
+   在 `Economy` 进出危机的边沿（`economy.gd:307-315`）同步维护
+   `flags["economy_crisis"]`，传闻写 `requires_flags: ["economy_crisis"]` 即可 ——
+   纯数据驱动、不需改 registry/world_state；**需配一条「flag 与 economy.crisis 同步」断言**。
+   （更正重的 `condition` 字段方案需改校验 + 抽签，超出本任务定位。）
+2. **rumors 的 zones 无校验器保护**（RC1 实测已证）。建议在 `registry.gd` 的 rumors 分支
+   补一条「zones 逐项逆查 `has("locations", z)`」—— 与本次测试断言形成双保险。
+3. 传闻的 `major` 均为 false；若未来要做「金融危机」级别的重大传闻，需同时满足
+   `major: true` + `MAJOR_EVENT_GAP` 间隔约束。
+
+- **下一步**：Task 11（`tools/b1_acceptance.gd` 经济可观测契约）

@@ -46,7 +46,7 @@
 
 ```bash
 git fetch origin && git status -sb          # 期望：干净。⚠️ 仓库根可能有外来未跟踪文件（如 .workbuddy/），不算失败，别删别提交
-bash tools/test.sh                          # 期望：EXIT=0；23 套件 / 3484 断言 / 失败 0；4 步全过
+bash tools/test.sh                          # 期望：EXIT=0；23 套件 / 3508 断言 / 失败 0；4 步全过
 timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 失败（会临时移走 llm_settings.json 并逐字还原）
 ```
 
@@ -157,4 +157,4 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；151 断言 / 0 �
 | 计划 / spec / 台账 | 03a·03a-P：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` · `.../specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` · `docs/sdd/plan-03a-factions/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎）；**自带 stderr 噪音门禁** |
 | 工作模式 | **快跑模式**（§0A）—— 4 道门禁 + 每任务 2 处文档编辑 |
-| **下一步第一件事** | **03b Task 10**：经济类传闻内容（`data/rumors.json`，3 条：物价飞涨 / 古灵阁挤兑 / 黑市繁荣）；分支 `plan-03b-economy`，**每个 Task 完成即推送** |
+| **下一步第一件事** | **03b Task 11**：`tools/b1_acceptance.gd` 经济可观测契约（3 条：存款利息到账 / 危机态同商品变贵 / 债务形态可达）；分支 `plan-03b-economy`，**每个 Task 完成即推送** |

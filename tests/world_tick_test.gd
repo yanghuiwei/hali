@@ -9,6 +9,26 @@ func run() -> int:
 	a.eq(reg.validate().size(), 0, "新增表后仍无校验错误")
 	a.is_true(reg.ids("locations").size() >= 18, "地点表至少 18 项")
 	a.is_true(reg.ids("rumors").size() >= 12, "传闻模板至少 12 条")
+	# 计划 03b Task 10：经济类传闻（物价飞涨 / 古灵阁挤兑 / 黑市繁荣）
+	for econ_rid in ["economy_price_surge", "economy_gringotts_run", "economy_black_market_boom"]:
+		a.is_true(reg.has("rumors", econ_rid), "经济传闻存在：%s" % econ_rid)
+		var econ_re := reg.entry("rumors", econ_rid)
+		a.eq(str(econ_re.get("category", "")), "经济", "经济传闻 category=经济（%s）" % econ_rid)
+		a.is_true(not str(econ_re.get("text", "")).is_empty(), "经济传闻有 text（%s）" % econ_rid)
+		a.is_true(int(econ_re.get("weight", 0)) > 0, "经济传闻 weight 为正（%s）" % econ_rid)
+		# zones 必须是真实地点（否则该传闻永远抽不到 —— 静默失效）
+		var econ_zones: Array = econ_re.get("zones", [])
+		a.is_true(not econ_zones.is_empty(), "经济传闻声明了 zones（%s）" % econ_rid)
+		for z in econ_zones:
+			a.is_true(reg.has("locations", str(z)), "经济传闻 zone 真实存在：%s/%s" % [econ_rid, str(z)])
+	# 经济传闻必须能被抽中：玩家在对角巷、年份足够大时出现在候选里
+	var econ_pool := 0
+	for rid2 in ["economy_price_surge", "economy_gringotts_run", "economy_black_market_boom"]:
+		var re2 := reg.entry("rumors", rid2)
+		var zones2: Array = re2.get("zones", [])
+		if zones2.has("diagon_alley") and int(re2.get("min_year", 0)) <= 2000:
+			econ_pool += 1
+	a.eq(econ_pool, 3, "三条经济传闻在「对角巷 + 现代年份」下均可得")
 	a.eq(reg.entry("locations", "forbidden_forest")["danger_label"], "高危险区", "禁林危险度（第四十四章）")
 	a.eq(reg.entry("locations", "diagon_alley")["danger_label"], "安全区", "对角巷安全区")
 	a.eq(reg.entry("locations", "azkaban")["danger_label"], "高危险区", "阿兹卡班高危险区")
