@@ -111,24 +111,24 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 
 **退出码语义**：`0` 全绿｜`1` 有失败（单测 / 冒烟 / 镜像）｜`2` 找不到 Godot 可执行文件。
 
-冷机器上第一次运行的预期输出（**计划 03a + 03a-P 完成后实测**）：
+冷机器上第一次运行的预期输出（**计划 03b 完成后实测**）：
 
 ```
 == 1/4 导入资源（生成 .godot 缓存，class_name 全局类依赖它） ==
 == 2/4 单元测试 ==
 [probe] 故意失败: 期望 <2>，实际 <1>     ← 断言库自检探针，故意失败，不算失败
 [probe] 断言=1 失败=1                    ← 同上，probe 套件不在 SUITES 里
-[harness] 断言=8 失败=0        [registry] 断言=244 失败=0
-[money] 断言=18 失败=0         [magic_level] 断言=48 失败=0
+[harness] 断言=8 失败=0        [registry] 断言=569 失败=0
+[money] 断言=53 失败=0         [magic_level] 断言=48 失败=0
 [model] 断言=49 失败=0         [clock] 断言=47 失败=0
-[world_tick] 断言=189 失败=0   [creation] 断言=188 失败=0
-[spell] 断言=229 失败=0        [gm] 断言=128 失败=0
-[panel] 断言=102 失败=0        [selfcheck] 断言=32 失败=0
+[world_tick] 断言=213 失败=0   [creation] 断言=188 失败=0
+[spell] 断言=229 失败=0        [gm] 断言=200 失败=0
+[panel] 断言=113 失败=0        [selfcheck] 断言=32 失败=0
 [save] 断言=112 失败=0         [async_probe] 断言=2 失败=0
-[llm] 断言=106 失败=0          [prompt] 断言=38 失败=0
+[llm] 断言=116 失败=0          [prompt] 断言=54 失败=0
 [debug_mirror] 断言=23 失败=0  [factions] 断言=204 失败=0
-[presentation] 断言=83 失败=0  [theme_audio] 断言=76 失败=0
-[asset_slots] 断言=59 失败=0
+[presentation] 断言=83 失败=0  [theme_audio] 断言=114 失败=0
+[asset_slots] 断言=59 失败=0   [economy] 断言=1044 失败=0
 ==== 总计失败=0，失败套件=0 ====
 ALL TESTS PASSED
 == 3/4 主场景冒烟（默认配置） ==      main scene ready, godot=4.7.2-stable (official)
@@ -139,7 +139,7 @@ ALL TESTS PASSED
 > 套件数/断言数的**当前值见 [`NEXT-STEPS.md`](NEXT-STEPS.md) §0B（唯一维护点，本文件不再重复维护数字）**。
 > 若你在本文件里看到具体数字，那是**当时的快照**；判定「文档/分支是否过旧」一律以 §0B 与 `test.sh` 实测为准（**数字变小不是回归**）。
 > 历史上 `[factions]`/`[world_tick]`/`[creation]`/`[prompt]`/`[gm]`/`[llm]`/`[registry]`/`[save]`/`[panel]` 都长过，
-> 并新增了 `[presentation]`/`[theme_audio]`/`[asset_slots]` 三个套件。
+> 并新增了 `[presentation]`/`[theme_audio]`/`[asset_slots]`/`[economy]` 四个套件。
 >
 > **stderr 噪音是自动门禁（不是“盯一下”）**：`tools/test.sh` 的第 `2/4` 步会把单测输出 tee 到临时文件，并计数两条通道：
 > `SCRIPT ERROR` 必须恰好 **2** 条（`save` 的坏档负例）、`ERROR` 必须恰好 **7** 条（5 条畸形 JSON 负例 + 2 条 `gm_test` 的「`submit()` 不能驱动协程 GM」负例）；
@@ -274,6 +274,77 @@ taskkill //PID <PID> //F
 
 ---
 
+## 5.6 计划 03b 的关键结论（2026-09-22）
+
+> 逐事件过程见 `docs/sdd/plan-03b-economy/progress.md`；这里只留「接手前必须知道的结论」。
+
+**经济规则层（`src/rules/economy.gd` + `data/goods.json` / `industries.json` / `jobs.json`）**
+
+- **`Economy.price_of(world, good_id)` 是唯一算价入口**：`base × era_mult × scarcity_mult × local_mult`。
+  面板 / 提示词 / 结算都从它取价（快照优先，见下）。**任何新代码不得自行拼算价公式**
+  （跨地算价用 `price_at()` / `price_factors_at()`，它们内部复用同一式，避免两处实现漂移）。
+- **价格定版常数**（实算反推，spec §7.4 常量总表）：
+  `NEUTRAL_INDEX=0.5` · `NEUTRAL_ERA_YEAR=1950` · `MIN_SCARCITY=0.75` · `MAX_SCARCITY=1.40` ·
+  `CRISIS_THRESHOLD=0.35` · `SUPPLY_CUTOFF=0.15` · `MONOPOLY_EXCESS_MULT=2.0`。
+- **C1 的中性时代是「`era_mult == 1.0` 的时代」，不是 `modern`**
+  （`modern` 落 1.10 档，**有意设计**：现代物价高于 1950 年代）。
+  这是同一种错误的**第三次现身**（另两次：`local_mult` 缺省点、`custom` 时代的 `int(null)`）——
+  **凡定义「常态基准」的量，定义点必须落在所有因子都等于 1 的那一点**。
+- **`supply` 不进价格**（C5），只决定 `available()` / 断供。
+  实测把 `supply` 乘回价格会**同时**打破 C1 与 C2 单调性（方向相反的第二项）。
+- **危机线 0.35 与断供线 0.15 解耦**：危机中（0.16..0.35）仍供货、只是贵。
+  原设计两者同为 0.35，留下「已越界但仍供货」的死区。
+- **`canon_price_hi_knuts` 必须直接存正典写明的区间上沿**，不得用
+  `canon_lo × MAX_SCARCITY / MIN_SCARCITY` 反推 —— 该式隐含「一条商品 = 一个 canon 窗口且 base 就在下沿」，
+  被 `potion_healing_premium`（与 `potion_healing` **共享区间**、base 取上段）打破。
+  **元教训**：缺陷 ②～⑦ 同一形态 —— **用「推导式」代替「正典里本来就写明的量」**。
+  凡正典直接给出的数字就该**存字段**，推导式只在正典没给、且隐含前提写下来并验证过时才用。
+- **删掉了「上等魔杖」**：普通魔杖的 canon 窗口 `[7,10]` 常态可用带仅 `[3451,3521]`，
+  容不下第二档商品（正典只给了「普通魔杖」一个窗口）。
+- **`Registry._SCARCITY_MAX` 是 `Economy.MAX_SCARCITY` 的镜像常量**（registry 在 Economy **上游**，
+  preload 会成环）⇒ 一致性由 `tests/registry_test.gd` 的显式断言钉死，**不要只留一份或只写注释**。
+
+**`WorldState.economy` 与月度结算**
+
+- `economy` 键集：`prices`（本月价目快照）· `gringotts_balance` · `gringotts_interest_rate` ·
+  `foreign_rate` · `foreign_held`（**以纳特等值记账**）· `smuggling_heat` · `crisis` ·
+  `last_settlement_turn` · `last_month_income` · `last_month_expense`。**未升 `save_version`**。
+- **`initialize()` 只补缺键、绝不覆盖已有值** —— 尤其 `prices` 快照：
+  `from_dict` 拿到的 `world_vars` 已过 `JsonUtil.normalize()`（浮点尾差），
+  若在 `initialize` 里重算快照会算出与存盘时**逐字不同**的价（实测 3644 → 3646），
+  直接打破「读档往返一致」。快照的**唯一刷新点是世界推进**（`evolve()`）。
+- **`tick()` 里 `evolve()` 必须在 `monthly_settlement()` 之前**。
+  ⚠️ 理由**不是**「否则结算用上月价」（`price_of` 是活算，顺序对结果无影响 —— 反向控制实测对调后 1037 断言全绿）：
+  真正理由是「**面板看到的价**」与「**结算用的价**」必须**同源同月**，而面板读的是 `evolve` 刷出的快照。
+- **危机是「边沿」不是「电平」**：`false→true` 才写事件，`true→false` 只回升利率**不写事件**。
+- **未成年整月跳过结算**（收支皆 0，仅推进 `last_settlement_turn`）——
+  人类裁定读法 B。若照收 6477 纳特/月，11 岁开局到 17 岁前会累计 **−946 加隆**（≈普通家庭 6 年收入）。
+- 结算**幂等**：`last_settlement_turn == clock.turn` ⇒ 返回全 0 且**不改任何字段**。
+
+**经济 op 与守卫**
+
+- 4 个 op：`deposit_money` / `withdraw_money` / `exchange_money` / `trade_money`。
+  **LLM 绝不允许**直接改 `economy_index` / `gringotts_interest_rate` / `prices` / `smuggling_heat`
+  （无此类 op，沿用「未知 op 一律拒绝」）。
+- **`OpGuard` 是双闸**：件数 `MAX_TRADE_QTY` **+ 货值 `MAX_TRADE_VALUE = 5000`**（按 `base × qty`）。
+  ⚠️ 只有件数闸是**不够的**：实测 `broom_nimbus` 净利 17 135 纳特/件，`qty=100` 单笔
+  = 3 476 加隆 ≈ **11.6 倍家庭年收入**。加了货值闸后高价耐用品天然不可搬运（`broom_nimbus` 的 `qty` 上限 = 0 ⇒ 拒绝）。
+- **`local_mult` 按 `locations.json` 的 `zone` 推导**（wild/forbidden→产地 0.85、wizarding/school→常规 1.0、
+  muggle→偏远 1.2、未知→缺省 1.0），**不再读 `world_vars["location_tag"]`**（那个键全仓无写入方，
+  且 `world_vars` 在玩家换地点时不变 ⇒「产地买、销地卖」实现上不可能）。
+- ⚠️ **`OpGuard` 的 `_to_int` 必须用**：`int(x.get(k, 默认))` 在「键存在但值为 null」时会抛错中止函数
+  （缺陷⑮ 同族）。凡从 LLM/JSON 来的值一律走 `_to_int` / 显式 `typeof` 判断。
+
+**`Money`**
+
+- `parts()` / `to_dict()` 的负值契约（`[-g,-s,-k]`，第三位是**纳特**）**一字未改**。
+- `formatted()` 非负分支**逐字不变**（三位全写含 0）；负值 ⇒ `debt_formatted()`（0 值单位**省略**）。
+- `signed_formatted()`：非负 ⇒ `"+" + formatted()`；负值 ⇒ `debt_formatted()`。面板【经济】行用这个。
+- 断言里的钱数一律用**整数运算**核（`v/493`、`v%493`、`r/17`、`r%17`），**不手算进位** ——
+  同一类错误已在 03b 期间现身 2 次（台账 Task 7 的 t6 与 Task 12 的 B4）。
+
+---
+
 ## 6. 接下来怎么做
 
 **待办与下一步一律看 [`NEXT-STEPS.md`](NEXT-STEPS.md)** —— 它是唯一的「状态 + 待办」源头：
@@ -322,7 +393,13 @@ taskkill //PID <PID> //F
 2. ~~**魔杖价自相矛盾**~~ **已裁定（Task 4）**：按正典 `哈利·波特·魔法纪元.md:223`「一根普通魔杖：7‑10加隆」，测试取价格下限 7 加隆（3451 纳特），期望 `"3加隆 0西可 0纳特"`；计划与测试两处已同步。裁定记录见 `docs/sdd/plan-01-core-foundation/task-4-review.md`。
 3. **Task 8 `ScriptedGameMaster` 直接调 `SpellResolver.cast()`**（直接改世界）……**计划 02 已部分收口**：LLM 主路径（`LlmGameMaster` → `OpGuard` → `StateOps`）不再直改世界；**降级路径** `ScriptedGameMaster` 仍沿用旧实现（spec §14.1 已登记）。
 4. **哑炮失败率**：`BANDS[0] = (1.00, 1.00)` 但 `effective_rate(SQUIB)` 早退返回 `0.95`，等于哑炮有 5% 施法成功率，与正典「哑炮…无法施展咒语」的严格读法冲突（Task 7 判定直接走 `effective_rate`）。二选一：把 `BANDS[0]` 改成 `(0.95, 0.95)`，或让 `effective_rate` 对 SQUIB 返回 1.0 / 直接拒绝施法。另注 `base_rate(SQUIB)=1.0` 超出 `effective_rate` 文档化的 `[0.005, 0.95]` 值域，是潜在陷阱。
-5. **`Money` 负值显示未定义**：`Money.from_knuts(-50)` → `parts() = [0, -2, -16]`，`formatted() = "0加隆 -2西可 -16纳特"`。**Task 9 已落地面板（`player_panel`/`power_panel` 会输出该形态），但仍未定义**：债务场景会显示负值西可/纳特。需裁定债务格式（如「负债 X 加隆」）或在 `Money` 层定义。
+5. ✅ **已闭合（03b Task 3 + Task 12，2026-09-22）** —— **`Money` 负值显示未定义**：
+   现定义两套形态 —— `debt_formatted()` = `负债 2加隆 16纳特`（**0 值单位省略**），
+   `signed_formatted()` = 非负 `"+" + formatted()` / 负值走债务形态。
+   `formatted()` 的负值分支也返回债务形态（非负分支逐字不变）。
+   ⚠️ 关键一致性：面板【财富】与【经济】两行**共用同一形态函数** ——
+   原先【经济】行写的是裸负号 `-2加隆 16纳特`，与【财富】的 `负债 …` 并存（同一数据两种写法），
+   03b Task 12 已统一（这是收尾期间抓到的真缺陷）。`parts()`/`to_dict()` 的负值契约**一字未改**。
 6. **大师级失败率上界 0.02** 对正典「低于2%」是开/闭区间歧义，测试用 `<=` 掩盖了它。
 7. ✅ **已闭合（03a T7：势力面板重写为「机构级指标来自派系机构控制权」）** —— **（Task 9 已落地，扩展）`power_panel` 标签映射** 把 **7 个标签**映射到 **4 个 `world_vars`**：法律执行→`war_pressure`、傲罗/稳定度→`ministry_stability`、威森加摩/腐败度→`corruption`、国际→`muggle_relations`（与「麻瓜关系」重复）。纯显示问题，确认可接受，或后续补独立的 `international_relations` 等键。
 8. ~~**是否先补 Task 3 的测试强度缺口**（审查 Minor）~~ **已收口（加固批次 `e094a52`）**：`magic_level_test` 已逐档钉住十档 `BANDS`/`LABELS` 并用真越界输入验证 clamp（22→48 断言）；`money_test` 补了负值 `parts()`/`formatted()`/往返（15→18）。

@@ -10,11 +10,11 @@
 - **换机器 / 交接 / 续做：先读 [`HANDOFF.md`](HANDOFF.md)**（分支、Godot 引擎获取、当前进度、待裁定项、踩过的坑）
 - 执行过程台账：[`docs/sdd/plan-01-core-foundation/progress.md`](docs/sdd/plan-01-core-foundation/progress.md) · [`docs/sdd/plan-02-llm-narrative/progress.md`](docs/sdd/plan-02-llm-narrative/progress.md)
 
-> 计划 01 / 计划 02 / 计划 03a（含 03a-P 表现层）均已合入 `main`；**后续计划从 `main` 拉新分支**（见 [`NEXT-STEPS.md`](NEXT-STEPS.md) §A 待办）。
+> 计划 01 / 计划 02 / 计划 03a（含 03a-P 表现层）/ 计划 03b（经济骨架）均已合入 `main`；**后续计划从 `main` 拉新分支**（见 [`NEXT-STEPS.md`](NEXT-STEPS.md) §A 待办）。
 
 ## 当前进度
 
-**计划 01 · 核心模拟地基 已完成**（11/11 任务）。交付物：读正典内容表 → 创建角色 → 按月推进世界 → 提交行动得到结果 → 状态面板 → 存档读档，核心逻辑全部可在无头模式自动化测试，并可通过 `src/ui/main.tscn` 窗口程序实际游玩。**计划 02 · LLM 叙事引擎 已完成**（12/12 任务）；**计划 03a · 派系与政治骨架 已完成**（13/13 任务）；**计划 03a-P · 表现层与素材接线 已完成**（P1–P5）。详见下。
+**计划 01 · 核心模拟地基 已完成**（11/11 任务）。交付物：读正典内容表 → 创建角色 → 按月推进世界 → 提交行动得到结果 → 状态面板 → 存档读档，核心逻辑全部可在无头模式自动化测试，并可通过 `src/ui/main.tscn` 窗口程序实际游玩。**计划 02 · LLM 叙事引擎 已完成**（12/12 任务）；**计划 03a · 派系与政治骨架 已完成**（13/13 任务）；**计划 03a-P · 表现层与素材接线 已完成**（P1–P5）；**计划 03b · 经济骨架 已完成**（12/12 任务）。详见下。
 
 | 任务 | 内容 | 状态 |
 | --- | --- | --- |
@@ -30,7 +30,7 @@
 | 10 | 存档与读档 | ✅ 完成 |
 | 11 | 主界面与运行说明 | ✅ 完成 |
 
-后续计划：**03b 经济骨架 · 03c 社会与法律**（计划 03 的两个子计划，边界见 [03a spec §14](docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md)）——**03b 设计已出**：[03b spec](docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md)（待评审）；04 神奇生物生态与区域危险度；05 NPC 自主系统与信息可信度；06 多世代传承与世界记忆；另有独立小计划：设置界面、流式输出、长期记忆、存档格式 v2。
+后续计划：**03c 社会与法律**（计划 03 的第二个子计划，边界见 [03a spec §14](docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md)）；04 神奇生物生态与区域危险度；05 NPC 自主系统与信息可信度；06 多世代传承与世界记忆；另有独立小计划：设置界面、流式输出、长期记忆、存档格式 v2。
 
 ### 计划 02 · LLM 叙事引擎（已完成，已合入 `main`）
 
@@ -63,6 +63,22 @@
 
 **中文界面已可读**：CJK 正文字体（霞鹜文楷 + OFL 原文）与切片素材均已入库，`data/presentation.json` 的 `fonts.body` → `body_cjk.ttf`，
 由 `ThemeBuilder` 消费为 `default_font`；实测含生僻字（`龘爨饕餮`）**无缺字**（该断言为条件式：字体到场后自动生效）。
+
+### 计划 03b · 经济骨架（已完成，已合入 `main`）
+
+12/12 任务完成；实现计划 [`docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md`](docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md)，设计 spec [`docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md`](docs/superpowers/specs/2026-09-21-hp-magic-era-03b-economy-design.md)，台账 [`docs/sdd/plan-03b-economy/progress.md`](docs/sdd/plan-03b-economy/progress.md)。
+
+内容表三张（`data/goods.json` **35 条商品** · `data/industries.json` **9 条产业** · `data/jobs.json` **9 类职业**，
+全部 `canon_line` 锚到正典）→ `Economy` 规则层（**`price_of()` 是唯一算价入口**：`base × era_mult × scarcity_mult × local_mult`）
+→ 4 个经济 op（存 / 取 / 汇 / 贸）+ `OpGuard` 双闸（件数 + **货值** `MAX_TRADE_VALUE`）→ **月度结算**
+（工资 / 生活开销 / 古灵阁利息，走 `price_of` 随景气浮动）→ `tick()` 接线（月度演化 + 危机**边沿**事件）
+→ 面板【财富】含存款 + 新增【经济】行 → 提示词经济摘要（**黑市商品名与价格永不进提示词**）→ 离线替身经济关键词 → 3 条经济传闻。
+
+**玩法**：可以存钱生息、买卖商品、跨国套利（例：`把 100 加隆存进古灵阁`、`买 2 根魔杖`、`在黑市卖掉神奇生物`）。
+正典价位守门由机器保障（C1–C6：普通魔杖常态 7 加隆、危机峰值 4831 ≤ 上沿 4930）。
+
+**债务形态**：负现金不是裸负号，而是人类可读的 `负债 2加隆 16纳特`（`Money.debt_formatted()`），
+且【财富】与【经济】两行**共用同一形态函数**（`Money.signed_formatted()`），不再出现「同一份数据两种写法」。
 
 ## 运行
 
@@ -115,10 +131,10 @@ HALI_DEBUG_LOG=1 ./Godot_v4.7.2-stable_win64_console.exe --path .
 
 ## 目录约定
 
-- `data/*.json`：内容（时代、血统、出生身份、资质、学院、技能、魔杖、地点、传闻、魔咒）。改内容不需要改代码。
+- `data/*.json`：内容（时代、血统、出生身份、资质、学院、技能、魔杖、地点、传闻、魔咒、商品、产业、职业）。改内容不需要改代码。
 - `data/presentation.json` / `data/audio_cues.json`：表现层清单（素材路径与配色）。**不是内容表**，不进 `Registry`；换素材只改这两张表。
 - `src/model/`：数据模型（货币、玩家、世界、时钟）。
-- `src/rules/`：规则（魔法等级、角色创建、魔咒解析、成长、状态操作、自检）。
+- `src/rules/`：规则（魔法等级、角色创建、魔咒解析、成长、状态操作、自检、派系、**经济**）。
 - `src/core/`：内容注册表、确定性随机服务、回合引擎。
 - `src/gm/`：叙事接口。`ScriptedGameMaster` 是离线确定性替身；`LlmGameMaster` 接 LLM（计划 02）。`src/gm/providers/` 放 `LlmProvider` 实现（`openai_compat`、`mock`）。
 - `src/persist/`：存档编解码与存槽。
@@ -142,3 +158,8 @@ HALI_DEBUG_LOG=1 ./Godot_v4.7.2-stable_win64_console.exe --path .
 - 死亡真实且不可逆。世界信息不会免费泄露给玩家。
 - LLM 只产叙事与 `ops`，**绝不直接改 `world`**；一切变更经 `StateOps`（未知 op/id 拒绝、`OpGuard` 钳制数值）。
 - 内容一律进 `data/*.json`（含表现层清单）；**加素材 = 改清单一行 JSON，零代码**；缺任何素材都必须优雅回退，不得报错或阻塞回合。
+- 经济：`Economy.price_of()` 是**唯一算价入口**（`base × era_mult × scarcity_mult × local_mult`）；
+  `supply` **不进价格**、只决定可得性；危机线 `0.35` 与断供线 `0.15` **解耦**（危机中仍供货、只是贵）；
+  正典锚点价由 `Registry` 的 C3/C6 两条带校验守门；美元/加隆量级锚在正典「普通家庭年收入数百加隆」。
+- 金钱一律走 `Money`：负值**不是裸负号**而是 `负债 X` 形态（`debt_formatted()`），
+  带符号增量走 `signed_formatted()`；`parts()` / `to_dict()` 的负值契约（`[-g,-s,-k]`）**不得改动**。

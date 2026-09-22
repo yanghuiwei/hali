@@ -1,9 +1,8 @@
 # 下一步待办 · 哈利·波特·魔法纪元
 
 > **本文件 = 唯一的「状态 + 待办」源头。** 其他文档**不复制**这里的数字与清单，只指向它。
-> 最后更新：2026-09-22（计划 03a（Tasks 1–13）与 03a-P（P1–P5 + B8）已完成并合入 `main`；
-> 素材线全部入库；**03b 经济骨架进行中**（分支 `plan-03b-economy`，Task 1–11 已完成，
-> **下一步 = Task 12 收尾**））
+> 最后更新：2026-09-22（**03b 经济骨架已完成并合入 `main`**（12/12 任务，含收尾期间修掉的 2 个非本计划缺陷）；
+> 素材线全部入库；**下一步 = 开 03c 社会与法律**）
 
 ---
 
@@ -47,7 +46,7 @@
 
 ```bash
 git fetch origin && git status -sb          # 期望：干净。⚠️ 仓库根可能有外来未跟踪文件（如 .workbuddy/），不算失败，别删别提交
-bash tools/test.sh                          # 期望：EXIT=0；23 套件 / 3511 断言 / 失败 0；4 步全过
+bash tools/test.sh                          # 期望：EXIT=0；23 套件 / 3513 断言 / 失败 0；4 步全过
 timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 失败（会临时移走 llm_settings.json 并逐字还原）
 ```
 
@@ -71,9 +70,9 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
 
 ## A. 待办（**未完成**；已完成的一律看 §B）
 
-- [ ] **A1 §B7：开新分支做 03b 经济骨架 / 03c 社会与法律**（下一批主线；边界照 03a spec §14）
-  - 🔄 **03b 进行中**（分支 `plan-03b-economy`）：**Task 1–11 已完成**，**下一步 = Task 12（收尾）**
-    （全绿 / 台账 / 文档 / B1 复跑 / 合入 `main`）；**每完成一个 Task 立即推送远端**
+- [ ] **A1 §B7：开新分支做 03c 社会与法律**（下一批主线；边界照 03a spec §14）
+  - ✅ **03b 经济骨架 已完成（12/12 任务）并合入 `main`**（分支 `plan-03b-economy`；
+    收尾期间另修掉 2 个非本计划引入的缺陷：`debt_formatted` 缺空格、面板两行债务形态不一致）
   - ⚠️ **03b 期间新发现缺陷⑮**（2026-09-21，Task 11 的 B1 契约暴露，**非本计划引入**）：
     `eras.json` 的「自定义时代」`start_year: null` + `era_mult_for()` 的 `int(null)` 抛错
     ⇒ **玩家一选「自定义时代」全部商品价崩成 1 纳特**。已修（**仅改实现、未动数据** ——
@@ -87,14 +86,13 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
   - ✅ **价格已定版**（执行 spec §13.8「先实算后写表」，实算发现并修掉 **6 处设计缺陷**：
     `canon` 与 `base` 混淆 / `supply` 反而推高危机价 / 危机线与断供线重叠 / 原契约数学上不可能等）
     ⇒ spec §7.4 / §7.1 / §13.8 / K5 行已整段重写；**35 条商品 + 9 条产业**的数值全部实算校验通过
-  - ✅ **03b 台账已建**：[`docs/sdd/plan-03b-economy/progress.md`](docs/sdd/plan-03b-economy/progress.md)（Task 0 = spec，Task 1 前置 = 价格定版；Task 1–11 均已录入）
-  - ⏳ 下一步：**Task 12（收尾）** —— 全绿回归 → 台账 → `README`/`HANDOFF` 更新 → B1 复跑 → 合入 `main`
-  - 先读 `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` §14
-  - 若素材/玩法需要，可顺带落地 `assets/ui/` 里**尚未接的 6 件切片**（见 §A2）
+  - ✅ **03b 台账已建**：[`docs/sdd/plan-03b-economy/progress.md`](docs/sdd/plan-03b-economy/progress.md)（Task 0 = spec，Task 1 前置 = 价格定版；Task 1–12 均已录入）
+  - ⏳ 下一步：**开 03c**（社会与法律）—— 先读 `docs/superpowers/specs/2026-09-20-hp-magic-era-03-factions-design.md` §14 划边界
+  - 03c **必须处理**的挂账：`illegal_affiliation` 陈旧化（需定清除/归一规则）· 隐藏派系控制权数值仍显示
 - [ ] **A2 人类目视验收（顺手可做，无头环境看不到像素）**：跑 `./Godot_v4.7.2-stable_win64_console.exe --path .`
   - 待确认三处：① 按钮贴图与文字的**贴合度**（内容边距 8/4）② 8px 滚动条里 **grabber 的压缩观感** ③ **禁用态**是否够暗
   - **调观感零代码**：只改 `data/presentation.json` 的 `nine_patch`
-  - 尚未接的 6 件切片（需真实布局落点，会新增布局分支 ⇒ 归 03b 界面改版）：
+  - 尚未接的 6 件切片（需真实布局落点，会新增布局分支 ⇒ **归 03c 或下一个界面改版**）：
     `panel_bg` 244×366 · `frame_horizontal` 224×33 · `frame_vertical` 33×141 · `emblem_ring` 80×80 ·
     `panel_slot` 42×42 · `button_close` 60×58 —— ⚠️ **它们有意没写进清单**（写进去而无人消费 = 死旋钮）
 - [ ] **A3 文档压缩（不急，见 §0 的说明）**：把 `HANDOFF.md` §8 的已闭合项压成**索引表**（编号 + 一句结论 + 提交）、
@@ -118,6 +116,7 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
 | 计划 03a | 派系与政治骨架（Tasks 1–13） | 台账 `docs/sdd/plan-03a-factions/progress.md` |
 | 队列 B3–B6 | 03a 启动 · 03a 续做 · 03a-P P1–P5 · 素材合并 + 清单加行 | 同上（含素材合并 `ea50b91`） |
 | **B8** | **P5b：把 UI 切片接进主题**（`cdddb98`） | 同上 |
+| **计划 03b** | **经济骨架（Tasks 1–12）** —— 35 商品 / 9 产业 / 9 职业 · 算价核心 · 4 个经济 op + `OpGuard` 双闸 · 月度结算 · `tick` 接线 · 面板两行 · 提示词摘要 · 离线替身 · 3 条传闻 · B1 契约 | `docs/sdd/plan-03b-economy/progress.md` |
 
 ---
 
@@ -158,9 +157,9 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
 
 | 项 | 值 |
 | --- | --- |
-| 交付点 | **`main`** 顶端（计划 01 / 02 / 03a / 03a-P 均已合入；**以 `git log --oneline -1` 为准**，文档不钉死哈希） |
+| 交付点 | **`main`** 顶端（计划 01 / 02 / 03a / 03a-P / **03b** 均已合入；**以 `git log --oneline -1` 为准**，文档不钉死哈希） |
 | 正典规格 | `哈利·波特·魔法纪元.md`（仓库根，勿移动改名） |
-| 计划 / spec / 台账 | 03a·03a-P：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` · `.../specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` · `docs/sdd/plan-03a-factions/progress.md` |
+| 计划 / spec / 台账 | 03b：`docs/superpowers/plans/2026-09-21-hp-magic-era-03b-economy.md` · `.../specs/2026-09-21-hp-magic-era-03b-economy-design.md` · `docs/sdd/plan-03b-economy/progress.md`<br>03a·03a-P：`docs/superpowers/plans/2026-09-20-hp-magic-era-03-factions.md` · `.../specs/2026-09-20-hp-magic-era-03a-P-presentation-design.md` · `docs/sdd/plan-03a-factions/progress.md` |
 | 测试入口 | `bash tools/test.sh`（`0` 全绿 / `1` 失败 / `2` 找不到引擎）；**自带 stderr 噪音门禁** |
 | 工作模式 | **快跑模式**（§0A）—— 4 道门禁 + 每任务 2 处文档编辑 |
-| **下一步第一件事** | **03b Task 12（收尾）**：全绿回归 + 台账 + README/HANDOFF 更新 + B1 复跑 + 合入 `main`；分支 `plan-03b-economy`，**每个 Task 完成即推送** |
+| **下一步第一件事** | **开 03c 社会与法律**：从 `main` 拉分支 → 读 03a spec §14 划边界 → 出 spec（照 03b 的「先实算后写表」流程）；**每个 Task 完成即推送** |
