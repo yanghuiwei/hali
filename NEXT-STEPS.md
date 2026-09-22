@@ -55,6 +55,12 @@ timeout 300 bash tools/b1_acceptance.sh     # 期望：EXIT=0；160 断言 / 0 �
 **新增噪音通常都是真 bug**（JSON 解析失败 / 资源加载失败 / 类型赋值错误），而这类问题**套件内断言抓不到**
 （已有 3 次独立实证：拆 `ResourceLoader.exists` 守卫、拆 scheme 守卫、`generate_wand` 有类型接收）。
 
+> ⛔ **合并分支时不要 `git checkout <目标分支>`**（2026-09-22 事故）：
+> 若目标分支是**旧快照**（缺当前分支新增的文件），`checkout` 会**把那些文件从磁盘删掉**。
+> 先验 `git merge-base --is-ancestor <目标> <来源>` 与 `git log <目标>..<来源>`（应为空），
+> 成立就用 **`git branch -f <目标> <来源>`** 推进指针 —— 不切分支、不动工作区。
+> 完整事故与恢复步骤见 `HANDOFF.md` §4 第 24、25 条。
+
 ---
 
 ## 0C. 每任务收尾清单（2 处必改 + 2 处按需）
