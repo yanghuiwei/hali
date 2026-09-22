@@ -107,14 +107,21 @@ const _INSTITUTIONS := ["law_enforcement", "auror_office", "wizengamot", "myster
 # ⚠️ 必须与 Economy.CATEGORIES / Economy.KINDS 同步 —— registry 在 Economy 的上游，
 #    反向 preload 会造成类循环，故此处写字面量，由 tests/registry_test.gd 的
 #    「商品 category 枚举两处一致 / kind 枚举两处一致」断言钉死两处不漂移。
+## ⚠️ `_GOODS_KINDS` 需与 `Economy.KINDS` 一致（一致性由 `registry_test` 断言钉死）；
+## 其余四张数量表的白名单**在本文件内没有对应常量**（其枚举与 `Economy` 无共享来源），
+## 故不在此处凑数 —— 见 tests/registry_test.gd 的「白名单 == 实测内容」断言。
 const _GOODS_CATEGORIES := ["wand", "potion", "material", "broom", "book",
 	"food", "service", "creature", "artifact", "illegal"]
 const _GOODS_KINDS := ["goods", "service"]
-# C3：危机峰价的封顶倍数。危机侧最大乘数 = MAX_SCARCITY，
-# 校验器据此核「roundi(base × MAX_SCARCITY) 不得突破 canon_price_hi_knuts」。
-# 上界**直接存 `canon_price_hi_knuts` 字段**（正典写明的区间上沿），
-# 不得用 canon_lo × MAX/MIN 反推 —— 那条式子隐含「一条商品 = 一个 canon 窗口且 base 就在下沿」，
-# 对 potion_healing_premium（共享区间、base 取上段）会误判（spec §7.1 / §13 风险 8 缺陷⑦）。
+# A-11：`_SCARCITY_MAX` 是 `Economy.MAX_SCARCITY` 的**镜像常量**。
+# 为什么是镜像而不是引用：registry 处于 Economy 的**上游**（data → Registry → Economy），
+#   preload 会造成循环依赖，所以两边各写一份字面量。
+# 为什么不能只留一份：校验器要核「roundi(base × MAX_SCARCITY) 不得突破 canon_price_hi_knuts」，
+#   它必须知道这个数。
+# ⇒ 两处一致性由 `tests/registry_test.gd` 的显式断言钉死（不是靠注释自觉）。
+# ⚠️ 历史上用「canon_lo × MAX/MIN 反推上界」的做法已废弃 —— 那条式子隐含
+#   「一条商品 = 一个 canon 窗口且 base 就在下沿」，对 potion_healing_premium
+#   （共享区间、base 取上段）会误判（spec §7.1 / §13 缺陷⑦）。
 const _SCARCITY_MAX := 1.40
 
 func _validate_entry(table_name: String, key: String, e: Dictionary) -> PackedStringArray:
@@ -230,9 +237,14 @@ func _validate_industry(where: String, e: Dictionary) -> PackedStringArray:
 	return errors
 
 # 计划 03b Task 5：职业表字段校验（spec §7.6）。
-# 量级锚点（硬约束）：正典 223 行「普通家庭年收入约数百加隆」⇒ 月收入 6–15 加隆 = 2958–7395 纳特；
-# 魁地奇球员（quidditch_pro）依正典 233 行「也是商业」允许破格到 9860。此处只做**下沿**守卫，
-# 上沿由 tests/registry_test.gd 的显式断言钉死（避免把「允许破格的职业」写进校验器）。
+# 量级锚点（硬下沿 + 硬上沿）：
+#   下沿 2958 纳特（6 加隆）—— 正典 223 行「普通家庭年收入约数百加隆」⇒ 月收入 6–15 加隆。
+#   上沿 9860 纳特（20 加隆）—— 正典 233 行「魁地奇也是商业」允许顶端破格。
+#   ⚠️ 缺陷⑪（2026-09-21）订正：**两条都是硬约束**，校验器两条都查。
+#     旧注释把上沿写成「只做下沿守卫、上沿由测试钉死」，与下面的 `wage > _JOB_WAGE_MAX`
+#     分支自相矛盾，且会让人误以为上沿是软参考。
+#   「仅 quidditch_pro 可达 9860、其余 8 条严格小于」这个**更细的口径**才由
+#   tests/registry_test.gd 的显式断言钉死（校验器不该写死职业名）。
 const _JOB_WAGE_MIN := 2958
 const _JOB_WAGE_MAX := 9860
 

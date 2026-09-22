@@ -205,11 +205,14 @@ func run() -> int:
 	a.is_true(econ_panel.contains("汇率 1.03"), "汇率两位小数")
 	a.is_true(econ_panel.contains("本月 +0加隆 1西可 12纳特"), "本月净收入带符号（29 纳特 = 1西可 12纳特）")
 
-	# 净支出显示为负号，且**不隐藏**该行（spec §7.6）
+	# 净支出：**改口径**（Task 12 收尾）→ 走债务形态「负债 X」，不再写数学负号
+	# 理由：同一份数据不该在【财富】行是「负债 2加隆 16纳特」、【经济】行是「-2加隆 16纳特」。
+	#       Task 3 立起来的人类可读形态必须在**所有**金额输出点一致。
 	w_econ.economy["last_month_income"] = 0
 	w_econ.economy["last_month_expense"] = 29
-	a.is_true(PanelFormatter.player_panel(w_econ).contains("本月 -0加隆 1西可 12纳特"), "净支出带负号且可见")
-	a.is_false(PanelFormatter.player_panel(w_econ).contains("负债"), "负号路径不得走债务形态（否则会出「负债」二字）")
+	var deficit_panel := PanelFormatter.player_panel(w_econ)
+	a.is_true(deficit_panel.contains("本月 负债 1西可 12纳特"), "净支出走债务形态（29 纳特）")
+	a.is_false(deficit_panel.contains("本月 -"), "净支出不再写裸负号（形态单一化）")
 
 	# 收支为 0
 	w_econ.economy["last_month_income"] = 0

@@ -59,8 +59,12 @@ static func _wealth_line(world: WorldState) -> String:
 	return "%s 【家庭】%s" % [out, _label(world, "birth_identities", p.birth_identity_id)]
 
 # 计划 03b Task 7：新增【经济】行 —— 景气 / 存款月息 / 汇率 / 本月净收支。
-# ⚠️ 净支出走「-" + 正数格式化」而不是把负数交给 Money.formatted()：
-#    后者在 03b Task 3 之后会输出「负债 X」，与这里的「本月 -X」语义重复（spec §7.6）。
+# ⚠️ Task 12 收尾**改口径**：净收支改走 `Money.signed_formatted()`（一份带符号形态，
+#    非负时补 `+`，负值时输出「负债 X」）。
+#    旧实现写的是「-" + 正数 formatted()」= `本月 -2加隆 16纳特` —— 那是**把债务读成
+#    数学负号**，与 Task 3 刚立起来的「负债 X」人类可读形态打架：同一份数据在
+#    【财富】行显示「负债 2加隆 16纳特」、在【经济】行显示「-2加隆 16纳特」。
+#    现在两行共用同一个形态函数，且断言钉死「净收支为负时【经济】行含『负债』」。
 static func _economy_line(world: WorldState) -> String:
 	var vars := world.world_vars
 	var econ := world.economy
@@ -70,12 +74,10 @@ static func _economy_line(world: WorldState) -> String:
 	var foreign := float(econ.get("foreign_rate", 0.0))
 	var net := int(econ.get("last_month_income", 0)) - int(econ.get("last_month_expense", 0))
 	var net_text := ""
-	if net > 0:
-		net_text = "本月 +%s" % Money.from_knuts(net).formatted()
-	elif net < 0:
-		net_text = "本月 -%s" % Money.from_knuts(-net).formatted()
-	else:
+	if net == 0:
 		net_text = "本月 无收支"
+	else:
+		net_text = "本月 %s" % Money.from_knuts(net).signed_formatted()
 	return "【经济】景气 %.2f ｜ 存款月息 %.2f%% ｜ 汇率 %.2f ｜ %s" % [index, rate_pct, foreign, net_text]
 
 

@@ -1059,10 +1059,11 @@ git commit -m "feat(03b): tick 接线（evolve + monthly_settlement + 危机边�
 	a.is_true(p.contains("景气 0.61"), "景气来自 economy_index")
 	a.is_true(p.contains("本月 +1西可"), "本月净收入带符号")
 
-	# ---- 净支出显示为负号，且**不隐藏**该行（spec §7.6）----
+	# ---- 净支出走债务形态，且**不隐藏**该行（spec §7.6；Task 12 收尾改口径）----
 	w.economy["last_month_income"] = 0
 	w.economy["last_month_expense"] = 5 * 29 + 3
-	a.is_true(_panel(w).contains("本月 -5西可 3纳特"), "净支出带负号且可见")
+	a.is_true(_panel(w).contains("本月 负债 5西可 3纳特"), "净支出走债务形态")
+	a.is_false(_panel(w).contains("本月 -"), "净支出不再写裸负号（形态单一化）")
 
 	# ---- 收支为 0 ----
 	w.economy["last_month_income"] = 0
@@ -1085,9 +1086,18 @@ git commit -m "feat(03b): tick 接线（evolve + monthly_settlement + 危机边�
 - 紧随其后新增一行：
   `"【经济】景气 %.2f ｜ 存款月息 %.2f%% ｜ 汇率 %.2f ｜ 本月 %s"`。
   - 月息按 `gringotts_interest_rate * 100`（0.002 → `0.20%`，**两位小数**）。
-  - 本月：`net = income - expense`；`net > 0` ⇒ `"本月 +%s" % Money.new(net).formatted()`；
-    `net < 0` ⇒ `"本月 -%s" % Money.new(-net).formatted()`（**注意取负后再 formatted，否则会出「负债」二字**）；
+  - 本月：`net = income - expense`；`net != 0` ⇒ `"本月 %s" % Money.new(net).signed_formatted()`；
     `net == 0` ⇒ `"本月 无收支"`。
+
+> ⚠️ **实况修正（Task 12 收尾，2026-09-21）—— 净收支形态改口径**：
+> 本计划原文写的是 `net < 0 ⇒ "本月 -%s" % Money.new(-net).formatted()`
+> （即「取负后再格式化，避免出『负债』二字」）。**实施后发现这条口径是错的**：
+> 它让同一份数据在【财富】行显示 `负债 2加隆 16纳特`、在【经济】行显示 `-2加隆 16纳特`，
+> 而 Task 3 刚刚立起来的立论就是「**债务必须人类可读**」。
+> 现改为 `Money.signed_formatted()`：非负补 `+`（逐字等于 `"+" + formatted()`），
+> 负值走 `debt_formatted()` ⇒ **两行共用同一形态函数**，断言也改为钉「净支出时【经济】行含『负债』」。
+> 同时**不改** `Money.formatted()` 本体（它被 03a 的既有断言逐字钉死）。
+> 依据：`HANDOFF` §8#5 的裁定本意是「定义债务格式」，不是「在某个面板里保留数学负号」。
 - `power_panel()` 的「财政」指标**保持不变**（仍来自 `economy_index`，`panel_formatter.gd:116`）。
 
 - [ ] **Step 4: 跑测试确认绿 + 提交**

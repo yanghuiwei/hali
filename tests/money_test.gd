@@ -50,6 +50,42 @@ func run() -> int:
 	a.is_false(Money.from_knuts(0).is_debt(), "0 不是负债")
 	a.is_false(Money.from_knuts(7).is_debt(), "正数不是负债")
 
+	# ---- Task 12 收尾：债务形态的**结构化**分解契约 ----
+	# 全部期望值由整数运算核过（`v/493`, `v%493`, `r/17`, `r%17`）—— **不手算**。
+	a.eq(Money.from_knuts(-100).debt_parts(),
+		{"debt": true, "galleons": 0, "sickles": 5, "knuts": 15},
+		"debt_parts 对 -100（= 0加隆 5西可 15纳特）")
+	a.eq(Money.from_knuts(-1002).debt_parts(),
+		{"debt": true, "galleons": 2, "sickles": 0, "knuts": 16},
+		"debt_parts 对 -1002")
+	a.eq(Money.from_knuts(-493).debt_parts(),
+		{"debt": true, "galleons": 1, "sickles": 0, "knuts": 0},
+		"debt_parts 的 0 值单位是 int 0（不是 -0.0）")
+	a.eq(Money.from_knuts(100).debt_parts(),
+		{"debt": false, "galleons": 0, "sickles": 5, "knuts": 15},
+		"debt_parts 非负分支（100 = 5西可 15纳特，无加隆）")
+	a.eq(Money.from_knuts(0).debt_parts(),
+		{"debt": false, "galleons": 0, "sickles": 0, "knuts": 0},
+		"debt_parts 零值")
+	# 关键判别力：`debt_parts()` 的分段是**绝对值**，与 `parts()` 的带符号分段不同。
+	# 若把 `absi()` 换成直接透传，下面这条会红（`-1` != `1`）—— 反向控制已验证。
+	a.eq(Money.from_knuts(-493).debt_parts()["galleons"], 1,
+		"debt_parts 的加隆位是正数（负债金额不带符号）")
+	a.eq(Money.from_knuts(-493).parts()[0], -1,
+		"而 parts() 的加隆位仍是负数（两函数语义不同，不可互相替代）")
+
+	# ---- signed_formatted()：带符号形态（面板【经济】行消费）----
+	a.eq(Money.from_knuts(29).signed_formatted(), "+0加隆 1西可 12纳特",
+		"signed_formatted 非负补 +（金额本身仍是三位全写形态）")
+	a.eq(Money.from_knuts(0).signed_formatted(), "+0加隆 0西可 0纳特", "signed_formatted 零也带 +")
+	a.eq(Money.from_knuts(-1002).signed_formatted(), "负债 2加隆 16纳特",
+		"signed_formatted 负值走债务形态")
+	a.eq(Money.from_knuts(-50).signed_formatted(), "负债 2西可 16纳特", "signed_formatted -50")
+	# 非负分支与 formatted() **逐字同构**（只多一个前缀 +）—— 防「顺手改 formatted 本体」
+	for v in [0, 1, 29, 493, 510, 511, 3451]:
+		a.eq(Money.from_knuts(v).signed_formatted(), "+" + Money.from_knuts(v).formatted(),
+			"signed_formatted(%d) == \"+\" + formatted()" % v)
+
 	# formatted() 负值走债务形态，非负分支**逐字不变**
 	a.eq(Money.from_knuts(-1002).formatted(), "负债 2加隆 16纳特", "formatted 负值走债务形态")
 	a.eq(Money.from_knuts(-50).formatted(), "负债 2西可 16纳特", "formatted -50")

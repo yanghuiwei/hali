@@ -217,6 +217,13 @@ func run() -> int:
 	# registry 的表内枚举与 Economy 常量必须一致（防两处定义漂移；与 03a 的机构枚举同款做法）
 	a.eq(cats, Economy.CATEGORIES, "商品 category 枚举两处一致")
 	a.eq(goods_kinds, Economy.KINDS, "商品 kind 枚举两处一致")
+	# A-11（Task 12 收尾补上，此前一直只在台账里挂着）：
+	# `Registry._SCARCITY_MAX` 是 `Economy.MAX_SCARCITY` 的**镜像常量**（上游不能 preload 下游，
+	# 所以只能各写一份字面量）。两份字面量一旦漂移，会出现「校验器按 1.40 放行、算价按别的数封顶」
+	# 这类**两边各自自洽**的危险状态 —— 只有这条断言能把它们钉在一起。
+	# 反向控制：把 `Economy.MAX_SCARCITY` 改成 1.41，本条即红。
+	a.eq(Registry._SCARCITY_MAX, Economy.MAX_SCARCITY,
+		"危机封顶倍数两处一致（registry 校验器镜像 == Economy 算价常量）")
 
 	# 校验器必须抓到坏商品内容
 	var bad_goods := Registry.from_tables({
